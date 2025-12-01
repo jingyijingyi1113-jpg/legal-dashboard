@@ -986,7 +986,7 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
     return (
         <div className="space-y-4">
              <div className="grid gap-4 md:grid-cols-2">
-                <FilterSection data={teamData} title="投资法务中心总用时">
+                <FilterSection data={teamData} title="Investment Legal Center-Total Working Hours">
                     {(_, totalHours) => (
                          <>
                             <div className="text-2xl font-bold">{totalHours?.toFixed(2) || '0.00'}h</div>
@@ -995,7 +995,7 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                     )}
                 </FilterSection>
                 
-                <FilterSection data={teamData} title="投资法务中心BSC占比">
+                <FilterSection data={teamData} title="Investment Legal Center-Working Hours (BSC vs Others)">
                     {(filteredData, totalHours) => (
                         <BSCPieChartSection filteredData={filteredData} totalHours={totalHours} />
                     )}
@@ -1005,7 +1005,7 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
             {/* Trend Charts - No Filter */}
             <div className="grid gap-4 md:grid-cols-2">
                 <Card>
-                    <CardHeader><CardTitle className="text-sm font-medium">投资法务中心总用时月度趋势图</CardTitle></CardHeader>
+                    <CardHeader><CardTitle className="text-sm font-medium">Investment Legal Center-Comparison of Total Working Hours</CardTitle></CardHeader>
                     <CardContent>
                         <ResponsiveContainer width="100%" height={300}>
                             <ComposedChart data={trendData.monthlyTrends}>
@@ -1022,7 +1022,7 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                     </CardContent>
                 </Card>
                 <Card>
-                    <CardHeader><CardTitle className="text-sm font-medium">投资法务中心人均用时月度趋势图</CardTitle></CardHeader>
+                    <CardHeader><CardTitle className="text-sm font-medium">Investment Legal Center-Comparison of Monthly Avg Working Hours per person</CardTitle></CardHeader>
                     <CardContent>
                          <ResponsiveContainer width="100%" height={300}>
                             <ComposedChart data={trendData.monthlyTrends}>
@@ -1451,7 +1451,7 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
             {/* Trend Charts - No Filter */}
             <div className="grid gap-4 md:grid-cols-2">
                 <Card>
-                    <CardHeader><CardTitle className="text-sm font-medium">1. Corporate and International Financial Affairs Center - Comparison of Total Working Hours</CardTitle></CardHeader>
+                    <CardHeader><CardTitle className="text-sm font-medium">Corporate and International Financial Affairs Center - Comparison of Total Working Hours</CardTitle></CardHeader>
                     <CardContent className="pt-8">
                         <ResponsiveContainer width="100%" height={300}>
                             <ComposedChart data={trendData.monthlyTrends} margin={{ left: 0, right: 0 }}>
@@ -1468,7 +1468,7 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                     </CardContent>
                 </Card>
                 <Card>
-                    <CardHeader><CardTitle className="text-sm font-medium">2. Corporate and International Financial Affairs Center - Comparison of Monthly Avg Working Hours per person</CardTitle></CardHeader>
+                    <CardHeader><CardTitle className="text-sm font-medium">Corporate and International Financial Affairs Center - Comparison of Monthly Avg Working Hours per person</CardTitle></CardHeader>
                     <CardContent className="pt-8">
                          <ResponsiveContainer width="100%" height={300}>
                             <ComposedChart data={trendData.monthlyTrends} margin={{ left: 0, right: 0 }}>
