@@ -25,6 +25,7 @@ export function DashboardPage() {
   const [rawData, setRawData] = useState<any[]>([]);
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [activeTab, setActiveTab] = useState<string>('overview');
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -159,7 +160,6 @@ export function DashboardPage() {
             <Card className="card-premium">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
                 <CardTitle className="text-sm font-semibold text-neutral-600">部门总用时</CardTitle>
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 opacity-10"></div>
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-neutral-900">{displayedData.totalHours.toFixed(2)}</div>
@@ -284,7 +284,7 @@ export function DashboardPage() {
           </div>
         </div>
 
-        <Tabs defaultValue="overview" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="glass-effect -mx-6 px-6 shadow-elevation-2 transition-all duration-200 rounded-xl">
             <TabsList className="flex h-14 items-center justify-start gap-8 bg-transparent p-0 w-full">
               <TabsTrigger 
@@ -314,7 +314,7 @@ export function DashboardPage() {
           <div className="container mx-auto max-w-7xl animate-fade-in-up">
             <DepartmentOverviewTab />
             <TabsContent value="team" className="m-0 focus-visible:outline-none">
-              <TeamDimensionTab data={rawData} />
+              {activeTab === 'team' && <TeamDimensionTab data={rawData} />}
             </TabsContent>
           </div>
         </Tabs>

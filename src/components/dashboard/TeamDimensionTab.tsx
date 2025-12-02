@@ -84,8 +84,16 @@ const CustomTooltip = ({ active, payload, label, onItemClick }: any) => {
 
 
 const DetailsDialog = ({ isOpen, onClose, title, data }: { isOpen: boolean, onClose: () => void, title: string, data: any[] }) => {
-    if (!isOpen) return null;
+    const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
+    
+    // Reset filters when dialog opens with new data
+    useEffect(() => {
+        if (isOpen) {
+            setColumnFilters({});
+        }
+    }, [isOpen, data]);
 
+    // ESC key handler - must be before any conditional returns
     useEffect(() => {
         const handleEsc = (e: KeyboardEvent) => {
             if (e.key === 'Escape') onClose();
@@ -98,7 +106,10 @@ const DetailsDialog = ({ isOpen, onClose, title, data }: { isOpen: boolean, onCl
         if (!data || data.length === 0) return [];
         const keys = new Set<string>();
         data.forEach(row => {
-             if(row) Object.keys(row).forEach(k => keys.add(k));
+             if(row) Object.keys(row).forEach(k => {
+                 // Filter out internal fields
+                 if (!k.startsWith('_')) keys.add(k);
+             });
         });
         const preferredOrder = [
             'Month', 
@@ -123,6 +134,36 @@ const DetailsDialog = ({ isOpen, onClose, title, data }: { isOpen: boolean, onCl
         });
     }, [data]);
 
+    // Filter data based on column filters
+    const filteredData = useMemo(() => {
+        if (!data || data.length === 0) return [];
+        return data.filter(row => {
+            if (!row) return false;
+            return Object.entries(columnFilters).every(([key, filterValue]) => {
+                if (!filterValue || filterValue.trim() === '') return true;
+                const cellValue = row[key];
+                if (cellValue === null || cellValue === undefined) return false;
+                return cellValue.toString().toLowerCase().includes(filterValue.toLowerCase());
+            });
+        });
+    }, [data, columnFilters]);
+
+    const handleFilterChange = (key: string, value: string) => {
+        setColumnFilters(prev => ({
+            ...prev,
+            [key]: value
+        }));
+    };
+
+    const clearAllFilters = () => {
+        setColumnFilters({});
+    };
+
+    const hasActiveFilters = Object.values(columnFilters).some(v => v && v.trim() !== '');
+
+    // Conditional return AFTER all hooks
+    if (!isOpen) return null;
+
     return (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div 
@@ -133,7 +174,19 @@ const DetailsDialog = ({ isOpen, onClose, title, data }: { isOpen: boolean, onCl
                     className="p-4 border-b flex justify-between items-center bg-slate-50 dark:bg-slate-800 shrink-0"
                     style={{ backgroundColor: '#f8fafc' }}
                 >
-                    <h3 className="text-lg font-semibold">{title}</h3>
+                    <div className="flex items-center gap-4">
+                        <h3 className="text-lg font-semibold">{title}</h3>
+                        {hasActiveFilters && (
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={clearAllFilters}
+                                className="h-7 px-2 text-xs bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100"
+                            >
+                                清除筛选
+                            </Button>
+                        )}
+                    </div>
                     <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0 rounded-full">
                         <span className="sr-only">Close</span>
                         ✕
@@ -144,14 +197,24 @@ const DetailsDialog = ({ isOpen, onClose, title, data }: { isOpen: boolean, onCl
                        <TableHeader className="sticky top-0 z-10 shadow-sm bg-slate-100" style={{ backgroundColor: '#f1f5f9' }}>
                            <TableRow className="bg-slate-100 hover:bg-slate-100" style={{ backgroundColor: '#f1f5f9' }}>
                                {allKeys.map(key => (
-                                   <TableHead key={key} className="whitespace-nowrap px-4 py-3 font-bold text-slate-900 dark:text-slate-100 border-b border-r last:border-r-0 bg-slate-100 dark:bg-slate-800" style={{ backgroundColor: '#f1f5f9' }}>
-                                       {key}
+                                   <TableHead key={key} className="whitespace-nowrap px-4 py-2 font-bold text-slate-900 dark:text-slate-100 border-b border-r last:border-r-0 bg-slate-100 dark:bg-slate-800" style={{ backgroundColor: '#f1f5f9' }}>
+                                       <div className="flex flex-col gap-1">
+                                           <span>{key}</span>
+                                           <input
+                                               type="text"
+                                               placeholder="筛选..."
+                                               value={columnFilters[key] || ''}
+                                               onChange={(e) => handleFilterChange(key, e.target.value)}
+                                               className="w-full min-w-[80px] px-2 py-1 text-xs font-normal border border-slate-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                               onClick={(e) => e.stopPropagation()}
+                                           />
+                                       </div>
                                    </TableHead>
                                ))}
                            </TableRow>
                        </TableHeader>
                        <TableBody className="bg-white" style={{ backgroundColor: '#ffffff' }}>
-                           {data.length > 0 ? data.map((row, i) => (
+                           {filteredData.length > 0 ? filteredData.map((row, i) => (
                                <TableRow key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 odd:bg-white even:bg-slate-50 dark:odd:bg-slate-900 dark:even:bg-slate-800">
                                    {allKeys.map(key => (
                                        <TableCell key={key} className="whitespace-nowrap px-4 py-2 border-b border-r last:border-r-0 max-w-[400px] truncate text-sm" title={row[key]?.toString()}>
@@ -166,11 +229,13 @@ const DetailsDialog = ({ isOpen, onClose, title, data }: { isOpen: boolean, onCl
                    </Table>
                 </div>
                  <div 
-                    className="p-4 border-t bg-slate-50 dark:bg-slate-800 flex justify-end shrink-0"
+                    className="p-4 border-t bg-slate-50 dark:bg-slate-800 flex justify-between items-center shrink-0"
                     style={{ backgroundColor: '#f8fafc' }}
                 >
                     <div className="text-sm text-muted-foreground font-medium">
-                        Total Records: {data.length} | Total Hours: {data.reduce((acc, r) => acc + (Number(r.Hours) || 0), 0).toFixed(2)}
+                        {hasActiveFilters && <span className="text-blue-600">筛选后: {filteredData.length} / </span>}
+                        Total Records: {data.length} | Total Hours: {filteredData.reduce((acc, r) => acc + (Number(r.Hours) || 0), 0).toFixed(2)}
+                        {hasActiveFilters && <span className="text-slate-400"> (原始: {data.reduce((acc, r) => acc + (Number(r.Hours) || 0), 0).toFixed(2)})</span>}
                     </div>
                 </div>
             </div>
@@ -767,7 +832,7 @@ const FilterSection = ({
 }: { 
     data: any[], 
     title?: string, 
-    children: (filteredData: any[], totalHours: number) => React.ReactNode,
+    children: (filteredData: any[], totalHours: number, trend?: number) => React.ReactNode,
     className?: string
 }) => {
     const [period, setPeriod] = useState<Period>('monthly');
@@ -777,9 +842,12 @@ const FilterSection = ({
     const [customEndDate, setCustomEndDate] = useState<Date | undefined>(undefined);
 
     const availableYears = useMemo(() => {
-        const validData = data.filter(row => row && row['Month']);
+        const validData = data.filter(row => row && (row._parsedDate || row['Month']));
         if (!validData || validData.length === 0) return [];
-        const years = [...new Set(validData.map(row => parse(row['Month'].toString(), 'yyyy/MM', new Date()).getFullYear()))].filter(year => !isNaN(year));
+        const years = [...new Set(validData.map(row => {
+            const d = row._parsedDate || parse(row['Month'].toString(), 'yyyy/MM', new Date());
+            return d.getFullYear();
+        }))].filter(year => !isNaN(year));
         return years.sort((a, b) => b - a).map(y => y.toString());
     }, [data]);
 
@@ -789,10 +857,9 @@ const FilterSection = ({
         }
         if (period === 'monthly' && !selectedPeriodValue && data.length > 0) {
             const latestMonth = data.reduce((latest, row) => {
-                try {
-                    const d = parse(row.Month.toString(), 'yyyy/MM', new Date());
-                    return d > latest ? d : latest;
-                } catch { return latest; }
+                // Use pre-parsed date if available
+                const d = row._parsedDate;
+                return d && d > latest ? d : latest;
             }, new Date(0));
             if(latestMonth.getTime() > 0) {
                 setSelectedYear(getYear(latestMonth).toString());
@@ -843,10 +910,9 @@ const FilterSection = ({
         // Default to latest month if no selection
         if (!cardStartDate || !cardEndDate) {
              const latestMonthInData = data.length > 0 ? data.reduce((latest, row) => {
-                 try {
-                    const d = parse(row.Month.toString(), 'yyyy/MM', new Date());
-                    return d > latest ? d : latest;
-                } catch { return latest; }
+                 // Use pre-parsed date if available
+                 const d = row._parsedDate || (row.Month ? parse(row.Month.toString(), 'yyyy/MM', new Date()) : null);
+                 return d && d > latest ? d : latest;
             }, new Date(0)) : new Date(0);
 
              if (latestMonthInData.getTime() > 0) {
@@ -859,16 +925,60 @@ const FilterSection = ({
         }
 
         const filteredData = data.filter(row => {
-            if (!row || !row['Month']) return false;
-            try {
-                const rowDate = parse(row['Month'].toString(), 'yyyy/MM', new Date());
-                return rowDate >= cardStartDate! && rowDate <= cardEndDate!;
-            } catch { return false; }
+            if (!row) return false;
+            // Use pre-parsed date if available
+            const rowDate = row._parsedDate;
+            if (!rowDate) return false;
+            return rowDate >= cardStartDate! && rowDate <= cardEndDate!;
         });
 
         const totalHours = filteredData.reduce((acc, row) => acc + (Number(row['Hours']) || 0), 0);
 
-        return { filteredData, totalHours };
+        // Calculate previous period for trend
+        let prevStartDate: Date | undefined, prevEndDate: Date | undefined;
+        if (cardStartDate && cardEndDate) {
+            const duration = cardEndDate.getTime() - cardStartDate.getTime();
+            const durationMonths = Math.round(duration / (1000 * 60 * 60 * 24 * 30));
+            
+            if (period === 'monthly') {
+                // Previous month
+                prevStartDate = new Date(cardStartDate.getFullYear(), cardStartDate.getMonth() - 1, 1);
+                prevEndDate = endOfMonth(prevStartDate);
+            } else if (period === 'quarterly') {
+                // Previous quarter
+                prevStartDate = new Date(cardStartDate.getFullYear(), cardStartDate.getMonth() - 3, 1);
+                prevEndDate = endOfMonth(new Date(prevStartDate.getFullYear(), prevStartDate.getMonth() + 2, 1));
+            } else if (period === 'semiannually') {
+                // Previous half year
+                prevStartDate = new Date(cardStartDate.getFullYear(), cardStartDate.getMonth() - 6, 1);
+                prevEndDate = endOfMonth(new Date(prevStartDate.getFullYear(), prevStartDate.getMonth() + 5, 1));
+            } else if (period === 'annually') {
+                // Previous year
+                prevStartDate = new Date(cardStartDate.getFullYear() - 1, 0, 1);
+                prevEndDate = new Date(cardStartDate.getFullYear() - 1, 11, 31);
+            } else if (period === 'custom' && durationMonths > 0) {
+                // Previous period of same duration
+                prevEndDate = new Date(cardStartDate.getTime() - 1);
+                prevStartDate = new Date(prevEndDate.getTime() - duration);
+            }
+        }
+
+        let trend: number | undefined = undefined;
+        if (prevStartDate && prevEndDate) {
+            const prevFilteredData = data.filter(row => {
+                if (!row) return false;
+                // Use pre-parsed date if available
+                const rowDate = row._parsedDate;
+                if (!rowDate) return false;
+                return rowDate >= prevStartDate! && rowDate <= prevEndDate!;
+            });
+            const prevTotalHours = prevFilteredData.reduce((acc, row) => acc + (Number(row['Hours']) || 0), 0);
+            if (prevTotalHours > 0) {
+                trend = ((totalHours - prevTotalHours) / prevTotalHours) * 100;
+            }
+        }
+
+        return { filteredData, totalHours, trend };
     }, [data, period, selectedYear, selectedPeriodValue, customStartDate, customEndDate]);
 
     return (
@@ -890,14 +1000,22 @@ const FilterSection = ({
                 </div>
             </CardHeader>
             <CardContent>
-                {children(filteredInfo.filteredData, filteredInfo.totalHours)}
+                {children(filteredInfo.filteredData, filteredInfo.totalHours, filteredInfo.trend)}
             </CardContent>
         </Card>
     );
 };
 
 const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
-    const teamData = useMemo(() => data.filter(row => row && row['团队'] === '投资法务中心'), [data]);
+    // Pre-process data once: filter team and parse dates
+    const teamData = useMemo(() => {
+        return data
+            .filter(row => row && row['团队'] === '投资法务中心')
+            .map(row => ({
+                ...row,
+                _parsedDate: row['Month'] ? parse(row['Month'].toString(), 'yyyy/MM', new Date()) : null
+            }));
+    }, [data]);
 
     // Global Data for Trends (Full History)
     const trendData = useMemo(() => {
@@ -907,12 +1025,12 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
         let overallMaxDate: Date | null = null;
 
         teamData.forEach(row => {
-             if (!row || !row['Month']) return;
-             try {
-                const rowDate = parse(row['Month'].toString(), 'yyyy/MM', new Date());
-                if (!overallMinDate || rowDate < overallMinDate) overallMinDate = rowDate;
-                if (!overallMaxDate || rowDate > overallMaxDate) overallMaxDate = rowDate;
-             } catch {}
+             if (!row) return;
+             // Use pre-parsed date
+             const rowDate = row._parsedDate;
+             if (!rowDate) return;
+             if (!overallMinDate || rowDate < overallMinDate) overallMinDate = rowDate;
+             if (!overallMaxDate || rowDate > overallMaxDate) overallMaxDate = rowDate;
         });
 
         const trendStartDate = overallMinDate ? startOfMonth(overallMinDate) : new Date();
@@ -926,16 +1044,16 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
         });
 
         teamData.forEach(row => {
-            if (!row || !row['Month'] || !row['Name']) return;
-            try {
-                const rowDate = parse(row['Month'].toString(), 'yyyy/MM', new Date());
-                const monthKey = format(rowDate, 'yyyy/MM');
-                if (monthlyAgg.hasOwnProperty(monthKey)) {
-                    monthlyAgg[monthKey].hours += Number(row['Hours']) || 0;
-                    const name = row['Name'].toString().replace(/\\s+/g, ' ').trim();
-                    monthlyAgg[monthKey].users.add(name);
-                }
-            } catch {}
+            if (!row || !row['Name']) return;
+            // Use pre-parsed date
+            const rowDate = row._parsedDate;
+            if (!rowDate) return;
+            const monthKey = format(rowDate, 'yyyy/MM');
+            if (monthlyAgg.hasOwnProperty(monthKey)) {
+                monthlyAgg[monthKey].hours += Number(row['Hours']) || 0;
+                const name = row['Name'].toString().replace(/\\s+/g, ' ').trim();
+                monthlyAgg[monthKey].users.add(name);
+            }
         });
 
         const monthlyTrends = Object.keys(monthlyAgg).sort().map(month => {
@@ -965,17 +1083,17 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
         });
 
         teamData.forEach(row => {
-            if (!row || !row['Month'] || !row['Deal/Matter Category']) return;
+            if (!row || !row['Deal/Matter Category']) return;
             const rawCategory = row['Deal/Matter Category']?.toString() || '';
             const category = rawCategory.replace(/\\s+/g, ' ').trim();
             if (utilizationCategories.includes(category)) {
-                try {
-                    const rowDate = parse(row['Month'].toString(), 'yyyy/MM', new Date());
-                    const monthKey = format(rowDate, 'yyyy/MM');
-                    if (utilizationTrendsAgg[monthKey]) {
-                         utilizationTrendsAgg[monthKey][category] = (utilizationTrendsAgg[monthKey][category] || 0) + (Number(row['Hours']) || 0);
-                    }
-                } catch {}
+                // Use pre-parsed date
+                const rowDate = row._parsedDate;
+                if (!rowDate) return;
+                const monthKey = format(rowDate, 'yyyy/MM');
+                if (utilizationTrendsAgg[monthKey]) {
+                     utilizationTrendsAgg[monthKey][category] = (utilizationTrendsAgg[monthKey][category] || 0) + (Number(row['Hours']) || 0);
+                }
             }
         });
         const utilizationTrends = Object.values(utilizationTrendsAgg).sort((a: any, b: any) => a.month.localeCompare(b.month));
@@ -987,10 +1105,15 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
         <div className="space-y-4">
              <div className="grid gap-4 md:grid-cols-2">
                 <FilterSection data={teamData} title="Investment Legal Center-Total Working Hours">
-                    {(_, totalHours) => (
+                    {(_, totalHours, trend) => (
                          <>
                             <div className="text-2xl font-bold">{totalHours?.toFixed(2) || '0.00'}h</div>
                             <p className="text-xs text-muted-foreground">在筛选期间的总工时</p>
+                            {trend !== undefined && (
+                                <p className={`text-xs font-medium mt-1 ${trend >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    环比: {trend >= 0 ? '+' : ''}{trend.toFixed(2)}%
+                                </p>
+                            )}
                          </>
                     )}
                 </FilterSection>
@@ -1246,7 +1369,15 @@ const WorkCategoryComparisonChart = ({ data, workCategoryList, teamData }: { dat
 };
 
 const CorporateFinancePanel = ({ data }: { data: any[] }) => {
-    const teamData = useMemo(() => data.filter(row => row && row['团队'] === '公司及国际金融事务中心'), [data]);
+    // Pre-process data once: filter team and parse dates
+    const teamData = useMemo(() => {
+        return data
+            .filter(row => row && row['团队'] === '公司及国际金融事务中心')
+            .map(row => ({
+                ...row,
+                _parsedDate: row['Month'] ? parse(row['Month'].toString(), 'yyyy/MM', new Date()) : null
+            }));
+    }, [data]);
 
     const trendData = useMemo(() => {
         if (teamData.length === 0) return { monthlyTrends: [], virtualGroupTrendData: [], virtualGroupList: [], workCategoryTrendData: [], workCategoryList: [] };
@@ -1255,12 +1386,12 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
         let overallMaxDate: Date | null = null;
 
         teamData.forEach(row => {
-             if (!row || !row['Month']) return;
-             try {
-                const rowDate = parse(row['Month'].toString(), 'yyyy/MM', new Date());
-                if (!overallMinDate || rowDate < overallMinDate) overallMinDate = rowDate;
-                if (!overallMaxDate || rowDate > overallMaxDate) overallMaxDate = rowDate;
-             } catch {}
+             if (!row) return;
+             // Use pre-parsed date
+             const rowDate = row._parsedDate;
+             if (!rowDate) return;
+             if (!overallMinDate || rowDate < overallMinDate) overallMinDate = rowDate;
+             if (!overallMaxDate || rowDate > overallMaxDate) overallMaxDate = rowDate;
         });
 
         const trendStartDate = overallMinDate ? startOfMonth(overallMinDate) : new Date();
@@ -1271,15 +1402,15 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
         const monthlyAgg: { [key: string]: { hours: number; users: Set<string> } } = {};
         monthsInPeriod.forEach(monthDate => monthlyAgg[format(monthDate, 'yyyy/MM')] = { hours: 0, users: new Set() });
         teamData.forEach(row => {
-            if (!row || !row['Month'] || !row['Name']) return;
-            try {
-                const rowDate = parse(row['Month'].toString(), 'yyyy/MM', new Date());
-                const monthKey = format(rowDate, 'yyyy/MM');
-                if (monthlyAgg.hasOwnProperty(monthKey)) {
-                    monthlyAgg[monthKey].hours += Number(row['Hours']) || 0;
-                    monthlyAgg[monthKey].users.add(row['Name'].toString().replace(/\\s+/g, ' ').trim());
-                }
-            } catch {}
+            if (!row || !row['Name']) return;
+            // Use pre-parsed date
+            const rowDate = row._parsedDate;
+            if (!rowDate) return;
+            const monthKey = format(rowDate, 'yyyy/MM');
+            if (monthlyAgg.hasOwnProperty(monthKey)) {
+                monthlyAgg[monthKey].hours += Number(row['Hours']) || 0;
+                monthlyAgg[monthKey].users.add(row['Name'].toString().replace(/\\s+/g, ' ').trim());
+            }
         });
 
         const monthlyTrends = Object.keys(monthlyAgg).sort().map(month => {
@@ -1305,18 +1436,18 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
         monthsInPeriod.forEach(monthDate => virtualGroupTrendAgg[format(monthDate, 'yyyy/MM')] = {});
 
         teamData.forEach(row => {
-            if (!row || !row['Month'] || !row['Deal/Matter Category']) return;
+            if (!row || !row['Deal/Matter Category']) return;
             const rawGroup = row['Deal/Matter Category'].toString().replace(/\\s+/g, ' ').trim();
             const allowedMatch = ['Group Financing', 'International Financial', 'Listing Rules and Corporate Governance', 'Others'].find(allowed => allowed.toLowerCase() === rawGroup.toLowerCase());
             if (allowedMatch) {
-                 try {
-                     const rowDate = parse(row['Month'].toString(), 'yyyy/MM', new Date());
-                     const monthKey = format(rowDate, 'yyyy/MM');
-                     if (virtualGroupTrendAgg[monthKey]) {
-                        virtualGroupTrendAgg[monthKey][allowedMatch] = (virtualGroupTrendAgg[monthKey][allowedMatch] || 0) + (Number(row['Hours']) || 0);
-                        allVirtualGroups.add(allowedMatch);
-                     }
-                } catch {}
+                 // Use pre-parsed date
+                 const rowDate = row._parsedDate;
+                 if (!rowDate) return;
+                 const monthKey = format(rowDate, 'yyyy/MM');
+                 if (virtualGroupTrendAgg[monthKey]) {
+                    virtualGroupTrendAgg[monthKey][allowedMatch] = (virtualGroupTrendAgg[monthKey][allowedMatch] || 0) + (Number(row['Hours']) || 0);
+                    allVirtualGroups.add(allowedMatch);
+                 }
             }
         });
         const virtualGroupTrendData = Object.entries(virtualGroupTrendAgg).map(([month, groups]) => {
@@ -1334,22 +1465,22 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
         monthsInPeriod.forEach(monthDate => workCategoryTrendAgg[format(monthDate, 'yyyy/MM')] = {});
 
         teamData.forEach(row => {
-            if (!row || !row['Month'] || !row['Work Category']) return;
+            if (!row || !row['Work Category']) return;
             const rawCat = row['Work Category'].toString();
             const category = rawCat.trim().replace(/\\s+/g, ' ');
             const normalizedKey = category.toUpperCase();
             const hours = Number(row['Hours']) || 0;
             if (hours > 0) {
-                try {
-                    const rowDate = parse(row['Month'].toString(), 'yyyy/MM', new Date());
-                    const monthKey = format(rowDate, 'yyyy/MM');
-                    if (workCategoryTrendAgg[monthKey]) {
-                        if (!allWorkCategoriesMap[normalizedKey]) allWorkCategoriesMap[normalizedKey] = category;
-                        const displayName = allWorkCategoriesMap[normalizedKey];
-                        workCategoryTrendAgg[monthKey][displayName] = (workCategoryTrendAgg[monthKey][displayName] || 0) + hours;
-                        categoryTotalHours[displayName] = (categoryTotalHours[displayName] || 0) + hours;
-                    }
-                } catch {}
+                // Use pre-parsed date
+                const rowDate = row._parsedDate;
+                if (!rowDate) return;
+                const monthKey = format(rowDate, 'yyyy/MM');
+                if (workCategoryTrendAgg[monthKey]) {
+                    if (!allWorkCategoriesMap[normalizedKey]) allWorkCategoriesMap[normalizedKey] = category;
+                    const displayName = allWorkCategoriesMap[normalizedKey];
+                    workCategoryTrendAgg[monthKey][displayName] = (workCategoryTrendAgg[monthKey][displayName] || 0) + hours;
+                    categoryTotalHours[displayName] = (categoryTotalHours[displayName] || 0) + hours;
+                }
             }
         });
 
@@ -1368,10 +1499,15 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
         <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
                  <FilterSection data={teamData} title="Corporate and International Financial Affairs Center - Total Working Hours">
-                    {(_, totalHours) => (
+                    {(_, totalHours, trend) => (
                          <>
                             <div className="text-2xl font-bold">{totalHours?.toFixed(2) || '0.00'}h</div>
                             <p className="text-xs text-muted-foreground">在筛选期间的总工时</p>
+                            {trend !== undefined && (
+                                <p className={`text-xs font-medium mt-1 ${trend >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    环比: {trend >= 0 ? '+' : ''}{trend.toFixed(2)}%
+                                </p>
+                            )}
                          </>
                     )}
                 </FilterSection>
@@ -1712,9 +1848,21 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
 }
 
 export function TeamDimensionTab({ data }: { data: any[] }) {
+  const [activeSubTab, setActiveSubTab] = useState<string>('investment-legal');
+  const [isReady, setIsReady] = useState(false);
+  
+  // Use setTimeout(0) to yield to the browser and let UI update first
+  useEffect(() => {
+    setIsReady(false);
+    const timer = setTimeout(() => {
+      setIsReady(true);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+  
   return (
     <div className="space-y-6 py-2 bg-transparent min-h-screen">
-      <Tabs defaultValue="investment-legal" className="space-y-6">
+      <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="space-y-6">
         <div className="bg-slate-50/95 backdrop-blur supports-[backdrop-filter]:bg-slate-50/60 border-b border-slate-200/60 -mx-6 px-6 pt-2 pb-0">
           <TabsList className="flex h-auto items-center justify-start gap-2 bg-transparent p-0 w-full">
             <TabsTrigger 
@@ -1733,12 +1881,27 @@ export function TeamDimensionTab({ data }: { data: any[] }) {
         </div>
         
         <div className="container mx-auto max-w-7xl">
-          <TabsContent value="investment-legal" className="mt-6 space-y-6 focus-visible:outline-none animate-in fade-in-50 duration-500 slide-in-from-bottom-2">
-            <InvestmentLegalCenterPanel data={data} />
-          </TabsContent>
-          <TabsContent value="corporate-finance" className="mt-6 space-y-6 focus-visible:outline-none animate-in fade-in-50 duration-500 slide-in-from-bottom-2">
-            <CorporateFinancePanel data={data} />
-          </TabsContent>
+          {!isReady ? (
+            <div className="space-y-4 mt-6 animate-pulse">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="h-48 bg-slate-100 rounded-lg"></div>
+                <div className="h-48 bg-slate-100 rounded-lg"></div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="h-80 bg-slate-100 rounded-lg"></div>
+                <div className="h-80 bg-slate-100 rounded-lg"></div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <TabsContent value="investment-legal" className="mt-6 space-y-6 focus-visible:outline-none animate-in fade-in-50 duration-300">
+                {activeSubTab === 'investment-legal' && <InvestmentLegalCenterPanel data={data} />}
+              </TabsContent>
+              <TabsContent value="corporate-finance" className="mt-6 space-y-6 focus-visible:outline-none animate-in fade-in-50 duration-300">
+                {activeSubTab === 'corporate-finance' && <CorporateFinancePanel data={data} />}
+              </TabsContent>
+            </>
+          )}
         </div>
       </Tabs>
     </div>
