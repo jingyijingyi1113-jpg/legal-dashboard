@@ -172,11 +172,7 @@ export function DashboardPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-semibold text-neutral-600">部门整体情况</CardTitle>
               </CardHeader>
-              <CardContent className="grid grid-cols-3 divide-x divide-neutral-200/50">
-                  <div className="flex flex-col items-center p-3">
-                      <div className="text-2xl font-bold text-neutral-900">{displayedData.activeUsers}</div>
-                      <p className="text-xs text-neutral-500 mt-1 font-medium">活跃人数</p>
-                  </div>
+              <CardContent className="grid grid-cols-2 divide-x divide-neutral-200/50">
                   <div className="flex flex-col items-center p-3">
                       <div className="text-2xl font-bold text-neutral-900">{displayedData.totalHours.toFixed(2)}</div>
                       <p className="text-xs text-neutral-500 mt-1 font-medium">总用时</p>

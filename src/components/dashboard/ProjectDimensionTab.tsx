@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MonthPicker } from './MonthPicker';
+import { fieldsMatch, createNormalizedKey } from '@/lib/date-utils';
 
 type Period = 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'custom';
 type InvestmentDealCategory = 'Corporate Matter' | 'IPO' | 'M&A';
@@ -109,7 +110,8 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
       return !(isNaN(hours) || hours <= 0 || !row['Deal/Matter Name'] || !row['Deal/Matter Category']);
     });
 
-    const businessTypeMapping = {
+    // Use case-insensitive matching for business type mapping
+    const businessTypeMapping: { [key: string]: string[] } = {
       'Corporate Matter': ['Investment Related - Corporate Matter'],
       'IPO': ['Investment Related - IPO'],
       'M&A': ['Investment Related - M&A Deal', 'Investment Related - M&A Matter']
@@ -118,12 +120,16 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
     const allProjects: { originalName: string; hours: number; category: InvestmentDealCategory }[] = [];
 
     for (const [finalCategory, sourceCategories] of Object.entries(businessTypeMapping)) {
-      const categoryData = centerData.filter(row => sourceCategories.includes(row['Deal/Matter Category']));
+      // Use case-insensitive matching for category filtering
+      const categoryData = centerData.filter(row => {
+        const rowCategory = row['Deal/Matter Category']?.toString();
+        return sourceCategories.some(srcCat => fieldsMatch(srcCat, rowCategory));
+      });
       const projectHoursMap = new Map<string, { originalName: string; hours: number }>();
       
       categoryData.forEach(row => {
         const dealName = row['Deal/Matter Name'].toString();
-        const normalizedName = dealName.trim().replace(/\s+/g, ' ').toLowerCase();
+        const normalizedName = createNormalizedKey(dealName);
         const hours = Number(row['Hours']);
 
         const existing = projectHoursMap.get(normalizedName);
@@ -214,9 +220,11 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
     const tickFormatter = (value: number) => Object.keys(processedData.categoryXMapping).find(key => processedData.categoryXMapping[key] === value) || '';
 
     return (
-      <Card>
-        <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
-        <CardContent className="flex">
+      <Card className="overflow-hidden border-0 shadow-lg bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+        <CardHeader className="pb-2 border-b border-slate-200/50 dark:border-slate-700/50">
+          <CardTitle className="text-base font-semibold tracking-tight text-slate-800 dark:text-slate-100">{title}</CardTitle>
+        </CardHeader>
+        <CardContent className="flex pt-6">
           <ResponsiveContainer width="70%" height={400}>
             <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -281,38 +289,220 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
           </div>
         )}
       </div>
-      <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
-        <Card>
-          <CardHeader><CardTitle>1. Total Hours by Deal/Matter Category</CardTitle></CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={processedData.totalHoursData} layout="vertical" margin={{ left: 80 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" />
-                <YAxis type="category" dataKey="name" width={80} />
-                <Tooltip formatter={(value: number) => [value.toFixed(1) + 'h', 'Total Hours']} />
-                <Bar dataKey="hours" fill="#C44E52" />
+      <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
+        {/* Chart 1: Total Hours by Category - Modern Gradient Design */}
+        <Card className="overflow-hidden border-0 shadow-lg bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+          <CardHeader className="pb-2 border-b border-slate-200/50 dark:border-slate-700/50">
+            <CardTitle className="text-base font-semibold tracking-tight text-slate-800 dark:text-slate-100">
+              Total Hours by Deal/Matter Category
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={processedData.totalHoursData} layout="vertical" margin={{ left: 20, right: 30, top: 10, bottom: 10 }}>
+                <defs>
+                  {/* IPO - green color (match scatter plot) */}
+                  <linearGradient id="barGradientIPO" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#55A868" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#6bbe7a" stopOpacity={1} />
+                  </linearGradient>
+                  {/* Corporate Matter - blue color (match scatter plot) */}
+                  <linearGradient id="barGradientCorporate" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#4C72B0" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#6b8fc7" stopOpacity={1} />
+                  </linearGradient>
+                  {/* M&A - red color (match scatter plot) */}
+                  <linearGradient id="barGradientMA" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#C44E52" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#d4696c" stopOpacity={1} />
+                  </linearGradient>
+                  <filter id="shadow1" x="-20%" y="-20%" width="140%" height="140%">
+                    <feDropShadow dx="2" dy="2" stdDeviation="3" floodOpacity="0.15" />
+                  </filter>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.5} horizontal={true} vertical={false} />
+                <XAxis 
+                  type="number" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fill: '#64748b', fontSize: 11, fontWeight: 500 }}
+                  tickFormatter={(value) => `${value}h`}
+                />
+                <YAxis 
+                  type="category" 
+                  dataKey="name" 
+                  width={130} 
+                  axisLine={false} 
+                  tickLine={false}
+                  tick={(props: any) => {
+                    const { x, y, payload } = props;
+                    return (
+                      <g transform={`translate(${x},${y})`}>
+                        <text x={-8} y={0} dy={4} textAnchor="end" fill="#334155" fontSize={12} fontWeight={600} style={{ whiteSpace: 'nowrap' }}>
+                          {payload.value}
+                        </text>
+                      </g>
+                    );
+                  }}
+                />
+                <Tooltip 
+                  formatter={(value: number) => [`${value.toFixed(1)} hours`, 'Total']}
+                  contentStyle={{ 
+                    backgroundColor: 'rgba(255,255,255,0.98)', 
+                    border: 'none', 
+                    borderRadius: '12px', 
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.12)',
+                    padding: '12px 16px'
+                  }}
+                  labelStyle={{ fontWeight: 700, color: '#1e293b', marginBottom: '4px' }}
+                  itemStyle={{ color: '#0ea5e9', fontWeight: 600 }}
+                  cursor={{ fill: 'rgba(14, 165, 233, 0.08)' }}
+                />
+                <Bar 
+                  dataKey="hours" 
+                  radius={[0, 8, 8, 0]}
+                  filter="url(#shadow1)"
+                  animationDuration={800}
+                  animationEasing="ease-out"
+                  shape={(props: any) => {
+                    const { x, y, width, height, payload } = props;
+                    let fillUrl = 'url(#barGradientIPO)';
+                    if (payload.name === 'Corporate Matter') fillUrl = 'url(#barGradientCorporate)';
+                    else if (payload.name === 'M&A') fillUrl = 'url(#barGradientMA)';
+                    return <rect x={x} y={y} width={width} height={height} fill={fillUrl} rx={8} ry={8} filter="url(#shadow1)" />;
+                  }}
+                />
               </BarChart>
             </ResponsiveContainer>
+            {/* Summary Stats - colors match scatter plot */}
+            <div className="mt-4 pt-4 border-t border-slate-200/50 dark:border-slate-700/50 flex justify-around">
+              {processedData.totalHoursData.map((item: any) => {
+                // Match scatter plot colors: Corporate Matter=#4C72B0(blue), IPO=#55A868(green), M&A=#C44E52(red)
+                let colorStyle = { color: '#55A868' }; // IPO - green
+                if (item.name === 'Corporate Matter') colorStyle = { color: '#4C72B0' }; // blue
+                else if (item.name === 'M&A') colorStyle = { color: '#C44E52' }; // red
+                return (
+                  <div key={item.name} className="text-center">
+                    <div className="text-lg font-bold" style={colorStyle}>
+                      {item.hours.toFixed(0)}h
+                    </div>
+                    <div className="text-xs text-slate-500 font-medium whitespace-nowrap">{item.name}</div>
+                  </div>
+                );
+              })}
+            </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader><CardTitle>2. Top 10 Deals/Matters Ranking by Hours Spent</CardTitle></CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={processedData.top10Data} layout="vertical" margin={{ left: 80 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} width={80} />
-                <Tooltip formatter={(value: number, _name, props) => [`${value.toFixed(1)}h (Rank #${11 - (props.payload.rank || 0)})`, 'Hours']} />
-                <Bar dataKey="hours" name="Hours" fill="#C44E52" />
+
+        {/* Chart 2: Top 10 Ranking - Light theme to match left */}
+        <Card className="overflow-hidden border-0 shadow-lg bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+          <CardHeader className="pb-2 border-b border-slate-200/50 dark:border-slate-700/50">
+            <CardTitle className="text-base font-semibold tracking-tight text-slate-800 dark:text-slate-100">
+              Top 10 Deals/Matters Ranking
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-4 pb-2">
+            <ResponsiveContainer width="100%" height={340}>
+              <BarChart data={processedData.top10Data} layout="vertical" margin={{ left: 10, right: 50, top: 5, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="rankGradientGold" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#fbbf24" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#f59e0b" stopOpacity={1} />
+                  </linearGradient>
+                  <linearGradient id="rankGradientSilver" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#94a3b8" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#cbd5e1" stopOpacity={1} />
+                  </linearGradient>
+                  <linearGradient id="rankGradientBronze" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#d97706" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#fbbf24" stopOpacity={0.7} />
+                  </linearGradient>
+                  <linearGradient id="rankGradientBlue" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#60a5fa" stopOpacity={0.8} />
+                    <stop offset="100%" stopColor="#93c5fd" stopOpacity={1} />
+                  </linearGradient>
+                  <filter id="shadow2" x="-20%" y="-20%" width="140%" height="140%">
+                    <feDropShadow dx="2" dy="2" stdDeviation="2" floodOpacity="0.1" />
+                  </filter>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.5} horizontal={true} vertical={false} />
+                <XAxis 
+                  type="number" 
+                  axisLine={false} 
+                  tickLine={false}
+                  tick={{ fill: '#64748b', fontSize: 10, fontWeight: 500 }}
+                  tickFormatter={(value) => `${value}h`}
+                />
+                <YAxis 
+                  type="category" 
+                  dataKey="name" 
+                  tick={(props: any) => {
+                    const { x, y, payload } = props;
+                    const item = processedData.top10Data.find((d: any) => d.name === payload.value);
+                    const actualRank = item ? 11 - item.rank : 0;
+                    const medalColors: Record<number, string> = { 1: '#f59e0b', 2: '#64748b', 3: '#d97706' };
+                    const displayName = payload.value.length > 10 ? payload.value.substring(0, 10) + '...' : payload.value;
+                    return (
+                      <g transform={`translate(${x},${y})`}>
+                        <text x={-8} y={0} dy={4} textAnchor="end" fill={actualRank <= 3 ? medalColors[actualRank] : '#475569'} fontSize={11} fontWeight={actualRank <= 3 ? 700 : 500}>
+                          {displayName}
+                        </text>
+                      </g>
+                    );
+                  }}
+                  width={110}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip 
+                  formatter={(value: number, _name, props) => {
+                    const actualRank = 11 - (props.payload.rank || 0);
+                    return [`${value.toFixed(1)} hours`, `Rank #${actualRank}`];
+                  }}
+                  contentStyle={{ 
+                    backgroundColor: 'rgba(255,255,255,0.98)', 
+                    border: 'none', 
+                    borderRadius: '12px', 
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.12)',
+                    padding: '12px 16px'
+                  }}
+                  labelStyle={{ fontWeight: 700, color: '#1e293b', marginBottom: '4px' }}
+                  itemStyle={{ color: '#f59e0b', fontWeight: 600 }}
+                  cursor={{ fill: 'rgba(251, 191, 36, 0.08)' }}
+                />
+                <Bar 
+                  dataKey="hours" 
+                  name="Hours" 
+                  radius={[0, 6, 6, 0]}
+                  animationDuration={1000}
+                  animationEasing="ease-out"
+                  filter="url(#shadow2)"
+                  shape={(props: any) => {
+                    const { x, y, width, height, payload } = props;
+                    const actualRank = 11 - (payload.rank || 0);
+                    let fillUrl = 'url(#rankGradientBlue)';
+                    if (actualRank === 1) fillUrl = 'url(#rankGradientGold)';
+                    else if (actualRank === 2) fillUrl = 'url(#rankGradientSilver)';
+                    else if (actualRank === 3) fillUrl = 'url(#rankGradientBronze)';
+                    return (
+                      <g>
+                        <rect x={x} y={y} width={width} height={height} fill={fillUrl} rx={6} ry={6} filter="url(#shadow2)" />
+                        {actualRank <= 3 && (
+                          <text x={x + width + 8} y={y + height / 2 + 4} fill={actualRank === 1 ? '#f59e0b' : actualRank === 2 ? '#64748b' : '#d97706'} fontSize={11} fontWeight={700}>
+                            #{actualRank}
+                          </text>
+                        )}
+                      </g>
+                    );
+                  }}
+                />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
-      {renderDistributionChart(['Corporate Matter', 'IPO'], '2. Hour Distribution by Deal/Matter Category (Corporate Matter & IPO)', 250)}
-      {renderDistributionChart(['M&A'], '3. Hour Distribution by Deal/Matter Category (M&A)', 1200)}
+      {renderDistributionChart(['Corporate Matter', 'IPO'], 'Hour Distribution by Deal/Matter Category (Corporate Matter & IPO)', 250)}
+      {renderDistributionChart(['M&A'], 'Hour Distribution by Deal/Matter Category (M&A)', 1200)}
     </div>
   );
 }
@@ -507,57 +697,200 @@ const CorporateFinanceCenterAnalysis = ({ data }: { data: any[] }) => {
 
     const { pivotTable, rowLabels, colLabels, maxHours } = heatmapData;
 
+    // Premium heatmap color scale - deep navy to vibrant coral
     const getColor = (hours: number, max: number = 0) => {
       if (hours === 0 || max === 0) return 'transparent';
       const percent = Math.sqrt(hours / max);
-      const hue = 210 - (100 * percent);
-      const lightness = 95 - (65 * percent);
-      return `hsl(${hue}, 90%, ${lightness}%)`;
+      // Gradient from soft blue (#e0f2fe) through teal (#14b8a6) to warm coral (#f97316)
+      if (percent < 0.3) {
+        // Low values: soft blue to light teal
+        const t = percent / 0.3;
+        return `rgba(20, 184, 166, ${0.15 + t * 0.25})`;
+      } else if (percent < 0.6) {
+        // Medium values: teal
+        const t = (percent - 0.3) / 0.3;
+        return `rgba(20, 184, 166, ${0.4 + t * 0.35})`;
+      } else {
+        // High values: teal to coral
+        const t = (percent - 0.6) / 0.4;
+        const r = Math.round(20 + (249 - 20) * t);
+        const g = Math.round(184 - (184 - 115) * t);
+        const b = Math.round(166 - (166 - 22) * t);
+        return `rgba(${r}, ${g}, ${b}, ${0.75 + t * 0.25})`;
+      }
+    };
+
+    const getTextColor = (hours: number, max: number = 0) => {
+      if (hours === 0 || max === 0) return '#94a3b8';
+      const percent = Math.sqrt(hours / max);
+      return percent > 0.5 ? '#ffffff' : '#334155';
     };
 
     const getOriginalVgName = (formattedName: string) => {
       return formattedName.replace('\n', ' ');
     };
 
+    // Calculate row and column totals
+    const rowTotals = new Map<string, number>();
+    const colTotals = new Map<string, number>();
+    
+    rowLabels?.forEach(vgFormatted => {
+      const vgOriginal = getOriginalVgName(vgFormatted);
+      const clientMap = pivotTable?.get(vgOriginal);
+      let total = 0;
+      colLabels?.forEach(client => {
+        const hours = clientMap?.get(client) || 0;
+        total += hours;
+        colTotals.set(client, (colTotals.get(client) || 0) + hours);
+      });
+      rowTotals.set(vgFormatted, total);
+    });
+
+    const grandTotal = Array.from(rowTotals.values()).reduce((a, b) => a + b, 0);
+
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Internal Clients by Virtual Groups Distribution Heatmap</CardTitle>
+      <Card className="overflow-hidden border-0 shadow-xl bg-gradient-to-br from-slate-50 via-white to-slate-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+        <CardHeader className="pb-4 border-b border-slate-200/60 dark:border-slate-700/60 bg-gradient-to-r from-slate-100/50 to-transparent dark:from-slate-800/50">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg font-bold tracking-tight text-slate-800 dark:text-slate-100">
+                Internal Clients by Virtual Groups Distribution
+              </CardTitle>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                Hours distribution heatmap • Total: <span className="font-semibold text-teal-600">{grandTotal.toFixed(0)}h</span>
+              </p>
+            </div>
+            {/* Legend */}
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-slate-500">Low</span>
+              <div className="flex h-3 rounded-full overflow-hidden shadow-inner">
+                <div className="w-6 h-full" style={{ backgroundColor: 'rgba(20, 184, 166, 0.2)' }} />
+                <div className="w-6 h-full" style={{ backgroundColor: 'rgba(20, 184, 166, 0.5)' }} />
+                <div className="w-6 h-full" style={{ backgroundColor: 'rgba(20, 184, 166, 0.75)' }} />
+                <div className="w-6 h-full" style={{ backgroundColor: 'rgba(249, 115, 22, 0.9)' }} />
+              </div>
+              <span className="text-slate-500">High</span>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <table className="min-w-full border-collapse text-sm">
-            <thead>
-              <tr className="text-left">
-                <th className="sticky left-0 z-10 bg-card p-2 border-b border-r font-bold">Virtual Groups</th>
-                {colLabels?.map(client => (
-                  <th key={client} className="p-2 border-b font-bold whitespace-nowrap">{client}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rowLabels?.map(vgFormatted => {
-                const vgOriginal = getOriginalVgName(vgFormatted);
-                const clientMap = pivotTable?.get(vgOriginal);
-                return (
-                  <tr key={vgFormatted}>
-                    <td className="sticky left-0 z-10 bg-card p-2 border-b border-r font-bold whitespace-pre-wrap">{vgFormatted.replace(/\n/g, '\n')}</td>
-                    {colLabels?.map(client => {
-                      const hours = clientMap?.get(client) || 0;
-                      return (
-                        <td 
-                          key={client} 
-                          className="border-b p-2 text-center"
-                          style={{ backgroundColor: getColor(hours, maxHours || 0) }}
-                        >
-                          {hours > 0 ? hours.toFixed(1) : ''}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr>
+                  <th className="sticky left-0 z-20 bg-gradient-to-r from-slate-100 to-slate-50 dark:from-slate-800 dark:to-slate-700 p-3 border-b-2 border-r border-slate-200 dark:border-slate-600 text-left font-bold text-slate-700 dark:text-slate-200 text-sm min-w-[140px]">
+                    Virtual Groups
+                  </th>
+                  {colLabels?.map((client, idx) => (
+                    <th 
+                      key={client} 
+                      className="p-3 border-b-2 border-slate-200 dark:border-slate-600 font-semibold text-slate-600 dark:text-slate-300 text-xs whitespace-nowrap text-center min-w-[80px]"
+                      style={{ 
+                        backgroundColor: idx % 2 === 0 ? 'rgba(241, 245, 249, 0.5)' : 'transparent'
+                      }}
+                    >
+                      {client}
+                    </th>
+                  ))}
+                  <th className="sticky right-0 z-20 bg-gradient-to-l from-amber-50 to-transparent dark:from-amber-900/20 p-3 border-b-2 border-l border-slate-200 dark:border-slate-600 font-bold text-amber-700 dark:text-amber-400 text-xs text-center min-w-[70px]">
+                    Total
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rowLabels?.map((vgFormatted, rowIdx) => {
+                  const vgOriginal = getOriginalVgName(vgFormatted);
+                  const clientMap = pivotTable?.get(vgOriginal);
+                  const rowTotal = rowTotals.get(vgFormatted) || 0;
+                  const isEvenRow = rowIdx % 2 === 0;
+                  
+                  return (
+                    <tr 
+                      key={vgFormatted}
+                      className="group transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/50"
+                    >
+                      <td 
+                        className="sticky left-0 z-10 p-3 border-b border-r border-slate-200/80 dark:border-slate-700/80 font-semibold text-slate-700 dark:text-slate-200 text-sm whitespace-pre-wrap"
+                        style={{ 
+                          backgroundColor: isEvenRow ? '#f8fafc' : '#ffffff',
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div 
+                            className="w-1 h-6 rounded-full"
+                            style={{ 
+                              backgroundColor: `hsl(${170 + rowIdx * 15}, 70%, 50%)`,
+                              opacity: 0.7
+                            }}
+                          />
+                          {vgFormatted.replace(/\n/g, '\n')}
+                        </div>
+                      </td>
+                      {colLabels?.map((client, colIdx) => {
+                        const hours = clientMap?.get(client) || 0;
+                        const bgColor = getColor(hours, maxHours || 0);
+                        const textColor = getTextColor(hours, maxHours || 0);
+                        
+                        return (
+                          <td 
+                            key={client} 
+                            className="border-b border-slate-100 dark:border-slate-700/50 p-0 text-center transition-all duration-200 group-hover:scale-[1.02]"
+                            style={{ 
+                              backgroundColor: colIdx % 2 === 0 && hours === 0 ? 'rgba(241, 245, 249, 0.3)' : undefined
+                            }}
+                          >
+                            <div 
+                              className="m-1 rounded-md py-2 px-1 text-xs font-medium transition-all duration-300 hover:scale-110 hover:shadow-lg cursor-default"
+                              style={{ 
+                                backgroundColor: bgColor,
+                                color: textColor,
+                                minHeight: '32px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                              title={hours > 0 ? `${vgFormatted} → ${client}: ${hours.toFixed(1)}h` : ''}
+                            >
+                              {hours > 0 ? hours.toFixed(1) : ''}
+                            </div>
+                          </td>
+                        );
+                      })}
+                      <td 
+                        className="sticky right-0 z-10 border-b border-l border-slate-200/80 dark:border-slate-700/80 p-2 text-center font-bold text-sm"
+                        style={{ 
+                          backgroundColor: isEvenRow ? 'rgba(254, 243, 199, 0.3)' : 'rgba(254, 243, 199, 0.15)',
+                          color: '#b45309'
+                        }}
+                      >
+                        {rowTotal.toFixed(0)}h
+                      </td>
+                    </tr>
+                  );
+                })}
+                {/* Column totals row */}
+                <tr className="bg-gradient-to-r from-slate-100 to-slate-50 dark:from-slate-800 dark:to-slate-700">
+                  <td className="sticky left-0 z-20 bg-gradient-to-r from-slate-200 to-slate-100 dark:from-slate-700 dark:to-slate-600 p-3 border-t-2 border-r border-slate-300 dark:border-slate-500 font-bold text-slate-700 dark:text-slate-200 text-sm">
+                    Total
+                  </td>
+                  {colLabels?.map(client => {
+                    const colTotal = colTotals.get(client) || 0;
+                    return (
+                      <td 
+                        key={client} 
+                        className="p-2 border-t-2 border-slate-300 dark:border-slate-500 text-center font-bold text-xs text-teal-700 dark:text-teal-400"
+                      >
+                        {colTotal.toFixed(0)}h
+                      </td>
+                    );
+                  })}
+                  <td className="sticky right-0 z-20 bg-gradient-to-l from-amber-100 to-amber-50 dark:from-amber-900/40 dark:to-amber-800/20 p-2 border-t-2 border-l border-slate-300 dark:border-slate-500 text-center font-bold text-sm text-amber-700 dark:text-amber-400">
+                    {grandTotal.toFixed(0)}h
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </CardContent>
       </Card>
     );

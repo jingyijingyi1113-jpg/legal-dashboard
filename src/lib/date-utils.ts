@@ -1,3 +1,33 @@
+/**
+ * Normalize a string field for comparison purposes.
+ * Handles: trim, multiple spaces, case-insensitive comparison
+ * @param value - The string value to normalize
+ * @returns Normalized lowercase string with single spaces
+ */
+export const normalizeField = (value: string | null | undefined): string => {
+    if (!value) return '';
+    return value.toString().trim().replace(/\s+/g, ' ').toLowerCase();
+};
+
+/**
+ * Check if two field values are equivalent (case-insensitive, whitespace-normalized)
+ * @param a - First value
+ * @param b - Second value
+ * @returns true if the values are equivalent
+ */
+export const fieldsMatch = (a: string | null | undefined, b: string | null | undefined): boolean => {
+    return normalizeField(a) === normalizeField(b);
+};
+
+/**
+ * Create a normalized key for aggregation purposes
+ * @param value - The string value to create a key from
+ * @returns Uppercase normalized string for use as a Map/Object key
+ */
+export const createNormalizedKey = (value: string | null | undefined): string => {
+    return normalizeField(value).toUpperCase();
+};
+
 const cnPublicHolidays2025 = [
     '2025-01-01', // New Year's Day
     '2025-01-28', '2025-01-29', '2025-01-30', '2025-01-31', '2025-02-01', '2025-02-02', '2025-02-03', // Spring Festival
