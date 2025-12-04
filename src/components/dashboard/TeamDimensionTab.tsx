@@ -1,13 +1,14 @@
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useTransition, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MonthPicker } from './MonthPicker';
-import { getWorkdaysInMonth, normalizeField, fieldsMatch, createNormalizedKey } from '@/lib/date-utils';
-import { ComposedChart, Line, Bar, BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, Area } from 'recharts';
-import { format, parse, startOfMonth, endOfMonth, eachMonthOfInterval, getYear, getMonth } from 'date-fns';
+import { getWorkdaysInMonth, normalizeField, fieldsMatch, createNormalizedKey, parseMonthString, normalizeMonthString } from '@/lib/date-utils';
+import { ComposedChart, Line, Bar, BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, Area, LineChart } from 'recharts';
+import { format, startOfMonth, endOfMonth, eachMonthOfInterval, getYear, getMonth } from 'date-fns';
 import {
   Table,
   TableBody,
@@ -16,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 type Period = 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'custom';
 type Option = { value: string; label: string };
@@ -28,8 +30,9 @@ const PERIOD_OPTIONS: PeriodOptions = {
     annually: [], 
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const CustomPieLabel = (props: any) => {
-    const { cx, cy, midAngle, innerRadius, outerRadius, percentage, name } = props;
+    const { cx, cy, midAngle, innerRadius, outerRadius, percentage, name: _name } = props;
     
     if (percentage === undefined || percentage < 5) return null;
     
@@ -54,11 +57,12 @@ const CustomPieLabel = (props: any) => {
 };
 
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const CustomTooltip = ({ active, payload, label, onItemClick }: any) => {
   if (active && payload && payload.length) {
     const sortedPayload = [...payload]
-        .filter(entry => entry.value > 0)
-        .sort((a, b) => b.value - a.value);
+        .filter((entry: any) => entry.value > 0)
+        .sort((a: any, b: any) => b.value - a.value);
 
     return (
       <div className="custom-tooltip" style={{ backgroundColor: '#fff', padding: '8px', border: '1px solid #ccc', whiteSpace: 'nowrap', opacity: 1, zIndex: 100 }}>
@@ -355,7 +359,7 @@ const BSCPieChartSection = ({ filteredData, totalHours }: { filteredData: any[],
                         <Tooltip 
                             formatter={(value: number, _name: any, entry: any) => [
                                 `${value.toFixed(1)}h (${(entry.payload as any).percentage.toFixed(1)}%)`, 
-                                ''
+                                (entry.payload as any).name
                             ]}
                             contentStyle={{
                                 backgroundColor: 'rgba(255,255,255,0.98)',
@@ -583,7 +587,7 @@ const UtilizationTrendChart = ({ data, teamData }: { data: any[], teamData: any[
         
         const details = teamData.filter(row => {
             if (!row || !row['Month'] || !row['Deal/Matter Category']) return false;
-            const rowMonth = format(parse(row['Month'].toString(), 'yyyy/MM', new Date()), 'yyyy/MM');
+            const rowMonth = normalizeMonthString(row['Month']);
             const rowCategory = row['Deal/Matter Category']?.toString();
             return rowMonth === monthStr && fieldsMatch(rowCategory, categoryName);
         });
@@ -594,7 +598,7 @@ const UtilizationTrendChart = ({ data, teamData }: { data: any[], teamData: any[
     };
 
     const CustomDot = (props: any) => {
-        const { cx, cy, fill, dataKey, index } = props;
+        const { cx, cy, fill, dataKey, index: _index } = props;
         if (!cx || !cy) return null;
         
         return (
@@ -769,7 +773,17 @@ const UtilizationTrendChart = ({ data, teamData }: { data: any[], teamData: any[
                         axisLine={{ stroke: '#e2e8f0' }}
                         tickLine={{ stroke: '#e2e8f0' }}
                     />
-                    <Tooltip content={<PremiumTooltip />} />
+                    <Tooltip 
+                        content={<PremiumTooltip />}
+                        wrapperStyle={{ 
+                            pointerEvents: 'auto', 
+                            zIndex: 9999,
+                            overflow: 'visible',
+                            visibility: 'visible'
+                        }}
+                        allowEscapeViewBox={{ x: true, y: true }}
+                        position={{ y: 0 }}
+                    />
                     
                     {/* Area fills for depth */}
                     <Area 
@@ -869,7 +883,7 @@ const VirtualGroupTrendChart = ({ data, teamData, groupList }: { data: any[], te
         
         const details = teamData.filter(row => {
             if (!row || !row['Month'] || !row['Deal/Matter Category']) return false;
-            const rowMonth = format(parse(row['Month'].toString(), 'yyyy/MM', new Date()), 'yyyy/MM');
+            const rowMonth = normalizeMonthString(row['Month']);
             const rowGroup = row['Deal/Matter Category']?.toString();
             const matchedGroup = allowedGroups.find(allowed => fieldsMatch(allowed, rowGroup));
             return rowMonth === monthStr && matchedGroup === groupName;
@@ -881,7 +895,7 @@ const VirtualGroupTrendChart = ({ data, teamData, groupList }: { data: any[], te
     };
 
     const CustomDot = (props: any) => {
-        const { cx, cy, fill, dataKey, index } = props;
+        const { cx, cy, fill, dataKey, index: _index } = props;
         if (!cx || !cy) return null;
         
         return (
@@ -1087,6 +1101,353 @@ const VirtualGroupTrendChart = ({ data, teamData, groupList }: { data: any[], te
     );
 };
 
+// Internal Client Monthly Trend Chart - Grouped Bar Chart with per-month sorting
+const InternalClientMonthlyTrendChart = ({ teamData }: { teamData: any[] }) => {
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [dialogData, setDialogData] = useState<any[]>([]);
+    const [dialogTitle, setDialogTitle] = useState('');
+
+    // Extended color palette - 30 unique colors for more clients
+    const PREMIUM_COLORS = [
+        '#6366f1', // Indigo
+        '#10b981', // Emerald
+        '#f59e0b', // Amber
+        '#ef4444', // Red
+        '#06b6d4', // Cyan
+        '#ec4899', // Pink
+        '#84cc16', // Lime
+        '#f97316', // Orange
+        '#8b5cf6', // Violet
+        '#14b8a6', // Teal
+        '#f43f5e', // Rose
+        '#0ea5e9', // Sky
+        '#a855f7', // Purple
+        '#22c55e', // Green
+        '#eab308', // Yellow
+        '#3b82f6', // Blue
+        '#d946ef', // Fuchsia
+        '#64748b', // Slate
+        '#0d9488', // Teal Dark
+        '#dc2626', // Red Dark
+        '#7c3aed', // Violet Dark
+        '#059669', // Emerald Dark
+        '#ca8a04', // Yellow Dark
+        '#2563eb', // Blue Dark
+        '#c026d3', // Fuchsia Dark
+        '#475569', // Slate Dark
+        '#0891b2', // Cyan Dark
+        '#be123c', // Rose Dark
+        '#4f46e5', // Indigo Dark
+        '#16a34a', // Green Dark
+    ];
+
+    // Process data: aggregate by Month and Deal/Matter Name (internal client)
+    const { flatChartData, clientList, clientColorMap } = useMemo(() => {
+        const monthMap: { [month: string]: { [client: string]: number } } = {};
+        const normalizedClientMap: { [key: string]: string } = {};
+
+        teamData.forEach(row => {
+            const rawMonth = row['Month']?.toString();
+            const rawName = row['Deal/Matter Name']?.toString();
+            const hours = Number(row['Hours']) || 0;
+
+            if (!rawMonth || !rawName || hours <= 0) return;
+
+            // Parse and format month using the new universal parser
+            const monthStr = normalizeMonthString(rawMonth);
+            if (!monthStr) return;
+
+            // Normalize client name to handle duplicates from input issues
+            const cleanName = rawName.trim().replace(/\s+/g, ' ');
+            if (!cleanName || normalizeField(cleanName) === 'group matter') return;
+            
+            const normalizedKey = createNormalizedKey(cleanName);
+            if (!normalizedClientMap[normalizedKey]) {
+                normalizedClientMap[normalizedKey] = cleanName;
+            }
+            const clientName = normalizedClientMap[normalizedKey];
+
+            if (!monthMap[monthStr]) monthMap[monthStr] = {};
+            monthMap[monthStr][clientName] = (monthMap[monthStr][clientName] || 0) + hours;
+        });
+
+        // Sort months chronologically
+        const sortedMonths = Object.keys(monthMap).sort();
+
+        // Calculate total hours per client for consistent color assignment
+        const clientTotals: { [client: string]: number } = {};
+        Object.values(monthMap).forEach(monthData => {
+            Object.entries(monthData).forEach(([client, hours]) => {
+                clientTotals[client] = (clientTotals[client] || 0) + hours;
+            });
+        });
+
+        // Get clients sorted by total hours for legend and color assignment
+        const sortedClients = Object.entries(clientTotals)
+            .sort((a, b) => b[1] - a[1])
+            .map(([client]) => client);
+
+        // Create color map for consistent colors
+        const colorMap: { [client: string]: string } = {};
+        sortedClients.forEach((client, index) => {
+            colorMap[client] = PREMIUM_COLORS[index % PREMIUM_COLORS.length];
+        });
+
+        // Build flat chart data: each bar is a separate data point
+        // Format: [{ month: "2025/01", client: "HR", hours: 531.8, color: "#6366f1", displayName: "2025/01_0" }, ...]
+        const flatData: any[] = [];
+        sortedMonths.forEach(month => {
+            const monthData = monthMap[month];
+            // Sort clients by hours for this specific month (descending)
+            const sortedMonthClients = Object.entries(monthData)
+                .sort((a, b) => b[1] - a[1]);
+            
+            sortedMonthClients.forEach(([client, hours], idx) => {
+                flatData.push({
+                    month,
+                    client,
+                    hours,
+                    color: colorMap[client],
+                    barIndex: idx,
+                    displayKey: `${month}_${idx}`
+                });
+            });
+        });
+
+        return { flatChartData: flatData, clientList: sortedClients, clientColorMap: colorMap };
+    }, [teamData]);
+
+    const handleBarClick = (entry: any) => {
+        if (!entry || !entry.month || !entry.client) return;
+        const monthStr = entry.month;
+        const clientName = entry.client;
+        
+        const details = teamData.filter(row => {
+            const rawMonth = row['Month']?.toString();
+            const rawName = row['Deal/Matter Name']?.toString();
+            if (!rawMonth || !rawName) return false;
+            
+            const rowMonth = normalizeMonthString(rawMonth);
+            if (!rowMonth) return false;
+            
+            return rowMonth === monthStr && fieldsMatch(rawName, clientName);
+        });
+        
+        setDialogTitle(`${clientName} - ${monthStr}`);
+        setDialogData(details);
+        setIsDialogOpen(true);
+    };
+
+    // Group data by month for the chart
+    const groupedChartData = useMemo(() => {
+        const months = [...new Set(flatChartData.map(d => d.month))].sort();
+        return months.map(month => {
+            const monthBars = flatChartData.filter(d => d.month === month);
+            const entry: any = { month };
+            monthBars.forEach((bar, idx) => {
+                entry[`bar_${idx}`] = bar.hours;
+                entry[`bar_${idx}_client`] = bar.client;
+                entry[`bar_${idx}_color`] = bar.color;
+            });
+            entry._barCount = monthBars.length;
+            entry._bars = monthBars;
+            return entry;
+        });
+    }, [flatChartData]);
+
+    // Get max bar count across all months
+    const maxBarCount = useMemo(() => {
+        return Math.max(...groupedChartData.map(d => d._barCount || 0));
+    }, [groupedChartData]);
+
+    // Custom tooltip - increased height to show more items without scrolling
+    const PremiumTooltip = ({ active, payload, label }: any) => {
+        if (!active || !payload || !payload.length) return null;
+        
+        // Get the actual bars data for this month
+        const monthData = groupedChartData.find(d => d.month === label);
+        if (!monthData || !monthData._bars) return null;
+        
+        const bars = monthData._bars as any[];
+        const total = bars.reduce((sum: number, bar: any) => sum + bar.hours, 0);
+        
+        // Determine tooltip position based on month
+        const sortedMonths = groupedChartData.map(d => d.month).sort();
+        const isLastMonth = label === sortedMonths[sortedMonths.length - 1];
+        
+        return (
+            <div 
+                className="bg-white border border-slate-200 rounded-xl shadow-2xl p-4 min-w-[260px]"
+                style={{ 
+                    pointerEvents: 'auto',
+                    transform: isLastMonth ? 'translateX(-100%)' : 'translateX(0)',
+                    zIndex: 9999,
+                    position: 'relative'
+                }}
+            >
+                <div className="text-sm font-semibold text-slate-800 mb-3 pb-2 border-b border-slate-100">
+                    {label}
+                </div>
+                <div 
+                    className="space-y-2 overflow-y-auto pr-1"
+                    style={{ maxHeight: '300px' }}
+                    onWheel={(e) => e.stopPropagation()}
+                >
+                    {bars.map((bar: any, index: number) => (
+                        <div 
+                            key={index} 
+                            className="flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-50 rounded px-1 py-0.5 transition-colors"
+                            onClick={() => handleBarClick(bar)}
+                        >
+                            <div className="flex items-center gap-2">
+                                <div 
+                                    className="w-3 h-3 rounded-full shadow-sm flex-shrink-0"
+                                    style={{ backgroundColor: bar.color }}
+                                />
+                                <span className="text-xs text-slate-600 truncate max-w-[140px]">{bar.client}</span>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                                <span className="text-xs font-semibold text-slate-800">
+                                    {Number(bar.hours).toFixed(1)}h
+                                </span>
+                                <span className="text-[10px] text-slate-400 ml-1">
+                                    ({((bar.hours / total) * 100).toFixed(1)}%)
+                                </span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                <div className="mt-3 pt-2 border-t border-slate-100 flex justify-between">
+                    <span className="text-xs font-medium text-slate-600">Total</span>
+                    <span className="text-xs font-bold text-slate-800">{total.toFixed(1)}h</span>
+                </div>
+            </div>
+        );
+    };
+
+    if (flatChartData.length === 0 || clientList.length === 0) {
+        return (
+            <div className="flex items-center justify-center h-[300px] text-slate-400 text-sm">
+                No data available
+            </div>
+        );
+    }
+
+    return (
+        <div className="relative" style={{ overflow: 'visible' }}>
+            {/* Custom Legend - show all internal clients */}
+            <div className="flex flex-wrap items-center justify-center gap-3 mb-4">
+                {clientList.map((client) => (
+                    <div 
+                        key={client} 
+                        className="flex items-center gap-2 group cursor-pointer"
+                        onClick={() => {
+                            const details = teamData.filter(row => {
+                                const rawName = row['Deal/Matter Name']?.toString();
+                                return rawName && fieldsMatch(rawName, client);
+                            });
+                            setDialogTitle(`All records for ${client}`);
+                            setDialogData(details);
+                            setIsDialogOpen(true);
+                        }}
+                    >
+                        <div 
+                            className="w-3 h-3 rounded-full group-hover:scale-110 transition-transform"
+                            style={{ backgroundColor: clientColorMap[client] }}
+                        />
+                        <span className="text-xs font-medium text-slate-600 group-hover:text-slate-800 transition-colors truncate max-w-[100px]">
+                            {client}
+                        </span>
+                    </div>
+                ))}
+            </div>
+            
+            <div style={{ overflow: 'visible', minHeight: '500px' }}>
+                <ResponsiveContainer width="100%" height={450}>
+                    <BarChart data={groupedChartData} margin={{ top: 10, right: 30, left: 10, bottom: 10 }} barCategoryGap="15%">
+                    <CartesianGrid 
+                        strokeDasharray="3 3" 
+                        stroke="#e2e8f0" 
+                        strokeOpacity={0.6}
+                        vertical={false}
+                    />
+                    <XAxis 
+                        dataKey="month" 
+                        tick={{ fontSize: 11, fill: '#64748b' }} 
+                        axisLine={{ stroke: '#e2e8f0' }}
+                        tickLine={{ stroke: '#e2e8f0' }}
+                    />
+                    <YAxis 
+                        label={{ value: '小时', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11, fill: '#64748b' } }} 
+                        tick={{ fontSize: 11, fill: '#64748b' }}
+                        axisLine={{ stroke: '#e2e8f0' }}
+                        tickLine={{ stroke: '#e2e8f0' }}
+                    />
+                    <Tooltip 
+                        content={<PremiumTooltip />}
+                        wrapperStyle={{ 
+                            pointerEvents: 'auto', 
+                            zIndex: 9999,
+                            overflow: 'visible',
+                            visibility: 'visible'
+                        }}
+                        allowEscapeViewBox={{ x: true, y: true }}
+                        position={{ y: 0 }}
+                    />
+                    
+                    {/* Dynamic bars - one Bar component per position, colored by the client at that position */}
+                    {Array.from({ length: maxBarCount }, (_, idx) => (
+                        <Bar 
+                            key={`bar_${idx}`}
+                            dataKey={`bar_${idx}`}
+                            name={`Position ${idx + 1}`}
+                            radius={[2, 2, 0, 0]}
+                            cursor="pointer"
+                            onClick={(data: any) => {
+                                const barData = data?._bars?.[idx];
+                                if (barData) handleBarClick(barData);
+                            }}
+                            fill={PREMIUM_COLORS[idx % PREMIUM_COLORS.length]}
+                            // @ts-ignore - custom shape for dynamic coloring
+                            shape={(props: any) => {
+                                const { x, y, width, height, payload } = props;
+                                if (!payload || payload[`bar_${idx}`] === undefined || payload[`bar_${idx}`] === 0) return null;
+                                const color = payload[`bar_${idx}_color`] || PREMIUM_COLORS[idx % PREMIUM_COLORS.length];
+                                const barData = payload._bars?.[idx];
+                                
+                                return (
+                                    <rect
+                                        x={x}
+                                        y={y}
+                                        width={width}
+                                        height={height}
+                                        fill={color}
+                                        rx={2}
+                                        ry={2}
+                                        cursor="pointer"
+                                        onClick={() => barData && handleBarClick(barData)}
+                                        style={{ 
+                                            fillOpacity: 0.85
+                                        }}
+                                    />
+                                );
+                            }}
+                        />
+                    ))}
+                </BarChart>
+            </ResponsiveContainer>
+            </div>
+            
+            {/* Hint text */}
+            <div className="text-xs text-slate-400 text-center mt-2">
+                Click on bars or legend items to view detailed records
+            </div>
+            
+            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+        </div>
+    );
+};
+
 const VirtualGroupHoursChart = ({ filteredData }: { filteredData: any[] }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [dialogData, setDialogData] = useState<any[]>([]);
@@ -1276,21 +1637,20 @@ const AverageMonthlyHourPerPersonChart = ({ teamData }: { teamData: any[] }) => 
         const sourcePath = rawSourcePath ? rawSourcePath.trim().replace('工时统计-', '').replace(/\\s+/g, ' ') : '';
         if (sourcePath && row['Month'] && row['Name']) {
             allSourcePaths.add(sourcePath);
-             try {
-                const rowDate = parse(row['Month'].toString(), 'yyyy/MM', new Date());
-                const monthKey = format(rowDate, 'yyyy/MM');
+            const monthKey = normalizeMonthString(row['Month']);
+            if (monthKey) {
                 const hours = Number(row['Hours']) || 0;
                 if (!monthlyHourPerPersonData[monthKey]) monthlyHourPerPersonData[monthKey] = {};
                 if (!monthlyHourPerPersonData[monthKey][sourcePath]) monthlyHourPerPersonData[monthKey][sourcePath] = { hours: 0, users: new Set() };
                 monthlyHourPerPersonData[monthKey][sourcePath].hours += hours;
                 monthlyHourPerPersonData[monthKey][sourcePath].users.add(row['Name']);
-             } catch {}
+            }
         }
     });
     
     const sourcePathList = Array.from(allSourcePaths).sort();
     const avgMonthlyHoursPerGroup = Object.entries(monthlyHourPerPersonData).map(([month, groupData]) => {
-        const date = parse(month, 'yyyy/MM', new Date());
+        const date = parseMonthString(month) || new Date();
         const workdays = getWorkdaysInMonth(date.getFullYear(), date.getMonth() + 1, 'CN');
         const timeCoefficient = workdays > 0 ? 20.83 / workdays : 0;
         const monthEntry: any = { month };
@@ -1308,13 +1668,11 @@ const AverageMonthlyHourPerPersonChart = ({ teamData }: { teamData: any[] }) => 
         const sourcePath = dataKey;
         const details = teamData.filter(row => {
             if (!row || !row['Month'] || !row['Source Path']) return false;
-            try {
-                const rowDate = parse(row['Month'].toString(), 'yyyy/MM', new Date());
-                const rowMonth = format(rowDate, 'yyyy/MM');
-                const rawSourcePath = row['Source Path'].toString();
-                const rowSourcePath = rawSourcePath ? rawSourcePath.trim().replace('工时统计-', '').replace(/\\s+/g, ' ') : '';
-                return rowMonth === monthStr && rowSourcePath === sourcePath;
-            } catch { return false; }
+            const rowMonth = normalizeMonthString(row['Month']);
+            if (!rowMonth) return false;
+            const rawSourcePath = row['Source Path'].toString();
+            const rowSourcePath = rawSourcePath ? rawSourcePath.trim().replace('工时统计-', '').replace(/\\s+/g, ' ') : '';
+            return rowMonth === monthStr && rowSourcePath === sourcePath;
         });
         setDialogTitle(`${sourcePath} - ${monthStr}`);
         setDialogData(details);
@@ -1409,13 +1767,15 @@ const ClickableHoursCell = ({
     dealName, 
     category, 
     filteredData,
-    isGroup 
+    isGroup,
+    percentage
 }: { 
     hours: number, 
     dealName: string, 
     category: string, 
     filteredData: any[],
-    isGroup?: boolean
+    isGroup?: boolean,
+    percentage?: number
 }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [dialogData, setDialogData] = useState<any[]>([]);
@@ -1446,17 +1806,384 @@ const ClickableHoursCell = ({
 
     return (
         <>
-            <span 
+            <div 
                 onClick={handleClick}
-                className="cursor-pointer hover:text-blue-600 hover:underline transition-colors"
+                className="flex flex-col items-end cursor-pointer hover:scale-105 transition-transform"
             >
-                {hours.toFixed(2)}
-            </span>
+                <span className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 tabular-nums underline decoration-dotted underline-offset-2">
+                    {hours.toFixed(1)}h
+                </span>
+                {percentage !== undefined && (
+                    <span className="text-[10px] text-slate-400">
+                        {percentage.toFixed(1)}%
+                    </span>
+                )}
+            </div>
             <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
         </>
     );
 };
 
+// 极简风格年份选择器
+const MinimalYearSelector = ({
+  selectedYear,
+  onSelect,
+  availableYears
+}: {
+  selectedYear: string | null;
+  onSelect: (year: string) => void;
+  availableYears: string[];
+}) => {
+  const [open, setOpen] = useState(false);
+  
+  const currentYear = new Date().getFullYear();
+  const defaultYears = Array.from({ length: 11 }, (_, i) => (currentYear - 5 + i).toString());
+  const yearsToShow = availableYears.length > 0 ? availableYears : defaultYears;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "group relative inline-flex items-center gap-2 px-3 py-2.5 -mx-3 -my-2",
+            "text-neutral-900 transition-colors duration-75",
+            "hover:bg-neutral-100 active:bg-neutral-200 rounded-lg",
+            "focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400",
+            "cursor-pointer select-none touch-manipulation",
+            !selectedYear && "text-neutral-400"
+          )}
+        >
+          <span className="text-lg font-semibold tracking-tight text-neutral-800 tabular-nums">
+            {selectedYear || '选择年份'}
+          </span>
+          <svg 
+            className={cn(
+              "w-4 h-4 text-neutral-500 transition-transform duration-75",
+              open && "rotate-180"
+            )}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent 
+        className="w-[200px] p-0 border-0 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden animate-duration-75"
+        align="start"
+        sideOffset={8}
+      >
+        <div className="bg-white">
+          <div className="grid grid-cols-3 gap-1 p-3 max-h-[240px] overflow-y-auto">
+            {yearsToShow.map((year) => {
+              const isSelected = selectedYear === year;
+              const isCurrentYear = new Date().getFullYear().toString() === year;
+              
+              return (
+                <button
+                  key={year}
+                  onClick={() => {
+                    onSelect(year);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "relative py-3.5 px-2 rounded-xl text-sm font-medium transition-colors duration-75",
+                    "hover:bg-neutral-100 active:bg-neutral-200 touch-manipulation",
+                    isSelected 
+                      ? "bg-neutral-900 text-white hover:bg-neutral-800 active:bg-neutral-700" 
+                      : "text-neutral-600 hover:text-neutral-900",
+                    isCurrentYear && !isSelected && "text-neutral-900 font-semibold"
+                  )}
+                >
+                  {year}
+                  {isCurrentYear && !isSelected && (
+                    <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-neutral-400" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+// 极简风格月份选择器
+const MinimalMonthSelector = ({
+  selectedYear,
+  selectedMonth,
+  onSelect,
+}: {
+  selectedYear: string | null;
+  selectedMonth: string | null;
+  onSelect: (year: string, month: string) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [viewYear, setViewYear] = useState(selectedYear ? parseInt(selectedYear) : new Date().getFullYear());
+
+  const months = Array.from({ length: 12 }, (_, i) => i);
+  const monthLabels = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+
+  const handleMonthSelect = (month: number) => {
+    onSelect(viewYear.toString(), month.toString());
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={(isOpen) => {
+      if (isOpen && selectedYear) {
+        setViewYear(parseInt(selectedYear));
+      }
+      setOpen(isOpen);
+    }}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "group relative inline-flex items-center gap-2 px-3 py-2.5 -mx-3 -my-2",
+            "text-neutral-900 transition-colors duration-75",
+            "hover:bg-neutral-100 active:bg-neutral-200 rounded-lg",
+            "focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400",
+            "cursor-pointer select-none touch-manipulation",
+            !selectedMonth && "text-neutral-400"
+          )}
+        >
+          <span className="text-lg font-semibold tracking-tight text-neutral-800 tabular-nums">
+            {selectedMonth !== null ? monthLabels[parseInt(selectedMonth)] : '选择月份'}
+          </span>
+          <svg 
+            className={cn(
+              "w-4 h-4 text-neutral-500 transition-transform duration-75",
+              open && "rotate-180"
+            )}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent 
+        className="w-[280px] p-0 border-0 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden animate-duration-75"
+        align="start"
+        sideOffset={8}
+      >
+        <div className="bg-white">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
+            <button 
+              onClick={() => setViewYear(prev => prev - 1)}
+              className="w-10 h-10 flex items-center justify-center rounded-full text-neutral-400 hover:text-neutral-800 hover:bg-neutral-100 active:bg-neutral-200 transition-colors duration-75 touch-manipulation"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <span className="text-lg font-semibold tracking-tight text-neutral-800">{viewYear}</span>
+            <button 
+              onClick={() => setViewYear(prev => prev + 1)}
+              className="w-10 h-10 flex items-center justify-center rounded-full text-neutral-400 hover:text-neutral-800 hover:bg-neutral-100 active:bg-neutral-200 transition-colors duration-75 touch-manipulation"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-1 p-3">
+            {months.map((month) => {
+              const isSelected = selectedMonth !== null && parseInt(selectedMonth) === month && selectedYear === viewYear.toString();
+              const isCurrentMonth = new Date().getMonth() === month && new Date().getFullYear() === viewYear;
+              
+              return (
+                <button
+                  key={month}
+                  onClick={() => handleMonthSelect(month)}
+                  className={cn(
+                    "relative py-3.5 px-2 rounded-xl text-sm font-medium transition-colors duration-75",
+                    "hover:bg-neutral-100 active:bg-neutral-200 touch-manipulation",
+                    isSelected 
+                      ? "bg-neutral-900 text-white hover:bg-neutral-800 active:bg-neutral-700" 
+                      : "text-neutral-600 hover:text-neutral-900",
+                    isCurrentMonth && !isSelected && "text-neutral-900 font-semibold"
+                  )}
+                >
+                  {monthLabels[month]}
+                  {isCurrentMonth && !isSelected && (
+                    <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-neutral-400" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+// 极简风格季度选择器
+const MinimalQuarterSelector = ({
+  selectedQuarter,
+  onSelect
+}: {
+  selectedQuarter: string | null;
+  onSelect: (quarter: string) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const quarters = [
+    { value: '0', label: '第一季度' },
+    { value: '1', label: '第二季度' },
+    { value: '2', label: '第三季度' },
+    { value: '3', label: '第四季度' },
+  ];
+
+  const selectedLabel = selectedQuarter !== null 
+    ? quarters.find(q => q.value === selectedQuarter)?.label 
+    : '选择季度';
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "group relative inline-flex items-center gap-2 px-3 py-2.5 -mx-3 -my-2",
+            "text-neutral-900 transition-colors duration-75",
+            "hover:bg-neutral-100 active:bg-neutral-200 rounded-lg",
+            "focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400",
+            "cursor-pointer select-none touch-manipulation",
+            !selectedQuarter && "text-neutral-400"
+          )}
+        >
+          <span className={cn(
+            "text-lg font-semibold tracking-tight tabular-nums",
+            selectedQuarter !== null ? "text-neutral-800" : "text-neutral-400"
+          )}>
+            {selectedLabel}
+          </span>
+          <svg 
+            className={cn(
+              "w-4 h-4 text-neutral-500 transition-transform duration-75",
+              open && "rotate-180"
+            )}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent 
+        className="w-[200px] p-0 border-0 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden animate-duration-75"
+        align="start"
+        sideOffset={8}
+      >
+        <div className="bg-white p-2">
+          {quarters.map((quarter) => {
+            const isSelected = selectedQuarter === quarter.value;
+            return (
+              <button
+                key={quarter.value}
+                onClick={() => {
+                  onSelect(quarter.value);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "w-full py-3.5 px-4 rounded-xl text-sm font-medium transition-colors duration-75 text-left",
+                  "hover:bg-neutral-100 active:bg-neutral-200 touch-manipulation",
+                  isSelected 
+                    ? "bg-neutral-900 text-white hover:bg-neutral-800 active:bg-neutral-700" 
+                    : "text-neutral-600 hover:text-neutral-900"
+                )}
+              >
+                {quarter.label}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+// 极简风格半年度选择器
+const MinimalSemiannualSelector = ({
+  selectedSemiannual,
+  onSelect
+}: {
+  selectedSemiannual: string | null;
+  onSelect: (semiannual: string) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const semiannuals = [
+    { value: '0', label: '上半年' },
+    { value: '1', label: '下半年' },
+  ];
+
+  const selectedLabel = selectedSemiannual !== null 
+    ? semiannuals.find(s => s.value === selectedSemiannual)?.label 
+    : '选择半年度';
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "group relative inline-flex items-center gap-2 px-3 py-2.5 -mx-3 -my-2",
+            "text-neutral-900 transition-colors duration-75",
+            "hover:bg-neutral-100 active:bg-neutral-200 rounded-lg",
+            "focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400",
+            "cursor-pointer select-none touch-manipulation",
+            !selectedSemiannual && "text-neutral-400"
+          )}
+        >
+          <span className={cn(
+            "text-lg font-semibold tracking-tight tabular-nums",
+            selectedSemiannual !== null ? "text-neutral-800" : "text-neutral-400"
+          )}>
+            {selectedLabel}
+          </span>
+          <svg 
+            className={cn(
+              "w-4 h-4 text-neutral-500 transition-transform duration-75",
+              open && "rotate-180"
+            )}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent 
+        className="w-[160px] p-0 border-0 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden animate-duration-75"
+        align="start"
+        sideOffset={8}
+      >
+        <div className="bg-white p-2">
+          {semiannuals.map((semi) => {
+            const isSelected = selectedSemiannual === semi.value;
+            return (
+              <button
+                key={semi.value}
+                onClick={() => {
+                  onSelect(semi.value);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "w-full py-3.5 px-4 rounded-xl text-sm font-medium transition-colors duration-75 text-left",
+                  "hover:bg-neutral-100 active:bg-neutral-200 touch-manipulation",
+                  isSelected 
+                    ? "bg-neutral-900 text-white hover:bg-neutral-800 active:bg-neutral-700" 
+                    : "text-neutral-600 hover:text-neutral-900"
+                )}
+              >
+                {semi.label}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+// 极简风格周期筛选器组件
 const PeriodFilter = ({ 
     period, setPeriod, 
     selectedYear, setSelectedYear, 
@@ -1466,35 +2193,95 @@ const PeriodFilter = ({
     availableYears,
     periodOptions
 }: any) => {
+    const periodLabels: Record<Period, string> = {
+        monthly: '月度',
+        quarterly: '季度',
+        semiannually: '半年度',
+        annually: '年度',
+        custom: '自定义'
+    };
+
     return (
-        <div className="flex items-center space-x-2 flex-wrap justify-end gap-y-2">
-            <div className="flex items-center space-x-1">
-                <Button size="sm" variant={period === 'monthly' ? 'secondary' : 'outline'} onClick={() => setPeriod('monthly')}>月度</Button>
-                <Button size="sm" variant={period === 'quarterly' ? 'secondary' : 'outline'} onClick={() => setPeriod('quarterly')}>季度</Button>
-                <Button size="sm" variant={period === 'semiannually' ? 'secondary' : 'outline'} onClick={() => setPeriod('semiannually')}>半年度</Button>
-                <Button size="sm" variant={period === 'annually' ? 'secondary' : 'outline'} onClick={() => setPeriod('annually')}>年度</Button>
-                <Button size="sm" variant={period === 'custom' ? 'secondary' : 'outline'} onClick={() => setPeriod('custom')}>自定义</Button>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+            {/* Period 标签 */}
+            <span className="text-xs font-medium tracking-widest text-neutral-400 uppercase">Period</span>
+            
+            {/* 周期类型切换 - 增大点击区域 */}
+            <div className="flex items-center gap-0.5 p-1 bg-neutral-100/80 rounded-full">
+                {(['monthly', 'quarterly', 'semiannually', 'annually', 'custom'] as Period[]).map((p) => (
+                    <button
+                        key={p}
+                        onClick={() => setPeriod(p)}
+                        className={cn(
+                            "px-4 py-2.5 text-xs font-medium rounded-full transition-colors duration-75",
+                            "cursor-pointer select-none touch-manipulation",
+                            "focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-1",
+                            period === p
+                                ? "bg-white text-neutral-900 shadow-sm active:bg-neutral-100"
+                                : "text-neutral-500 hover:text-neutral-700 hover:bg-white/60 active:bg-white/80"
+                        )}
+                    >
+                        {periodLabels[p]}
+                    </button>
+                ))}
             </div>
 
-            {(period !== 'custom' && availableYears.length > 0) && (
-                <Select value={selectedYear || ''} onValueChange={setSelectedYear}>
-                    <SelectTrigger className="w-[100px] h-8"><SelectValue placeholder="年份" /></SelectTrigger>
-                    <SelectContent>{availableYears.map((year: string) => <SelectItem key={year} value={year}>{year}</SelectItem>)}</SelectContent>
-                </Select>
-            )}
+            {/* 分隔线 - 在换行时隐藏 */}
+            <span className="w-px h-5 bg-neutral-200 hidden sm:block" />
 
-            {(period !== 'custom' && period !== 'annually') && (periodOptions[period] as readonly Option[]).length > 0 && (
-                <Select value={selectedPeriodValue || ''} onValueChange={setSelectedPeriodValue}>
-                    <SelectTrigger className="w-[120px] h-8"><SelectValue placeholder="选择期间" /></SelectTrigger>
-                    <SelectContent>{(periodOptions[period] as readonly Option[]).map((option: Option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-                </Select>
-            )}
+            {/* 年份和期间选择 */}
+            {period !== 'custom' ? (
+                <div className="flex items-center gap-3">
+                    {/* 年份选择 - 使用弹出面板 */}
+                    {availableYears.length > 0 && (
+                        <MinimalYearSelector
+                            selectedYear={selectedYear}
+                            onSelect={setSelectedYear}
+                            availableYears={availableYears}
+                        />
+                    )}
 
-            {period === 'custom' && (
-                <div className="flex items-center space-x-2">
-                    <MonthPicker value={customStartDate} onChange={setCustomStartDate} />
-                    <span>-</span>
-                    <MonthPicker value={customEndDate} onChange={setCustomEndDate} />
+                    {/* 期间选择 - 根据不同周期类型使用不同的选择器 */}
+                    {period === 'monthly' && selectedYear && (
+                        <>
+                            <span className="text-neutral-300">·</span>
+                            <MinimalMonthSelector
+                                selectedYear={selectedYear}
+                                selectedMonth={selectedPeriodValue}
+                                onSelect={(year, month) => {
+                                    setSelectedYear(year);
+                                    setSelectedPeriodValue(month);
+                                }}
+                            />
+                        </>
+                    )}
+
+                    {period === 'quarterly' && selectedYear && (
+                        <>
+                            <span className="text-neutral-300">·</span>
+                            <MinimalQuarterSelector
+                                selectedQuarter={selectedPeriodValue}
+                                onSelect={setSelectedPeriodValue}
+                            />
+                        </>
+                    )}
+
+                    {period === 'semiannually' && selectedYear && (
+                        <>
+                            <span className="text-neutral-300">·</span>
+                            <MinimalSemiannualSelector
+                                selectedSemiannual={selectedPeriodValue}
+                                onSelect={setSelectedPeriodValue}
+                            />
+                        </>
+                    )}
+                </div>
+            ) : (
+                /* 自定义日期范围 */
+                <div className="flex items-center gap-3">
+                    <MonthPicker value={customStartDate} onChange={setCustomStartDate} variant="minimal" />
+                    <span className="text-neutral-300 text-sm">至</span>
+                    <MonthPicker value={customEndDate} onChange={setCustomEndDate} variant="minimal" />
                 </div>
             )}
         </div>
@@ -1517,13 +2304,21 @@ const FilterSection = ({
     const [selectedPeriodValue, setSelectedPeriodValue] = useState<string | null>(null);
     const [customStartDate, setCustomStartDate] = useState<Date | undefined>(undefined);
     const [customEndDate, setCustomEndDate] = useState<Date | undefined>(undefined);
+    const [isPending, startTransition] = useTransition();
+
+    // 使用 useTransition 包装周期切换，让 UI 更快响应
+    const handlePeriodChange = useCallback((newPeriod: Period) => {
+        startTransition(() => {
+            setPeriod(newPeriod);
+        });
+    }, []);
 
     const availableYears = useMemo(() => {
         const validData = data.filter(row => row && (row._parsedDate || row['Month']));
         if (!validData || validData.length === 0) return [];
         const years = [...new Set(validData.map(row => {
-            const d = row._parsedDate || parse(row['Month'].toString(), 'yyyy/MM', new Date());
-            return d.getFullYear();
+            const d = row._parsedDate || parseMonthString(row['Month']);
+            return d ? d.getFullYear() : NaN;
         }))].filter(year => !isNaN(year));
         return years.sort((a, b) => b - a).map(y => y.toString());
     }, [data]);
@@ -1543,7 +2338,7 @@ const FilterSection = ({
                 setSelectedPeriodValue(getMonth(latestMonth).toString());
             }
         }
-    }, [availableYears, data, period, selectedYear, selectedPeriodValue]);
+    }, [availableYears, data, selectedYear]);
 
     useEffect(() => {
         if(period !== 'monthly') {
@@ -1588,7 +2383,7 @@ const FilterSection = ({
         if (!cardStartDate || !cardEndDate) {
              const latestMonthInData = data.length > 0 ? data.reduce((latest, row) => {
                  // Use pre-parsed date if available
-                 const d = row._parsedDate || (row.Month ? parse(row.Month.toString(), 'yyyy/MM', new Date()) : null);
+                 const d = row._parsedDate || (row.Month ? parseMonthString(row.Month) : null);
                  return d && d > latest ? d : latest;
             }, new Date(0)) : new Date(0);
 
@@ -1664,7 +2459,7 @@ const FilterSection = ({
                 <div className="flex flex-col space-y-3">
                     <div className="flex justify-end">
                         <PeriodFilter 
-                            period={period} setPeriod={setPeriod}
+                            period={period} setPeriod={handlePeriodChange}
                             selectedYear={selectedYear} setSelectedYear={setSelectedYear}
                             selectedPeriodValue={selectedPeriodValue} setSelectedPeriodValue={setSelectedPeriodValue}
                             customStartDate={customStartDate} setCustomStartDate={setCustomStartDate}
@@ -1676,7 +2471,7 @@ const FilterSection = ({
                     {title && <CardTitle className="text-sm font-medium">{title}</CardTitle>}
                 </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className={isPending ? "opacity-70 transition-opacity duration-150" : ""}>
                 {children(filteredInfo.filteredData, filteredInfo.totalHours, filteredInfo.trend)}
             </CardContent>
         </Card>
@@ -1722,7 +2517,7 @@ const InvestmentWorkCategoryComparison = ({ teamData }: { teamData: any[] }) => 
                 setSelectedPeriodValue(getMonth(latestMonth).toString());
             }
         }
-    }, [availableYears, teamData, period, selectedYear, selectedPeriodValue]);
+    }, [availableYears, teamData, selectedYear]);
 
     useEffect(() => {
         if (period !== 'monthly') {
@@ -1897,44 +2692,56 @@ const InvestmentWorkCategoryComparison = ({ teamData }: { teamData: any[] }) => 
     const PremiumComparisonTooltip = ({ active, payload, label }: any) => {
         if (!active || !payload || !payload.length) return null;
         
-        // Filter out gradient fills (Area components)
-        const filteredPayload = payload.filter((entry: any) => 
-            entry.value > 0 && entry.color && !entry.color.startsWith('url(')
-        );
+        // Filter entries with value > 0 (don't filter by color since we use gradients)
+        const filteredPayload = payload.filter((entry: any) => entry.value > 0);
         
         if (filteredPayload.length === 0) return null;
         
         const total = filteredPayload.reduce((sum: number, entry: any) => sum + (entry.value || 0), 0);
         
+        // 按工时排序
+        const sortedPayload = [...filteredPayload].sort((a: any, b: any) => (b.value || 0) - (a.value || 0));
+        
         return (
-            <div className="bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-xl p-4 min-w-[240px]">
+            <div 
+                className="bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-xl p-4 min-w-[240px]"
+                style={{ pointerEvents: 'auto' }}
+            >
                 <div className="text-sm font-semibold text-slate-800 mb-3 pb-2 border-b border-slate-100">
                     Deal/Matter: {label}
                 </div>
-                <div className="space-y-2 max-h-[250px] overflow-y-auto">
-                    {filteredPayload.map((entry: any, index: number) => (
-                        <div 
-                            key={index} 
-                            className="flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 rounded px-1 py-0.5 transition-colors"
-                            onClick={() => handleTooltipItemClick(entry.dataKey, label)}
-                        >
-                            <div className="flex items-center gap-2">
-                                <div 
-                                    className="w-3 h-3 rounded-sm shadow-sm"
-                                    style={{ backgroundColor: entry.color }}
-                                />
-                                <span className="text-xs text-slate-600 truncate max-w-[120px]">{entry.name}</span>
+                <div 
+                    className="space-y-2 overflow-y-auto pr-1"
+                    style={{ maxHeight: '250px', pointerEvents: 'auto' }}
+                >
+                    {sortedPayload.map((entry: any, index: number) => {
+                        // 找到该 workCategory 在 workCategories 中的索引以获取正确颜色
+                        const categoryIndex = chartData.workCategories.findIndex((cat: string) => cat === entry.name);
+                        const color = categoryIndex >= 0 ? CHART_COLORS[categoryIndex % CHART_COLORS.length] : '#6366f1';
+                        return (
+                            <div 
+                                key={index} 
+                                className="flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 rounded px-1 py-0.5 transition-colors"
+                                onClick={() => handleTooltipItemClick(entry.dataKey, label)}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <div 
+                                        className="w-3 h-3 rounded-sm shadow-sm flex-shrink-0"
+                                        style={{ backgroundColor: color }}
+                                    />
+                                    <span className="text-xs text-slate-600 truncate max-w-[150px]">{entry.name}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-semibold text-slate-800">
+                                        {Number(entry.value).toFixed(1)}h
+                                    </span>
+                                    <span className="text-[10px] text-slate-400">
+                                        ({((entry.value / total) * 100).toFixed(0)}%)
+                                    </span>
+                                </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs font-semibold text-slate-800">
-                                    {Number(entry.value).toFixed(1)}h
-                                </span>
-                                <span className="text-[10px] text-slate-400">
-                                    ({((entry.value / total) * 100).toFixed(0)}%)
-                                </span>
-                            </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
                 <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between">
                     <span className="text-xs font-medium text-slate-500">Total</span>
@@ -1988,7 +2795,7 @@ const InvestmentWorkCategoryComparison = ({ teamData }: { teamData: any[] }) => 
                         </div>
                         
                         <ResponsiveContainer width="100%" height={500}>
-                            <BarChart data={chartData.data} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                            <BarChart data={chartData.data} margin={{ top: 20, right: 30, left: 20, bottom: 60 }} barSize={12}>
                                 <defs>
                                     {CHART_COLORS.map((color, index) => (
                                         <linearGradient key={`invWorkGrad${index}`} id={`invWorkGradient${index}`} x1="0" y1="0" x2="0" y2="1">
@@ -2017,6 +2824,7 @@ const InvestmentWorkCategoryComparison = ({ teamData }: { teamData: any[] }) => 
                                 <Tooltip 
                                     content={<PremiumComparisonTooltip />}
                                     cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
+                                    wrapperStyle={{ pointerEvents: 'auto' }}
                                 />
                                 {chartData.workCategories.map((workCat, index) => (
                                     <Bar 
@@ -2043,6 +2851,343 @@ const InvestmentWorkCategoryComparison = ({ teamData }: { teamData: any[] }) => 
     );
 };
 
+// Work Category Trends by Deal/Matter Categories Component
+const WorkCategoryTrendsByDealMatter = ({ teamData }: { teamData: any[] }) => {
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [dialogData, setDialogData] = useState<any[]>([]);
+    const [dialogTitle, setDialogTitle] = useState('');
+
+    // Deal/Matter categories mapping
+    const dealCategories = [
+        { key: 'Investment Related - M&A Deal', label: 'M&A Deal' },
+        { key: 'Investment Related - IPO', label: 'IPO' },
+        { key: 'Investment Related - Corporate Matter', label: 'Corporate Matter' }
+    ];
+
+    // Premium color palette for work categories
+    const WORK_CATEGORY_COLORS = [
+        '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', 
+        '#ec4899', '#84cc16', '#f97316', '#a855f7', '#14b8a6', 
+        '#e11d48', '#22c55e', '#eab308', '#3b82f6', '#d946ef'
+    ];
+
+    // Process data for each deal category
+    const trendData = useMemo(() => {
+        // Get all months from data
+        const allMonths = new Set<string>();
+        teamData.forEach(row => {
+            if (row._parsedDate) {
+                allMonths.add(format(row._parsedDate, 'yyyy/MM'));
+            }
+        });
+        const sortedMonths = Array.from(allMonths).sort();
+        
+        // Filter threshold: 2025/10
+        const filterThreshold = '2025/10';
+        
+        // Generate months for x-axis starting from 2025/10
+        const fullYearMonths: string[] = [];
+        if (sortedMonths.length > 0) {
+            const latestMonth = sortedMonths[sortedMonths.length - 1];
+            const latestYear = parseInt(latestMonth.split('/')[0]);
+            // Start from October (10)
+            for (let m = 10; m <= 12; m++) {
+                const monthStr = `${latestYear}/${m.toString().padStart(2, '0')}`;
+                if (monthStr <= latestMonth) {
+                    fullYearMonths.push(monthStr);
+                }
+            }
+        }
+
+        const result: { [dealKey: string]: { data: any[], workCategories: string[], colorMap: { [wc: string]: string }, maxBars: number } } = {};
+
+        dealCategories.forEach(({ key: dealCategory, label }) => {
+            // Filter data for this deal category
+            const categoryData = teamData.filter(row => {
+                const rowDealCat = row['Deal/Matter Category']?.toString();
+                return fieldsMatch(rowDealCat, dealCategory);
+            });
+
+            // Aggregate by month and work category
+            const workCategoryMap: { [key: string]: string } = {}; // normalized -> display
+            const monthlyData: { [month: string]: { [workCat: string]: number } } = {};
+
+            // Initialize all months
+            fullYearMonths.forEach(month => {
+                monthlyData[month] = {};
+            });
+
+            categoryData.forEach(row => {
+                if (!row._parsedDate) return;
+                const month = format(row._parsedDate, 'yyyy/MM');
+                const rawWorkCat = row['Work Category']?.toString();
+                const hours = Number(row['Hours']) || 0;
+
+                if (!rawWorkCat || hours <= 0) return;
+
+                // Normalize work category name - remove leading underscores/special chars (input method issues)
+                const cleanedWorkCat = rawWorkCat.trim().replace(/^[_\s]+/, '').replace(/\s+/g, ' ');
+                const workCatKey = createNormalizedKey(cleanedWorkCat);
+                if (!workCategoryMap[workCatKey]) {
+                    workCategoryMap[workCatKey] = cleanedWorkCat;
+                }
+                const workCategory = workCategoryMap[workCatKey];
+
+                if (!monthlyData[month]) {
+                    monthlyData[month] = {};
+                }
+                monthlyData[month][workCategory] = (monthlyData[month][workCategory] || 0) + hours;
+            });
+
+            // Get all unique work categories that have data (only from months >= filterThreshold)
+            const allWorkCategories = new Set<string>();
+            Object.entries(monthlyData).forEach(([month, monthData]) => {
+                if (month >= filterThreshold) {
+                    Object.entries(monthData).forEach(([wc, hours]) => {
+                        if (hours > 0) allWorkCategories.add(wc);
+                    });
+                }
+            });
+
+            // Sort work categories by total hours for color assignment (only from filtered months)
+            const workCatTotals: { [wc: string]: number } = {};
+            Array.from(allWorkCategories).forEach(wc => {
+                workCatTotals[wc] = Object.entries(monthlyData)
+                    .filter(([month]) => month >= filterThreshold)
+                    .reduce((sum, [_, md]) => sum + (md[wc] || 0), 0);
+            });
+            const sortedWorkCategories = Array.from(allWorkCategories).sort((a, b) => workCatTotals[b] - workCatTotals[a]);
+
+            // Create color map for work categories
+            const colorMap: { [wc: string]: string } = {};
+            sortedWorkCategories.forEach((wc, index) => {
+                colorMap[wc] = WORK_CATEGORY_COLORS[index % WORK_CATEGORY_COLORS.length];
+            });
+
+            // Find max number of bars needed
+            let maxBars = 0;
+            fullYearMonths.forEach(month => {
+                if (month >= filterThreshold) {
+                    const count = Object.keys(monthlyData[month] || {}).filter(wc => (monthlyData[month][wc] || 0) > 0).length;
+                    if (count > maxBars) maxBars = count;
+                }
+            });
+
+            // Convert to chart data format with position-based keys (sorted by hours per month)
+            const chartData = fullYearMonths.map(month => {
+                const entry: any = { month };
+                if (month >= filterThreshold) {
+                    // Get work categories for this month sorted by hours (descending)
+                    const monthWorkCats = Object.entries(monthlyData[month] || {})
+                        .filter(([_, hours]) => hours > 0)
+                        .sort((a, b) => b[1] - a[1]);
+                    
+                    // Use position-based keys
+                    monthWorkCats.forEach(([wc, hours], idx) => {
+                        entry[`bar${idx}`] = hours;
+                        entry[`bar${idx}_name`] = wc;
+                        entry[`bar${idx}_color`] = colorMap[wc];
+                    });
+                }
+                return entry;
+            });
+
+            result[label] = { data: chartData, workCategories: sortedWorkCategories, colorMap, maxBars };
+        });
+
+        return result;
+    }, [teamData]);
+
+    const handleDotClick = (entry: any, workCategory: string, dealCategory: string) => {
+        if (!entry || !entry.month) return;
+        
+        const monthStr = entry.month;
+        const dealKey = dealCategories.find(d => d.label === dealCategory)?.key || dealCategory;
+        
+        const details = teamData.filter(row => {
+            if (!row || !row._parsedDate || !row['Work Category'] || !row['Deal/Matter Category']) return false;
+            const rowMonth = format(row._parsedDate, 'yyyy/MM');
+            const rowWorkCat = row['Work Category']?.toString();
+            const rowDealCat = row['Deal/Matter Category']?.toString();
+            return rowMonth === monthStr && fieldsMatch(rowWorkCat, workCategory) && fieldsMatch(rowDealCat, dealKey);
+        });
+        
+        setDialogTitle(`${dealCategory} - ${workCategory} - ${monthStr}`);
+        setDialogData(details);
+        setIsDialogOpen(true);
+    };
+
+    // Single chart component for each deal category
+    const DealCategoryTrendChart = ({ dealLabel, data, workCategories, colorMap, maxBars }: { dealLabel: string, data: any[], workCategories: string[], colorMap: { [wc: string]: string }, maxBars: number }) => {
+        // Handle bar click
+        const handleBarClick = (barData: any, barIndex: number) => {
+            if (!barData || !barData.month) return;
+            const workCategory = barData[`bar${barIndex}_name`];
+            if (workCategory) {
+                handleDotClick(barData, workCategory, dealLabel);
+            }
+        };
+
+        // Custom tooltip
+        const TrendTooltip = ({ active, payload, label }: any) => {
+            if (!active || !payload || !payload.length) return null;
+            
+            // Extract actual data from position-based keys
+            const validItems: { name: string, value: number, color: string }[] = [];
+            if (payload[0]?.payload) {
+                const entry = payload[0].payload;
+                for (let i = 0; i < maxBars; i++) {
+                    const value = entry[`bar${i}`];
+                    const name = entry[`bar${i}_name`];
+                    const color = entry[`bar${i}_color`];
+                    if (value > 0 && name) {
+                        validItems.push({ name, value, color });
+                    }
+                }
+            }
+            
+            if (validItems.length === 0) return null;
+            
+            const total = validItems.reduce((sum, item) => sum + item.value, 0);
+            // Already sorted by hours (descending) from data processing
+            
+            return (
+                <div 
+                    className="bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-xl p-4 min-w-[220px]"
+                    style={{ pointerEvents: 'auto' }}
+                >
+                    <div className="text-sm font-semibold text-slate-800 mb-3 pb-2 border-b border-slate-100">
+                        {label}
+                    </div>
+                    <div 
+                        className="space-y-2 overflow-y-auto pr-1"
+                        style={{ maxHeight: '200px', pointerEvents: 'auto' }}
+                    >
+                        {validItems.map((item, index) => (
+                            <div 
+                                key={index} 
+                                className="flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 rounded px-1 py-0.5 transition-colors"
+                                onClick={() => handleDotClick({ month: label }, item.name, dealLabel)}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <div 
+                                        className="w-3 h-3 rounded-sm shadow-sm flex-shrink-0"
+                                        style={{ backgroundColor: item.color }}
+                                    />
+                                    <span className="text-xs text-slate-600 truncate max-w-[120px]">{item.name}</span>
+                                </div>
+                                <span className="text-xs font-semibold text-slate-800">
+                                    {Number(item.value).toFixed(1)}h
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between">
+                        <span className="text-xs font-medium text-slate-500">Total</span>
+                        <span className="text-xs font-bold text-slate-800">{total.toFixed(1)}h</span>
+                    </div>
+                </div>
+            );
+        };
+
+        return (
+            <Card className="border-slate-200/60 shadow-sm hover:shadow-md transition-all duration-200">
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">{dealLabel}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {data.length > 0 && workCategories.length > 0 ? (
+                        <div className="relative">
+                            <div className="text-xs text-slate-400 mb-2 flex items-center gap-1.5">
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                                Click on bars to view details
+                            </div>
+                            
+                            {/* Legend - only show categories with data */}
+                            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 mb-4">
+                                {workCategories.map((wc) => (
+                                    <div key={wc} className="flex items-center gap-1.5">
+                                        <div 
+                                            className="w-3 h-3 rounded-sm"
+                                            style={{ backgroundColor: colorMap[wc] }}
+                                        />
+                                        <span className="text-xs text-slate-600">{wc}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            <ResponsiveContainer width="100%" height={350}>
+                                <BarChart data={data} margin={{ top: 10, right: 20, left: 10, bottom: 5 }} barSize={12}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.6} vertical={false} />
+                                    <XAxis 
+                                        dataKey="month" 
+                                        tick={{ fontSize: 11, fill: '#64748b' }} 
+                                        axisLine={{ stroke: '#e2e8f0' }} 
+                                        tickLine={false}
+                                    />
+                                    <YAxis 
+                                        tick={{ fontSize: 11, fill: '#64748b' }} 
+                                        axisLine={{ stroke: '#e2e8f0' }} 
+                                        tickLine={false}
+                                        label={{ value: 'Hours', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: '#64748b' } }}
+                                    />
+                                    <Tooltip 
+                                        content={<TrendTooltip />}
+                                        wrapperStyle={{ pointerEvents: 'auto' }}
+                                    />
+                                    {Array.from({ length: maxBars }, (_, idx) => (
+                                        <Bar 
+                                            key={`bar${idx}`}
+                                            dataKey={`bar${idx}`}
+                                            onClick={(barData) => handleBarClick(barData, idx)}
+                                            cursor="pointer"
+                                            radius={[4, 4, 0, 0]}
+                                        >
+                                            {data.map((entry, index) => (
+                                                <Cell 
+                                                    key={`cell-${index}`} 
+                                                    fill={entry[`bar${idx}_color`] || '#e2e8f0'} 
+                                                />
+                                            ))}
+                                        </Bar>
+                                    ))}
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    ) : (
+                        <div className="h-[350px] flex items-center justify-center text-muted-foreground">
+                            <p className="text-sm">当期无数据</p>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+        );
+    };
+
+    return (
+        <Card className="border-slate-200/60 shadow-sm">
+            <CardHeader>
+                <CardTitle className="text-sm font-medium">Work Category Trends by Deal/Matter Categories</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="grid gap-4 grid-cols-1">
+                    {dealCategories.map(({ label }) => (
+                        <DealCategoryTrendChart 
+                            key={label}
+                            dealLabel={label}
+                            data={trendData[label]?.data || []}
+                            workCategories={trendData[label]?.workCategories || []}
+                            colorMap={trendData[label]?.colorMap || {}}
+                            maxBars={trendData[label]?.maxBars || 0}
+                        />
+                    ))}
+                </div>
+                <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+            </CardContent>
+        </Card>
+    );
+};
+
 const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
     // Pre-process data once: filter team and parse dates
     const teamData = useMemo(() => {
@@ -2050,7 +3195,7 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
             .filter(row => row && row['团队'] === '投资法务中心')
             .map(row => ({
                 ...row,
-                _parsedDate: row['Month'] ? parse(row['Month'].toString(), 'yyyy/MM', new Date()) : null
+                _parsedDate: row['Month'] ? parseMonthString(row['Month']) : null
             }));
     }, [data]);
 
@@ -2095,7 +3240,7 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
 
         const monthlyTrends = Object.keys(monthlyAgg).sort().map(month => {
             const monthData = monthlyAgg[month];
-            const date = parse(month, 'yyyy/MM', new Date());
+            const date = parseMonthString(month) || new Date();
             const workdays = getWorkdaysInMonth(date.getFullYear(), date.getMonth() + 1, 'CN');
             const timeCoefficient = workdays > 0 ? 20.83 / workdays : 0;
             const avgHours = monthData.users.size > 0 ? (monthData.hours / monthData.users.size) * timeCoefficient : 0;
@@ -2169,11 +3314,11 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                     <CardHeader><CardTitle className="text-sm font-medium">Comparison of Total Working Hours</CardTitle></CardHeader>
                     <CardContent>
                         <ResponsiveContainer width="100%" height={300}>
-                            <ComposedChart data={trendData.monthlyTrends}>
+                            <ComposedChart data={trendData.monthlyTrends} margin={{ top: 20, right: 20, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="left" label={{ value: '小时', angle: -90, position: 'insideLeft', offset: 10 }} tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="right" orientation="right" label={{ value: '%', angle: -90, position: 'insideRight', offset: 10 }} tick={{ fontSize: 12 }}/>
+                                <YAxis yAxisId="left" label={{ value: '小时', angle: -90, position: 'insideLeft', dy: -10 }} tick={{ fontSize: 12 }} />
+                                <YAxis yAxisId="right" orientation="right" label={{ value: '%', angle: 90, position: 'insideRight', dy: 10 }} tick={{ fontSize: 12 }}/>
                                 <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
                                 <Legend iconType="rect" />
                                 <Bar yAxisId="left" dataKey="totalHours" name="总用时" fill="#3b82f6" radius={[8, 8, 0, 0]} />
@@ -2186,11 +3331,11 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                     <CardHeader><CardTitle className="text-sm font-medium">Comparison of Monthly Avg Working Hours per person</CardTitle></CardHeader>
                     <CardContent>
                          <ResponsiveContainer width="100%" height={300}>
-                            <ComposedChart data={trendData.monthlyTrends}>
+                            <ComposedChart data={trendData.monthlyTrends} margin={{ top: 20, right: 20, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="left" label={{ value: '小时', angle: -90, position: 'insideLeft', offset: 10 }} tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="right" orientation="right" label={{ value: '%', angle: -90, position: 'insideRight', offset: 10 }} tick={{ fontSize: 12 }}/>
+                                <YAxis yAxisId="left" label={{ value: '小时', angle: -90, position: 'insideLeft', dy: -10 }} tick={{ fontSize: 12 }} />
+                                <YAxis yAxisId="right" orientation="right" label={{ value: '%', angle: 90, position: 'insideRight', dy: 10 }} tick={{ fontSize: 12 }}/>
                                 <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
                                 <Legend iconType="rect" />
                                 <Bar yAxisId="left" dataKey="avgHoursPerUser" name="人均用时" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
@@ -2229,7 +3374,12 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                                 if (!mAndADealsAgg[key]) mAndADealsAgg[key] = { hours: 0, name: name };
                                 mAndADealsAgg[key].hours += hours;
                             });
-                        const mAndADeals = Object.values(mAndADealsAgg).map(({ name, hours }) => ({ name, hours })).sort((a, b) => b.hours - a.hours);
+                        const totalHours = Object.values(mAndADealsAgg).reduce((sum, item) => sum + item.hours, 0);
+                        const mAndADeals = Object.values(mAndADealsAgg).map(({ name, hours }) => ({ 
+                            name, 
+                            hours,
+                            percentage: totalHours > 0 ? (hours / totalHours) * 100 : 0
+                        })).sort((a, b) => b.hours - a.hours);
                         const maxHours = mAndADeals.length > 0 ? Math.max(...mAndADeals.map(d => d.hours)) : 0;
 
                         return (
@@ -2260,7 +3410,7 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                                                     </div>
                                                 </td>
                                                 <td className="py-3 px-4 text-right">
-                                                    <ClickableHoursCell hours={deal.hours} dealName={deal.name} category="Investment Related - M&A Deal" filteredData={filteredData} />
+                                                    <ClickableHoursCell hours={deal.hours} dealName={deal.name} category="Investment Related - M&A Deal" filteredData={filteredData} percentage={deal.percentage} />
                                                 </td>
                                             </tr>
                                         )) : (
@@ -2287,7 +3437,12 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                                 if (!corporateMattersAgg[key]) corporateMattersAgg[key] = { hours: 0, name: name };
                                 corporateMattersAgg[key].hours += hours;
                             });
-                        const corporateMatters = Object.values(corporateMattersAgg).map(({ name, hours }) => ({ name, hours })).sort((a, b) => b.hours - a.hours);
+                        const totalHours = Object.values(corporateMattersAgg).reduce((sum, item) => sum + item.hours, 0);
+                        const corporateMatters = Object.values(corporateMattersAgg).map(({ name, hours }) => ({ 
+                            name, 
+                            hours,
+                            percentage: totalHours > 0 ? (hours / totalHours) * 100 : 0
+                        })).sort((a, b) => b.hours - a.hours);
                         const maxHours = corporateMatters.length > 0 ? Math.max(...corporateMatters.map(d => d.hours)) : 0;
 
                         return (
@@ -2318,7 +3473,7 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                                                     </div>
                                                 </td>
                                                 <td className="py-3 px-4 text-right">
-                                                    <ClickableHoursCell hours={matter.hours} dealName={matter.name} category="Investment Related - Corporate Matter" filteredData={filteredData} />
+                                                    <ClickableHoursCell hours={matter.hours} dealName={matter.name} category="Investment Related - Corporate Matter" filteredData={filteredData} percentage={matter.percentage} />
                                                 </td>
                                             </tr>
                                         )) : (
@@ -2362,23 +3517,27 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                                 const targetSuffix = `${groupNum}组`;
                                 const colorScheme = GROUP_COLORS[groupNum - 1];
                                 const groupDataMap: { [key: string]: { hours: number, name: string } } = {};
-                                filteredData
-                                    .filter(row => {
-                                        const rawSourcePath = row['Source Path']?.toString();
-                                        const sourcePath = rawSourcePath ? rawSourcePath.trim() : '';
-                                        return sourcePath && sourcePath.endsWith(targetSuffix);
-                                    })
-                                    .forEach(row => {
-                                        const rawName = row['Deal/Matter Name']?.toString();
-                                        const name = rawName ? rawName.replace(/\\s+/g, ' ').trim() : '';
-                                        if (name) {
-                                            const key = createNormalizedKey(name);
-                                            const hours = Number(row['Hours']) || 0;
-                                            if (!groupDataMap[key]) groupDataMap[key] = { hours: 0, name: name };
-                                            groupDataMap[key].hours += hours;
-                                        }
-                                    });
-                                const data = Object.values(groupDataMap).map(({ name, hours }) => ({ name, hours })).sort((a, b) => b.hours - a.hours);
+                                const groupFilteredData = filteredData.filter(row => {
+                                    const rawSourcePath = row['Source Path']?.toString();
+                                    const sourcePath = rawSourcePath ? rawSourcePath.trim() : '';
+                                    return sourcePath && sourcePath.endsWith(targetSuffix);
+                                });
+                                groupFilteredData.forEach(row => {
+                                    const rawName = row['Deal/Matter Name']?.toString();
+                                    const name = rawName ? rawName.replace(/\\s+/g, ' ').trim() : '';
+                                    if (name) {
+                                        const key = createNormalizedKey(name);
+                                        const hours = Number(row['Hours']) || 0;
+                                        if (!groupDataMap[key]) groupDataMap[key] = { hours: 0, name: name };
+                                        groupDataMap[key].hours += hours;
+                                    }
+                                });
+                                const groupTotalHours = Object.values(groupDataMap).reduce((sum, item) => sum + item.hours, 0);
+                                const data = Object.values(groupDataMap).map(({ name, hours }) => ({ 
+                                    name, 
+                                    hours,
+                                    percentage: groupTotalHours > 0 ? (hours / groupTotalHours) * 100 : 0
+                                })).sort((a, b) => b.hours - a.hours);
                                 const maxHours = data.length > 0 ? Math.max(...data.map(d => d.hours)) : 0;
 
                                 return (
@@ -2423,12 +3582,9 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                                                                     hours={item.hours} 
                                                                     dealName={item.name} 
                                                                     category={groupName} 
-                                                                    filteredData={filteredData.filter(row => {
-                                                                        const rawSourcePath = row['Source Path']?.toString();
-                                                                        const sourcePath = rawSourcePath ? rawSourcePath.trim() : '';
-                                                                        return sourcePath && sourcePath.endsWith(targetSuffix);
-                                                                    })} 
-                                                                    isGroup={true} 
+                                                                    filteredData={groupFilteredData} 
+                                                                    isGroup={true}
+                                                                    percentage={item.percentage}
                                                                 />
                                                             </td>
                                                         </tr>
@@ -2450,6 +3606,9 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
 
             {/* Comparison of Work Category by Deal/Matter Category */}
             <InvestmentWorkCategoryComparison teamData={teamData} />
+
+            {/* Work Category Trends by Deal/Matter Categories */}
+            <WorkCategoryTrendsByDealMatter teamData={teamData} />
         </div>
     );
 }
@@ -2483,13 +3642,11 @@ const WorkCategoryComparisonChart = ({ data, workCategoryList, teamData }: { dat
         
         const details = teamData.filter(row => {
             if (!row || !row['Month'] || !row['Work Category']) return false;
-            try {
-                const rowDate = parse(row['Month'].toString(), 'yyyy/MM', new Date());
-                const rowMonth = format(rowDate, 'yyyy/MM');
-                const rawCat = row['Work Category']?.toString();
-                if (!rawCat) return false;
-                return rowMonth === monthStr && fieldsMatch(rawCat, categoryName);
-            } catch { return false; }
+            const rowMonth = normalizeMonthString(row['Month']);
+            if (!rowMonth) return false;
+            const rawCat = row['Work Category']?.toString();
+            if (!rawCat) return false;
+            return rowMonth === monthStr && fieldsMatch(rawCat, categoryName);
         });
         
         setDialogTitle(`${categoryName} - ${monthStr}`);
@@ -2519,26 +3676,60 @@ const WorkCategoryComparisonChart = ({ data, workCategoryList, teamData }: { dat
         
         const total = payload.reduce((sum: number, entry: any) => sum + (entry.value || 0), 0);
         
+        // 按工时排序
+        const sortedPayload = [...payload].sort((a: any, b: any) => (b.value || 0) - (a.value || 0));
+        
+        const handleTooltipItemClick = (categoryName: string) => {
+            const monthStr = label;
+            const details = teamData.filter(row => {
+                if (!row || !row['Month'] || !row['Work Category']) return false;
+                const rowMonth = normalizeMonthString(row['Month']);
+                if (!rowMonth) return false;
+                const rawCat = row['Work Category']?.toString();
+                if (!rawCat) return false;
+                return rowMonth === monthStr && fieldsMatch(rawCat, categoryName);
+            });
+            
+            setDialogTitle(`${categoryName} - ${monthStr}`);
+            setDialogData(details);
+            setIsDialogOpen(true);
+        };
+        
         return (
-            <div className="bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-xl p-4 min-w-[200px]">
+            <div 
+                className="bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-xl p-4 min-w-[200px]"
+                style={{ pointerEvents: 'auto' }}
+            >
                 <div className="text-sm font-semibold text-slate-800 mb-3 pb-2 border-b border-slate-100">
                     {label}
                 </div>
-                <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                    {payload.map((entry: any, index: number) => (
-                        <div key={index} className="flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2">
-                                <div 
-                                    className="w-3 h-3 rounded-sm shadow-sm"
-                                    style={{ backgroundColor: entry.color }}
-                                />
-                                <span className="text-xs text-slate-600 truncate max-w-[100px]">{entry.name}</span>
+                <div 
+                    className="space-y-2 overflow-y-auto pr-1"
+                    style={{ maxHeight: '250px', pointerEvents: 'auto' }}
+                >
+                    {sortedPayload.map((entry: any, index: number) => {
+                        // 找到该 category 在 workCategoryList 中的索引以获取正确颜色
+                        const categoryIndex = workCategoryList?.findIndex((cat: string) => cat === entry.name) ?? index;
+                        const color = CATEGORY_COLORS[categoryIndex % CATEGORY_COLORS.length];
+                        return (
+                            <div 
+                                key={index} 
+                                className="flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 rounded px-1 py-0.5 transition-colors"
+                                onClick={() => handleTooltipItemClick(entry.name)}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <div 
+                                        className="w-3 h-3 rounded-sm shadow-sm flex-shrink-0"
+                                        style={{ backgroundColor: color }}
+                                    />
+                                    <span className="text-xs text-slate-600 truncate max-w-[150px]">{entry.name}</span>
+                                </div>
+                                <span className="text-xs font-semibold text-slate-800 flex-shrink-0">
+                                    {Number(entry.value).toFixed(1)}h
+                                </span>
                             </div>
-                            <span className="text-xs font-semibold text-slate-800">
-                                {Number(entry.value).toFixed(1)}h
-                            </span>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
                 <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between">
                     <span className="text-xs font-medium text-slate-500">Total</span>
@@ -2591,7 +3782,14 @@ const WorkCategoryComparisonChart = ({ data, workCategoryList, teamData }: { dat
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.6} vertical={false} />
                                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
                                 <YAxis label={{ value: '小时', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11, fill: '#64748b' } }} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
-                                <Tooltip content={<PremiumCategoryTooltip />} cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }} />
+                                <Tooltip 
+                                    content={<PremiumCategoryTooltip />} 
+                                    cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
+                                    wrapperStyle={{ pointerEvents: 'auto' }}
+                                    position={{ y: 50 }}
+                                    offset={-250}
+                                    allowEscapeViewBox={{ x: true, y: true }}
+                                />
                                  {workCategoryList?.map((category, index) => (
                                     <Bar 
                                         key={category} 
@@ -2613,6 +3811,290 @@ const WorkCategoryComparisonChart = ({ data, workCategoryList, teamData }: { dat
     );
 };
 
+// BSC Items Comparison Chart Component
+const BSCItemsComparisonChart = ({ teamData }: { teamData: any[] }) => {
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [dialogData, setDialogData] = useState<any[]>([]);
+    const [dialogTitle, setDialogTitle] = useState('');
+
+    // Color palette for BSC items
+    const BSC_COLORS = [
+        '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', 
+        '#ec4899', '#84cc16', '#f97316', '#8b5cf6', '#14b8a6',
+        '#f43f5e', '#0ea5e9', '#a855f7', '#22c55e', '#eab308',
+        '#3b82f6', '#d946ef', '#64748b', '#0d9488', '#dc2626'
+    ];
+
+    // Helper function to check valid OKR/BSC Tag
+    const isValidOkrBscTag = (tag: string | undefined | null): boolean => {
+        if (!tag) return false;
+        const cleanTag = tag.toString().replace(/^_/, '').trim().toLowerCase();
+        return cleanTag === 'okr' || cleanTag === 'bsc';
+    };
+
+    // Process data for chart - grouped bar chart with bars sorted by hours within each month
+    const { chartData, bscItemList, bscItemColorMap, maxBarsPerMonth } = useMemo(() => {
+        // Step 1 & 2: Filter by team (already done) and OKR/BSC Tag
+        const filteredData = teamData.filter(row => isValidOkrBscTag(row['OKR/BSC Tag']));
+
+        // Step 3: Aggregate by Month and OKR/BSC Item
+        const monthItemAgg: { [month: string]: { [item: string]: number } } = {};
+        const itemTotals: { [item: string]: number } = {};
+        const normalizedItemMap: { [key: string]: string } = {};
+
+        filteredData.forEach(row => {
+            const rawMonth = row['Month'];
+            const rawItem = row['OKR/BSC Item']?.toString();
+            const hours = Number(row['Hours']) || 0;
+
+            if (!rawMonth || !rawItem || hours <= 0) return;
+
+            const monthStr = normalizeMonthString(rawMonth);
+            if (!monthStr) return;
+
+            // Normalize item name to handle input variations
+            const cleanItem = rawItem.trim().replace(/\s+/g, ' ');
+            const itemKey = createNormalizedKey(cleanItem);
+            
+            if (!normalizedItemMap[itemKey]) {
+                normalizedItemMap[itemKey] = cleanItem;
+            }
+            const displayItem = normalizedItemMap[itemKey];
+
+            if (!monthItemAgg[monthStr]) monthItemAgg[monthStr] = {};
+            monthItemAgg[monthStr][displayItem] = (monthItemAgg[monthStr][displayItem] || 0) + hours;
+            itemTotals[displayItem] = (itemTotals[displayItem] || 0) + hours;
+        });
+
+        // Get all unique items sorted by total hours (for legend and color mapping)
+        const sortedItems = Object.entries(itemTotals)
+            .sort((a, b) => b[1] - a[1])
+            .map(([item]) => item);
+
+        // Create color map
+        const colorMap: { [item: string]: string } = {};
+        sortedItems.forEach((item, idx) => {
+            colorMap[item] = BSC_COLORS[idx % BSC_COLORS.length];
+        });
+
+        // Create chart data: each month has bars sorted by hours (descending)
+        // Use position-based keys (bar0, bar1, bar2...) with item and color info
+        const sortedMonths = Object.keys(monthItemAgg).sort();
+        let maxBars = 0;
+        
+        const data = sortedMonths.map(month => {
+            const monthData = monthItemAgg[month];
+            // Sort items by hours within this month (descending)
+            const sortedMonthItems = Object.entries(monthData)
+                .sort((a, b) => b[1] - a[1]);
+            
+            maxBars = Math.max(maxBars, sortedMonthItems.length);
+            
+            const entry: any = { month };
+            sortedMonthItems.forEach(([item, hours], idx) => {
+                entry[`bar${idx}`] = hours;
+                entry[`bar${idx}_item`] = item;
+                entry[`bar${idx}_color`] = colorMap[item];
+            });
+            return entry;
+        });
+
+        return { chartData: data, bscItemList: sortedItems, bscItemColorMap: colorMap, maxBarsPerMonth: maxBars };
+    }, [teamData]);
+
+    const handleBarClick = (barData: any, barIndex: number) => {
+        if (!barData || !barData.month) return;
+        const monthStr = barData.month;
+        const itemName = barData[`bar${barIndex}_item`];
+        if (!itemName) return;
+        
+        const details = teamData.filter(row => {
+            if (!isValidOkrBscTag(row['OKR/BSC Tag'])) return false;
+            const rawMonth = row['Month'];
+            const rawItem = row['OKR/BSC Item']?.toString();
+            if (!rawMonth || !rawItem) return false;
+            
+            const rowMonth = normalizeMonthString(rawMonth);
+            return rowMonth === monthStr && fieldsMatch(rawItem, itemName);
+        });
+        
+        setDialogTitle(`${itemName} - ${monthStr}`);
+        setDialogData(details);
+        setIsDialogOpen(true);
+    };
+
+    const handleLegendClick = (item: string) => {
+        const details = teamData.filter(row => {
+            if (!isValidOkrBscTag(row['OKR/BSC Tag'])) return false;
+            const rawItem = row['OKR/BSC Item']?.toString();
+            return rawItem && fieldsMatch(rawItem, item);
+        });
+        
+        setDialogTitle(`All records for ${item}`);
+        setDialogData(details);
+        setIsDialogOpen(true);
+    };
+
+    // Custom Tooltip for grouped bar chart
+    const BSCItemsTooltip = ({ active, payload, label }: any) => {
+        if (!active || !payload || !payload.length) return null;
+        
+        // Filter out bars with no value and sort by value descending
+        const validBars = payload
+            .filter((entry: any) => entry.value > 0)
+            .sort((a: any, b: any) => (b.value || 0) - (a.value || 0));
+        
+        if (validBars.length === 0) return null;
+        
+        const total = validBars.reduce((sum: number, entry: any) => sum + (entry.value || 0), 0);
+        
+        // Determine tooltip position based on month
+        const sortedMonths = chartData.map(d => d.month).sort();
+        const isLastMonth = label === sortedMonths[sortedMonths.length - 1];
+        
+        const handleTooltipItemClick = (itemName: string) => {
+            const monthStr = label;
+            const details = teamData.filter(row => {
+                if (!isValidOkrBscTag(row['OKR/BSC Tag'])) return false;
+                const rawMonth = row['Month'];
+                const rawItem = row['OKR/BSC Item']?.toString();
+                if (!rawMonth || !rawItem) return false;
+                
+                const rowMonth = normalizeMonthString(rawMonth);
+                return rowMonth === monthStr && fieldsMatch(rawItem, itemName);
+            });
+            
+            setDialogTitle(`${itemName} - ${monthStr}`);
+            setDialogData(details);
+            setIsDialogOpen(true);
+        };
+        
+        return (
+            <div 
+                className="bg-white border border-slate-200 rounded-xl shadow-2xl p-4 min-w-[280px]"
+                style={{ 
+                    pointerEvents: 'auto',
+                    transform: isLastMonth ? 'translateX(-100%)' : 'translateX(0)',
+                    zIndex: 9999,
+                    position: 'relative'
+                }}
+            >
+                <div className="text-sm font-semibold text-slate-800 mb-3 pb-2 border-b border-slate-100">
+                    {label}
+                </div>
+                <div 
+                    className="space-y-2 overflow-y-auto pr-1"
+                    style={{ maxHeight: '300px' }}
+                    onWheel={(e) => e.stopPropagation()}
+                >
+                    {validBars.map((entry: any, index: number) => {
+                        const barIndex = parseInt(entry.dataKey.replace('bar', ''));
+                        const itemName = entry.payload[`bar${barIndex}_item`];
+                        const itemColor = entry.payload[`bar${barIndex}_color`];
+                        return (
+                            <div 
+                                key={index} 
+                                className="flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-50 rounded px-1 py-0.5 transition-colors"
+                                onClick={() => handleTooltipItemClick(itemName)}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <div 
+                                        className="w-3 h-3 rounded-sm flex-shrink-0"
+                                        style={{ backgroundColor: itemColor }}
+                                    />
+                                    <span className="text-xs text-slate-600 truncate max-w-[160px]">{itemName}</span>
+                                </div>
+                                <div className="text-right flex-shrink-0">
+                                    <span className="text-xs font-semibold text-slate-800">
+                                        {Number(entry.value).toFixed(1)}h
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 ml-1">
+                                        ({((entry.value / total) * 100).toFixed(1)}%)
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+                <div className="mt-3 pt-2 border-t border-slate-100 flex justify-between">
+                    <span className="text-xs font-medium text-slate-600">Total</span>
+                    <span className="text-xs font-bold text-slate-800">{total.toFixed(1)}h</span>
+                </div>
+            </div>
+        );
+    };
+
+    if (chartData.length === 0 || bscItemList.length === 0) {
+        return (
+            <div className="flex items-center justify-center h-[300px] text-slate-400 text-sm">
+                No BSC Items data available
+            </div>
+        );
+    }
+
+    return (
+        <>
+            <div className="relative" style={{ overflow: 'visible' }}>
+                <div className="text-xs text-slate-400 mb-3 flex items-center gap-1.5">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                    Click on legend labels or bars to view detailed data
+                </div>
+                
+                {/* Custom Legend */}
+                <div className="flex flex-wrap items-center justify-center gap-3 mb-4">
+                    {bscItemList.map((item) => (
+                        <div 
+                            key={item} 
+                            className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-slate-100 cursor-pointer transition-colors"
+                            onClick={() => handleLegendClick(item)}
+                        >
+                            <div 
+                                className="w-3 h-3 rounded-sm"
+                                style={{ backgroundColor: bscItemColorMap[item] }}
+                            />
+                            <span className="text-xs text-slate-600 hover:text-slate-800 truncate max-w-[150px]">{item}</span>
+                        </div>
+                    ))}
+                </div>
+                
+                <div style={{ overflow: 'visible', minHeight: '500px' }}>
+                    <ResponsiveContainer width="100%" height={450}>
+                        <BarChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 20 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.6} vertical={false} />
+                            <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
+                            <YAxis label={{ value: '小时', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11, fill: '#64748b' } }} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
+                            <Tooltip 
+                                content={<BSCItemsTooltip />} 
+                                cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
+                                wrapperStyle={{ pointerEvents: 'auto', zIndex: 9999, overflow: 'visible', visibility: 'visible' }}
+                                allowEscapeViewBox={{ x: true, y: true }}
+                                position={{ y: 0 }}
+                            />
+                            {Array.from({ length: maxBarsPerMonth }, (_, idx) => (
+                                <Bar 
+                                    key={`bar${idx}`} 
+                                    dataKey={`bar${idx}`}
+                                onClick={(barData) => handleBarClick(barData, idx)} 
+                                cursor="pointer"
+                                radius={[2, 2, 0, 0]}
+                            >
+                                {chartData.map((entry, entryIdx) => (
+                                    <Cell 
+                                        key={`cell-${entryIdx}`} 
+                                        fill={entry[`bar${idx}_color`] || 'transparent'}
+                                    />
+                                ))}
+                            </Bar>
+                        ))}
+                    </BarChart>
+                </ResponsiveContainer>
+                </div>
+            </div>
+            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+        </>
+    );
+};
+
 const CorporateFinancePanel = ({ data }: { data: any[] }) => {
     // Pre-process data once: filter team and parse dates
     const teamData = useMemo(() => {
@@ -2620,7 +4102,7 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
             .filter(row => row && row['团队'] === '公司及国际金融事务中心')
             .map(row => ({
                 ...row,
-                _parsedDate: row['Month'] ? parse(row['Month'].toString(), 'yyyy/MM', new Date()) : null
+                _parsedDate: row['Month'] ? parseMonthString(row['Month']) : null
             }));
     }, [data]);
 
@@ -2660,7 +4142,7 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
 
         const monthlyTrends = Object.keys(monthlyAgg).sort().map(month => {
             const monthData = monthlyAgg[month];
-            const date = parse(month, 'yyyy/MM', new Date());
+            const date = parseMonthString(month) || new Date();
             const workdays = getWorkdaysInMonth(date.getFullYear(), date.getMonth() + 1, 'HK');
             const timeCoefficient = workdays > 0 ? 20.83 / workdays : 0;
             const avgHours = monthData.users.size > 0 ? (monthData.hours / monthData.users.size) * timeCoefficient : 0;
@@ -2859,7 +4341,7 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                                                     <Tooltip 
                                                         formatter={(value:number, _name, entry) => [
                                                             `${value.toFixed(1)}h (${(entry.payload as any).percentage.toFixed(1)}%)`, 
-                                                            ''
+                                                            (entry.payload as any).name
                                                         ]}
                                                         contentStyle={{
                                                             backgroundColor: 'rgba(255,255,255,0.98)',
@@ -2914,11 +4396,11 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                     <CardHeader><CardTitle className="text-sm font-medium">Comparison of Total Working Hours</CardTitle></CardHeader>
                     <CardContent className="pt-8">
                         <ResponsiveContainer width="100%" height={300}>
-                            <ComposedChart data={trendData.monthlyTrends} margin={{ left: 0, right: 0 }}>
+                            <ComposedChart data={trendData.monthlyTrends} margin={{ top: 20, right: 20, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="left" label={{ value: '小时', angle: -90, position: 'left', offset: 0 }} tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="right" orientation="right" label={{ value: '%', angle: -90, position: 'right', offset: 0 }} tick={{ fontSize: 12 }}/>
+                                <YAxis yAxisId="left" label={{ value: '小时', angle: -90, position: 'insideLeft', dy: -10 }} tick={{ fontSize: 12 }} />
+                                <YAxis yAxisId="right" orientation="right" label={{ value: '%', angle: 90, position: 'insideRight', dy: 10 }} tick={{ fontSize: 12 }}/>
                                 <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
                                 <Legend iconType="rect" />
                                 <Bar yAxisId="left" dataKey="totalHours" name="总用时" fill="#3b82f6" radius={[8, 8, 0, 0]} />
@@ -2931,11 +4413,11 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                     <CardHeader><CardTitle className="text-sm font-medium">Comparison of Monthly Avg Working Hours per person</CardTitle></CardHeader>
                     <CardContent className="pt-8">
                          <ResponsiveContainer width="100%" height={300}>
-                            <ComposedChart data={trendData.monthlyTrends} margin={{ left: 0, right: 0 }}>
+                            <ComposedChart data={trendData.monthlyTrends} margin={{ top: 20, right: 20, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="left" label={{ value: '小时', angle: -90, position: 'left', offset: 0 }} tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="right" orientation="right" label={{ value: '%', angle: -90, position: 'right', offset: 0 }} tick={{ fontSize: 12 }}/>
+                                <YAxis yAxisId="left" label={{ value: '小时', angle: -90, position: 'insideLeft', dy: -10 }} tick={{ fontSize: 12 }} />
+                                <YAxis yAxisId="right" orientation="right" label={{ value: '%', angle: 90, position: 'insideRight', dy: 10 }} tick={{ fontSize: 12 }}/>
                                 <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
                                 <Legend iconType="rect" />
                                 <Bar yAxisId="left" dataKey="avgHoursPerUser" name="人均用时" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
@@ -3051,7 +4533,7 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                                                     <Tooltip 
                                                         formatter={(value:number, _name, entry) => [
                                                             `${value.toFixed(1)}h (${(entry.payload as any).percentage.toFixed(1)}%)`, 
-                                                            ''
+                                                            (entry.payload as any).name
                                                         ]}
                                                         contentStyle={{
                                                             backgroundColor: 'rgba(255,255,255,0.98)',
@@ -3145,8 +4627,8 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                             setIsDialogOpen(true);
                         };
 
-                        const handleLegendClick = (e: any) => {
-                            if (!e || !e.dataKey) return;
+                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                        const handleLegendClick = (_e: any) => {
                             const details = filteredData.filter(row => {
                                 const rawName = row['Deal/Matter Name']?.toString();
                                 if (!rawName) return false;
@@ -3194,6 +4676,16 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                     }}
                 </FilterSection>
 
+                {/* Monthly Internal Client Hours Trend Chart */}
+                <Card className="border-slate-200/60 shadow-sm hover:shadow-md transition-shadow duration-300" style={{ overflow: 'visible' }}>
+                    <CardHeader>
+                        <CardTitle className="text-sm font-medium text-slate-800">Monthly Working Hours by Internal Client</CardTitle>
+                    </CardHeader>
+                    <CardContent style={{ overflow: 'visible' }}>
+                        <InternalClientMonthlyTrendChart teamData={teamData} />
+                    </CardContent>
+                </Card>
+
                  <FilterSection data={teamData} title="Working Hours (Work Category)">
                     {(filteredData) => {
                         const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -3213,7 +4705,8 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                             }
                         });
                         const workCategoryData = Object.values(workCategoryAgg).map(item => ({ name: item.displayName, hours: item.hours })).sort((a, b) => b.hours - a.hours);
-                        const maxHours = workCategoryData.length > 0 ? Math.max(...workCategoryData.map(d => d.hours)) : 0;
+                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                        const _maxHours = workCategoryData.length > 0 ? Math.max(...workCategoryData.map(d => d.hours)) : 0;
 
                         const handleBarClick = (data: any) => {
                             if (!data || !data.name) return;
@@ -3228,8 +4721,8 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                             setIsDialogOpen(true);
                         };
 
-                        const handleLegendClick = (e: any) => {
-                            if (!e || !e.dataKey) return;
+                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                        const handleLegendClick = (_e: any) => {
                             const details = filteredData.filter(row => {
                                 const rawCat = row['Work Category']?.toString();
                                 return rawCat && rawCat.trim();
@@ -3279,6 +4772,162 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
 
             {/* Work Category Comparison - Trend - No Filter */}
             <WorkCategoryComparisonChart data={trendData.workCategoryTrendData} workCategoryList={trendData.workCategoryList || []} teamData={teamData} />
+
+            {/* Working Hours (BSC items) - New Section */}
+            <FilterSection data={teamData} title="Working Hours (BSC items)">
+                {(filteredData) => {
+                    const [isDialogOpen, setIsDialogOpen] = useState(false);
+                    const [dialogData, setDialogData] = useState<any[]>([]);
+                    const [dialogTitle, setDialogTitle] = useState('');
+
+                    // Premium color scheme matching Groups 1-6 style
+                    const BSC_COLOR_SCHEME = {
+                        from: 'from-indigo-400',
+                        to: 'to-violet-500',
+                        bg: 'from-indigo-50',
+                        bgHover: 'hover:from-indigo-50/50',
+                        gradient: ['#6366f1', '#8b5cf6']
+                    };
+
+                    // Step 1: Filter by team "公司及国际金融事务中心" (already done by teamData)
+                    // Step 2: Filter by OKR/BSC Tag - must be "OKR" or "BSC" (case-insensitive, ignore leading underscore)
+                    const isValidOkrBscTag = (tag: string | undefined | null): boolean => {
+                        if (!tag) return false;
+                        // Remove leading underscore and trim, then compare case-insensitively
+                        const cleanTag = tag.toString().replace(/^_/, '').trim().toLowerCase();
+                        return cleanTag === 'okr' || cleanTag === 'bsc';
+                    };
+
+                    // Filter data by OKR/BSC Tag
+                    const okrBscFilteredData = filteredData.filter(row => isValidOkrBscTag(row['OKR/BSC Tag']));
+
+                    // Step 3: Aggregate hours by OKR/BSC Item
+                    const bscItemsAgg: { [key: string]: { hours: number, displayName: string } } = {};
+                    okrBscFilteredData.forEach(row => {
+                        const rawItem = row['OKR/BSC Item']?.toString();
+                        if (!rawItem) return;
+                        const cleanItem = rawItem.trim().replace(/\\s+/g, ' ');
+                        if (!cleanItem) return;
+                        const normalizedKey = createNormalizedKey(cleanItem);
+                        const hours = Number(row['Hours']) || 0;
+                        if (hours > 0) {
+                            if (!bscItemsAgg[normalizedKey]) bscItemsAgg[normalizedKey] = { hours: 0, displayName: cleanItem };
+                            bscItemsAgg[normalizedKey].hours += hours;
+                        }
+                    });
+
+                    // Calculate total hours from filtered data
+                    const totalHours = Object.values(bscItemsAgg).reduce((sum, item) => sum + item.hours, 0);
+
+                    const bscItemsData = Object.values(bscItemsAgg)
+                        .map(item => ({ 
+                            name: item.displayName, 
+                            hours: item.hours,
+                            percentage: totalHours > 0 ? (item.hours / totalHours) * 100 : 0
+                        }))
+                        .sort((a, b) => b.hours - a.hours);
+
+                    const handleHoursClick = (itemName: string) => {
+                        const details = okrBscFilteredData.filter(row => {
+                            const rawItem = row['OKR/BSC Item']?.toString();
+                            if (!rawItem) return false;
+                            return fieldsMatch(rawItem, itemName);
+                        });
+                        setDialogTitle(`Details for ${itemName}`);
+                        setDialogData(details);
+                        setIsDialogOpen(true);
+                    };
+
+                    const handleTotalClick = () => {
+                        setDialogTitle('All BSC Items Details');
+                        setDialogData(okrBscFilteredData);
+                        setIsDialogOpen(true);
+                    };
+
+                    return (
+                        <div className="relative">
+                            <div className="text-xs text-slate-500 mb-3 flex items-center gap-1.5">
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                                Click on hours to view detailed data
+                            </div>
+                            <div className="rounded-xl border border-slate-200/60 overflow-hidden bg-white shadow-sm hover:shadow-md transition-shadow duration-300">
+                                {/* Header */}
+                                <div className={`bg-gradient-to-r ${BSC_COLOR_SCHEME.bg} to-white px-4 py-3 border-b border-slate-100`}>
+                                    <div className="flex items-center gap-2">
+                                        <div className={`w-2 h-2 rounded-full bg-gradient-to-br ${BSC_COLOR_SCHEME.from} ${BSC_COLOR_SCHEME.to}`} />
+                                        <h4 className="text-sm font-semibold text-slate-700">BSC Items Breakdown</h4>
+                                        <span className="ml-auto text-xs text-slate-400">{bscItemsData.length} items · Total: {totalHours.toFixed(1)}h</span>
+                                    </div>
+                                </div>
+                                
+                                {/* Table Content */}
+                                <div className="max-h-[400px] overflow-y-auto">
+                                    <table className="w-full">
+                                        <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm">
+                                            <tr className="border-b border-slate-100">
+                                                <th className="text-left py-2.5 px-4 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">OKR/BSC Item</th>
+                                                <th className="text-right py-2.5 px-4 text-[10px] font-semibold text-slate-500 uppercase tracking-wider w-28">Hours</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-50">
+                                            {bscItemsData.length > 0 ? bscItemsData.map((item, idx) => (
+                                                <tr 
+                                                    key={idx} 
+                                                    className={`group hover:bg-gradient-to-r ${BSC_COLOR_SCHEME.bgHover} hover:to-transparent transition-all duration-200`}
+                                                >
+                                                    <td className="py-3 px-4">
+                                                        <span className="text-sm text-slate-600 group-hover:text-slate-800 transition-colors" title={item.name}>
+                                                            {item.name}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 px-4 text-right">
+                                                        <span 
+                                                            className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 tabular-nums cursor-pointer underline decoration-dotted underline-offset-2"
+                                                            onClick={() => handleHoursClick(item.name)}
+                                                        >
+                                                            {item.hours.toFixed(1)}h
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            )) : (
+                                                <tr>
+                                                    <td colSpan={2} className="text-center py-8 text-slate-300 text-sm">当期无BSC Items数据</td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                        {bscItemsData.length > 0 && (
+                                            <tfoot className="sticky bottom-0 bg-slate-50/95 backdrop-blur-sm border-t border-slate-200">
+                                                <tr>
+                                                    <td className="py-2.5 px-4 text-sm font-semibold text-slate-700">Total</td>
+                                                    <td className="py-2.5 px-4 text-right">
+                                                        <span 
+                                                            className="text-sm font-bold text-indigo-600 hover:text-indigo-800 tabular-nums cursor-pointer underline decoration-dotted underline-offset-2"
+                                                            onClick={handleTotalClick}
+                                                        >
+                                                            {totalHours.toFixed(1)}h
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            </tfoot>
+                                        )}
+                                    </table>
+                                </div>
+                            </div>
+                            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+                        </div>
+                    );
+                }}
+            </FilterSection>
+
+            {/* (13) Comparison of BSC Items */}
+            <Card className="border-slate-200/60 shadow-sm hover:shadow-md transition-shadow duration-300" style={{ overflow: 'visible' }}>
+                <CardHeader>
+                    <CardTitle className="text-sm font-medium text-slate-800">Comparison of BSC Items</CardTitle>
+                </CardHeader>
+                <CardContent style={{ overflow: 'visible' }}>
+                    <BSCItemsComparisonChart teamData={teamData} />
+                </CardContent>
+            </Card>
         </div>
     );
 }

@@ -1,14 +1,15 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import * as XLSX from 'xlsx';
-import { getWorkdaysInMonth } from '@/lib/date-utils';
+import { getWorkdaysInMonth, parseMonthString, normalizeMonthString } from '@/lib/date-utils';
 import { MonthPicker } from './MonthPicker';
 import { ProjectDimensionTab } from './ProjectDimensionTab';
 import { TeamDimensionTab } from './TeamDimensionTab';
+import { useReactToPrint } from 'react-to-print';
 
 import { format, parse } from 'date-fns';
 
@@ -26,6 +27,54 @@ export function DashboardPage() {
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [activeTab, setActiveTab] = useState<string>('overview');
+  const printRef = useRef<HTMLDivElement>(null);
+
+  // 获取页面名称
+  const getPageName = () => {
+    switch (activeTab) {
+      case 'overview': return '部门总览';
+      case 'team': return '分团队预览';
+      case 'personal': return '个人工时预览';
+      default: return '工时数据看板';
+    }
+  };
+
+  // PDF导出功能 - 添加防止分页截断样式
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: `${getPageName()}_${format(selectedDate, 'yyyy年_MM月')}`,
+    pageStyle: `
+      @page {
+        size: A4 landscape;
+        margin: 8mm;
+      }
+      @media print {
+        html, body {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        .no-print {
+          display: none !important;
+        }
+        /* 防止卡片和图表被分页截断 */
+        .card-premium,
+        [class*="Card"],
+        .recharts-wrapper,
+        .recharts-responsive-container,
+        table,
+        [class*="chart"],
+        [class*="Chart"] {
+          break-inside: avoid !important;
+          page-break-inside: avoid !important;
+        }
+        /* 确保每个主要区块不被截断 */
+        .print-section {
+          break-inside: avoid !important;
+          page-break-inside: avoid !important;
+        }
+      }
+    `,
+  });
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -48,8 +97,11 @@ export function DashboardPage() {
     const monthlyAgg: { [key: string]: { [key: string]: { hours: number; users: Set<string> } } } = {};
 
     data.forEach(item => {
-        if (item.Month && typeof item.Month === 'string' && item.Name) {
-            const month = item.Month.substring(0, 7);
+        if (item.Month && item.Name) {
+            // Use normalizeMonthString to handle various date formats (including Date objects)
+            const month = normalizeMonthString(item.Month);
+            if (!month) return;
+            
             const team = item['团队'] || 'Unknown';
 
             if (!monthlyAgg[month]) {
@@ -67,7 +119,7 @@ export function DashboardPage() {
     const sortedMonths = Object.keys(monthlyAgg).sort();
 
     const coreData = sortedMonths.map(month => {
-        const date = parse(month, 'yyyy/MM', new Date());
+        const date = parseMonthString(month) || new Date();
         const year = date.getFullYear();
         const monthNum = date.getMonth() + 1;
         const cnWorkdays = getWorkdaysInMonth(year, monthNum, 'CN');
@@ -134,7 +186,8 @@ export function DashboardPage() {
     setMonthlyData(finalData);
     if (finalData.length > 0) {
         const latestMonth = finalData[finalData.length - 1].month;
-        setSelectedDate(parse(latestMonth, 'yyyy/MM', new Date()));
+        const latestDate = parseMonthString(latestMonth);
+        if (latestDate) setSelectedDate(latestDate);
     }
   };
 
@@ -153,8 +206,12 @@ export function DashboardPage() {
 
   const TimeDimensionTab = () => (
     <TabsContent value="time-dimension" className="space-y-6">
-        <div className="flex items-center space-x-3 animate-fade-in-up">
-            <MonthPicker value={selectedDate} onChange={setSelectedDate} />
+        {/* 极简日期筛选器 */}
+        <div className="flex items-center justify-between animate-fade-in-up">
+            <div className="flex items-center gap-4">
+                <span className="text-xs font-medium tracking-widest text-neutral-400 uppercase">Period</span>
+                <MonthPicker value={selectedDate} onChange={setSelectedDate} variant="minimal" />
+            </div>
         </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 animate-fade-in-up">
             <Card className="card-premium">
@@ -164,7 +221,7 @@ export function DashboardPage() {
               <CardContent>
                 <div className="text-3xl font-bold text-neutral-900">{displayedData.totalHours.toFixed(2)}</div>
                 <p className={`text-xs font-medium mt-2 ${displayedData.totalHoursTrend >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    环比: {displayedData.totalHoursTrend.toFixed(2)}%
+                    环比: {displayedData.totalHoursTrend >= 0 ? '+' : ''}{displayedData.totalHoursTrend.toFixed(2)}%
                 </p>
               </CardContent>
             </Card>
@@ -267,16 +324,24 @@ export function DashboardPage() {
         <div className='flex justify-between items-center mb-2 animate-fade-in-down'>
           <div>
             <h1 className="text-4xl font-bold text-neutral-900 tracking-tight">工时数据看板</h1>
-            <p className="text-neutral-500 mt-2 text-sm font-medium">实时工时统计与趋势分析</p>
+            <p className="text-neutral-500 mt-2 text-sm font-medium">工时统计与趋势分析</p>
           </div>
           <div className="flex items-center gap-4">
-            <Button asChild variant="outline" className="shadow-elevation-2 hover:shadow-elevation-3 transition-all duration-300 hover:border-blue-300 group bg-white/80 backdrop-blur-sm">
+            <Button asChild variant="outline" className="no-print shadow-elevation-2 hover:shadow-elevation-3 transition-all duration-300 hover:border-blue-300 group bg-white/80 backdrop-blur-sm">
               <label htmlFor="file-upload" className="cursor-pointer flex items-center gap-2.5 px-4 py-2.5">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:scale-110 group-hover:rotate-12 transition-transform"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
                 <span className="font-semibold text-neutral-700">导入数据</span>
               </label>
             </Button>
             <Input id="file-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" />
+            <Button 
+              variant="outline" 
+              className="no-print shadow-elevation-2 hover:shadow-elevation-3 transition-all duration-300 hover:border-red-300 group bg-white/80 backdrop-blur-sm"
+              onClick={() => handlePrint()}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:scale-110 transition-transform mr-2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              <span className="font-semibold text-neutral-700">导出PDF</span>
+            </Button>
           </div>
         </div>
 
@@ -307,7 +372,7 @@ export function DashboardPage() {
             </TabsList>
           </div>
 
-          <div className="container mx-auto max-w-7xl animate-fade-in-up">
+          <div className="container mx-auto max-w-7xl animate-fade-in-up" ref={printRef}>
             <DepartmentOverviewTab />
             <TabsContent value="team" className="m-0 focus-visible:outline-none">
               {activeTab === 'team' && <TeamDimensionTab data={rawData} />}

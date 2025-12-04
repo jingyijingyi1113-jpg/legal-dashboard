@@ -1,18 +1,499 @@
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useTransition, useCallback } from 'react';
 import {
   Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis,
   YAxis
 } from 'recharts';
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MonthPicker } from './MonthPicker';
-import { fieldsMatch, createNormalizedKey } from '@/lib/date-utils';
+import { fieldsMatch, createNormalizedKey, parseMonthString } from '@/lib/date-utils';
+import { cn } from "@/lib/utils";
 
 type Period = 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'custom';
 type InvestmentDealCategory = 'Corporate Matter' | 'IPO' | 'M&A';
+
+// 极简风格年份选择器
+const MinimalYearSelector = ({
+  selectedYear,
+  onSelect,
+  availableYears
+}: {
+  selectedYear: string | null;
+  onSelect: (year: string) => void;
+  availableYears: string[];
+}) => {
+  const [open, setOpen] = useState(false);
+  
+  // 生成年份范围：当前年份前后5年
+  const currentYear = new Date().getFullYear();
+  const defaultYears = Array.from({ length: 11 }, (_, i) => (currentYear - 5 + i).toString());
+  const yearsToShow = availableYears.length > 0 ? availableYears : defaultYears;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "group relative inline-flex items-center gap-2 px-0 py-1",
+            "text-neutral-900 transition-all duration-300",
+            "focus:outline-none focus-visible:ring-0",
+            !selectedYear && "text-neutral-400"
+          )}
+        >
+          <span className="text-lg font-semibold tracking-tight text-neutral-800 tabular-nums">
+            {selectedYear || '选择年份'}
+          </span>
+          <span className="absolute -bottom-0.5 left-0 h-[1.5px] w-0 bg-neutral-800 transition-all duration-300 group-hover:w-full" />
+          <svg 
+            className={cn(
+              "w-3 h-3 text-neutral-400 transition-transform duration-200",
+              open && "rotate-180"
+            )}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent 
+        className="w-[200px] p-0 border-0 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden"
+        align="start"
+      >
+        <div className="bg-white">
+          {/* 年份网格 */}
+          <div className="grid grid-cols-3 gap-1 p-3 max-h-[240px] overflow-y-auto">
+            {yearsToShow.map((year) => {
+              const isSelected = selectedYear === year;
+              const isCurrentYear = new Date().getFullYear().toString() === year;
+              
+              return (
+                <button
+                  key={year}
+                  onClick={() => {
+                    onSelect(year);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "relative py-3 px-2 rounded-xl text-sm font-medium transition-all duration-200",
+                    "hover:bg-neutral-50",
+                    isSelected 
+                      ? "bg-neutral-900 text-white hover:bg-neutral-800" 
+                      : "text-neutral-600 hover:text-neutral-900",
+                    isCurrentYear && !isSelected && "text-neutral-900 font-semibold"
+                  )}
+                >
+                  {year}
+                  {isCurrentYear && !isSelected && (
+                    <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-neutral-400" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+// 极简风格月份选择器（带日历弹出）
+const MinimalMonthSelector = ({
+  selectedYear,
+  selectedMonth,
+  onSelect,
+  availableYears
+}: {
+  selectedYear: string | null;
+  selectedMonth: string | null;
+  onSelect: (year: string, month: string) => void;
+  availableYears: string[];
+}) => {
+  const [open, setOpen] = useState(false);
+  const [viewYear, setViewYear] = useState(selectedYear ? parseInt(selectedYear) : new Date().getFullYear());
+
+  const months = Array.from({ length: 12 }, (_, i) => i);
+  const monthLabels = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+
+  const handleMonthSelect = (month: number) => {
+    onSelect(viewYear.toString(), month.toString());
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={(isOpen) => {
+      if (isOpen && selectedYear) {
+        setViewYear(parseInt(selectedYear));
+      }
+      setOpen(isOpen);
+    }}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "group relative inline-flex items-center gap-2 px-0 py-1",
+            "text-neutral-900 transition-all duration-300",
+            "focus:outline-none focus-visible:ring-0",
+            !selectedMonth && "text-neutral-400"
+          )}
+        >
+          <span className="text-lg font-semibold tracking-tight text-neutral-800 tabular-nums">
+            {selectedMonth !== null ? monthLabels[parseInt(selectedMonth)] : '选择月份'}
+          </span>
+          <span className="absolute -bottom-0.5 left-0 h-[1.5px] w-0 bg-neutral-800 transition-all duration-300 group-hover:w-full" />
+          <svg 
+            className={cn(
+              "w-3 h-3 text-neutral-400 transition-transform duration-200",
+              open && "rotate-180"
+            )}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent 
+        className="w-[280px] p-0 border-0 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden"
+        align="start"
+      >
+        <div className="bg-white">
+          {/* 年份选择器 */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
+            <button 
+              onClick={() => setViewYear(prev => prev - 1)}
+              className="w-8 h-8 flex items-center justify-center rounded-full text-neutral-400 hover:text-neutral-800 hover:bg-neutral-50 transition-all duration-200"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <span className="text-lg font-semibold tracking-tight text-neutral-800">{viewYear}</span>
+            <button 
+              onClick={() => setViewYear(prev => prev + 1)}
+              className="w-8 h-8 flex items-center justify-center rounded-full text-neutral-400 hover:text-neutral-800 hover:bg-neutral-50 transition-all duration-200"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+          
+          {/* 月份网格 */}
+          <div className="grid grid-cols-3 gap-1 p-3">
+            {months.map((month) => {
+              const isSelected = selectedMonth !== null && parseInt(selectedMonth) === month && selectedYear === viewYear.toString();
+              const isCurrentMonth = new Date().getMonth() === month && new Date().getFullYear() === viewYear;
+              
+              return (
+                <button
+                  key={month}
+                  onClick={() => handleMonthSelect(month)}
+                  className={cn(
+                    "relative py-3 px-2 rounded-xl text-sm font-medium transition-all duration-200",
+                    "hover:bg-neutral-50",
+                    isSelected 
+                      ? "bg-neutral-900 text-white hover:bg-neutral-800" 
+                      : "text-neutral-600 hover:text-neutral-900",
+                    isCurrentMonth && !isSelected && "text-neutral-900 font-semibold"
+                  )}
+                >
+                  {monthLabels[month]}
+                  {isCurrentMonth && !isSelected && (
+                    <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-neutral-400" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+// 极简风格季度选择器
+const MinimalQuarterSelector = ({
+  selectedQuarter,
+  onSelect
+}: {
+  selectedQuarter: string | null;
+  onSelect: (quarter: string) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const quarters = [
+    { value: '0', label: '第一季度' },
+    { value: '1', label: '第二季度' },
+    { value: '2', label: '第三季度' },
+    { value: '3', label: '第四季度' },
+  ];
+
+  const selectedLabel = selectedQuarter !== null 
+    ? quarters.find(q => q.value === selectedQuarter)?.label 
+    : '选择季度';
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "group relative inline-flex items-center gap-2 px-0 py-1",
+            "text-neutral-900 transition-all duration-300",
+            "focus:outline-none focus-visible:ring-0",
+            !selectedQuarter && "text-neutral-400"
+          )}
+        >
+          <span className={cn(
+            "text-lg font-semibold tracking-tight tabular-nums",
+            selectedQuarter !== null ? "text-neutral-800" : "text-neutral-400"
+          )}>
+            {selectedLabel}
+          </span>
+          <span className="absolute -bottom-0.5 left-0 h-[1.5px] w-0 bg-neutral-800 transition-all duration-300 group-hover:w-full" />
+          <svg 
+            className={cn(
+              "w-3 h-3 text-neutral-400 transition-transform duration-200",
+              open && "rotate-180"
+            )}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent 
+        className="w-[200px] p-0 border-0 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden"
+        align="start"
+      >
+        <div className="bg-white p-2">
+          {quarters.map((quarter) => {
+            const isSelected = selectedQuarter === quarter.value;
+            return (
+              <button
+                key={quarter.value}
+                onClick={() => {
+                  onSelect(quarter.value);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "w-full py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200 text-left",
+                  "hover:bg-neutral-50",
+                  isSelected 
+                    ? "bg-neutral-900 text-white hover:bg-neutral-800" 
+                    : "text-neutral-600 hover:text-neutral-900"
+                )}
+              >
+                {quarter.label}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+// 极简风格半年度选择器
+const MinimalSemiannualSelector = ({
+  selectedSemiannual,
+  onSelect
+}: {
+  selectedSemiannual: string | null;
+  onSelect: (semiannual: string) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const semiannuals = [
+    { value: '0', label: '上半年' },
+    { value: '1', label: '下半年' },
+  ];
+
+  const selectedLabel = selectedSemiannual !== null 
+    ? semiannuals.find(s => s.value === selectedSemiannual)?.label 
+    : '选择半年度';
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "group relative inline-flex items-center gap-2 px-0 py-1",
+            "text-neutral-900 transition-all duration-300",
+            "focus:outline-none focus-visible:ring-0",
+            !selectedSemiannual && "text-neutral-400"
+          )}
+        >
+          <span className={cn(
+            "text-lg font-semibold tracking-tight tabular-nums",
+            selectedSemiannual !== null ? "text-neutral-800" : "text-neutral-400"
+          )}>
+            {selectedLabel}
+          </span>
+          <span className="absolute -bottom-0.5 left-0 h-[1.5px] w-0 bg-neutral-800 transition-all duration-300 group-hover:w-full" />
+          <svg 
+            className={cn(
+              "w-3 h-3 text-neutral-400 transition-transform duration-200",
+              open && "rotate-180"
+            )}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent 
+        className="w-[160px] p-0 border-0 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden"
+        align="start"
+      >
+        <div className="bg-white p-2">
+          {semiannuals.map((semi) => {
+            const isSelected = selectedSemiannual === semi.value;
+            return (
+              <button
+                key={semi.value}
+                onClick={() => {
+                  onSelect(semi.value);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "w-full py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200 text-left",
+                  "hover:bg-neutral-50",
+                  isSelected 
+                    ? "bg-neutral-900 text-white hover:bg-neutral-800" 
+                    : "text-neutral-600 hover:text-neutral-900"
+                )}
+              >
+                {semi.label}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+// 极简风格周期筛选器组件
+const MinimalPeriodFilter = ({
+  period,
+  setPeriod,
+  selectedYear,
+  setSelectedYear,
+  selectedPeriodValue,
+  setSelectedPeriodValue,
+  customStartDate,
+  setCustomStartDate,
+  customEndDate,
+  setCustomEndDate,
+  availableYears,
+  periodOptions
+}: {
+  period: Period;
+  setPeriod: (p: Period) => void;
+  selectedYear: string | null;
+  setSelectedYear: (y: string) => void;
+  selectedPeriodValue: string | null;
+  setSelectedPeriodValue: (v: string) => void;
+  customStartDate: Date | undefined;
+  setCustomStartDate: (d: Date | undefined) => void;
+  customEndDate: Date | undefined;
+  setCustomEndDate: (d: Date | undefined) => void;
+  availableYears: string[];
+  periodOptions: any;
+}) => {
+  const periodLabels: Record<Period, string> = {
+    monthly: '月度',
+    quarterly: '季度',
+    semiannually: '半年度',
+    annually: '年度',
+    custom: '自定义'
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+      {/* Period 标签 */}
+      <span className="text-xs font-medium tracking-widest text-neutral-400 uppercase">Period</span>
+      
+      {/* 周期类型切换 - 增大点击区域 */}
+      <div className="flex items-center gap-0.5 p-1 bg-neutral-100/80 rounded-full">
+        {(['monthly', 'quarterly', 'semiannually', 'annually', 'custom'] as Period[]).map((p) => (
+          <button
+            key={p}
+            onClick={() => setPeriod(p)}
+            className={cn(
+              "px-4 py-2.5 text-xs font-medium rounded-full transition-colors duration-75",
+              "cursor-pointer select-none touch-manipulation",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-1",
+              period === p
+                ? "bg-white text-neutral-900 shadow-sm active:bg-neutral-100"
+                : "text-neutral-500 hover:text-neutral-700 hover:bg-white/60 active:bg-white/80"
+            )}
+          >
+            {periodLabels[p]}
+          </button>
+        ))}
+      </div>
+
+      {/* 分隔线 - 在换行时隐藏 */}
+      <span className="w-px h-5 bg-neutral-200 hidden sm:block" />
+
+      {/* 年份和期间选择 */}
+      {period !== 'custom' ? (
+        <div className="flex items-center gap-3">
+          {/* 年份选择 - 使用弹出面板 */}
+          {availableYears.length > 0 && (
+            <MinimalYearSelector
+              selectedYear={selectedYear}
+              onSelect={setSelectedYear}
+              availableYears={availableYears}
+            />
+          )}
+
+          {/* 期间选择 - 根据不同周期类型使用不同的选择器 */}
+          {period === 'monthly' && selectedYear && (
+            <>
+              <span className="text-neutral-300">·</span>
+              <MinimalMonthSelector
+                selectedYear={selectedYear}
+                selectedMonth={selectedPeriodValue}
+                onSelect={(year, month) => {
+                  setSelectedYear(year);
+                  setSelectedPeriodValue(month);
+                }}
+                availableYears={availableYears}
+              />
+            </>
+          )}
+
+          {period === 'quarterly' && selectedYear && (
+            <>
+              <span className="text-neutral-300">·</span>
+              <MinimalQuarterSelector
+                selectedQuarter={selectedPeriodValue}
+                onSelect={setSelectedPeriodValue}
+              />
+            </>
+          )}
+
+          {period === 'semiannually' && selectedYear && (
+            <>
+              <span className="text-neutral-300">·</span>
+              <MinimalSemiannualSelector
+                selectedSemiannual={selectedPeriodValue}
+                onSelect={setSelectedPeriodValue}
+              />
+            </>
+          )}
+        </div>
+      ) : (
+        /* 自定义日期范围 */
+        <div className="flex items-center gap-3">
+          <MonthPicker value={customStartDate} onChange={(d) => setCustomStartDate(d)} variant="minimal" />
+          <span className="text-neutral-300 text-sm">至</span>
+          <MonthPicker value={customEndDate} onChange={(d) => setCustomEndDate(d)} variant="minimal" />
+        </div>
+      )}
+    </div>
+  );
+};
 
 const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
   const [period, setPeriod] = useState<Period>('monthly');
@@ -20,6 +501,14 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
   const [selectedPeriodValue, setSelectedPeriodValue] = useState<string | null>(null);
   const [customStartDate, setCustomStartDate] = useState<Date | undefined>(undefined);
   const [customEndDate, setCustomEndDate] = useState<Date | undefined>(undefined);
+  const [isPending, startTransition] = useTransition();
+
+  // 使用 useTransition 包装周期切换，让 UI 更快响应
+  const handlePeriodChange = useCallback((newPeriod: Period) => {
+    startTransition(() => {
+      setPeriod(newPeriod);
+    });
+  }, []);
 
   const teamData = useMemo(() => data.filter(row => row && row['团队'] === '投资法务中心'), [data]);
 
@@ -28,7 +517,10 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
     if (!validData || validData.length === 0) {
       return { availableYears: [], periodOptions: {} };
     }
-    const years = [...new Set(validData.map(row => new Date(row['Month'].toString() + '/01').getFullYear()))].filter(year => !isNaN(year));
+    const years = [...new Set(validData.map(row => {
+      const parsed = parseMonthString(row['Month']);
+      return parsed ? parsed.getFullYear() : NaN;
+    }))].filter(year => !isNaN(year));
     const sortedYears = years.sort((a, b) => b - a);
 
     const options: any = {
@@ -49,58 +541,93 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
     return { availableYears: sortedYears.map(y => y.toString()), periodOptions: options };
   }, [teamData]);
 
+  // 初始化：设置默认年份和最新月份
   useEffect(() => {
     if (availableYears.length > 0 && !selectedYear) {
       setSelectedYear(availableYears[0]);
     }
-  }, [availableYears, selectedYear]);
+    // 默认选中最新月份（仅在月度模式下）
+    if (period === 'monthly' && !selectedPeriodValue && teamData.length > 0) {
+      const latestMonth = teamData.reduce((latest, row) => {
+        const d = parseMonthString(row['Month']);
+        return d && d > latest ? d : latest;
+      }, new Date(0));
+      if (latestMonth.getTime() > 0) {
+        setSelectedYear(latestMonth.getFullYear().toString());
+        setSelectedPeriodValue(latestMonth.getMonth().toString());
+      }
+    }
+  }, [availableYears, teamData, selectedYear]);
 
+  // 切换周期时重置期间值
   useEffect(() => {
-    setSelectedPeriodValue(null);
+    if (period !== 'monthly') {
+      setSelectedPeriodValue(null);
+    }
   }, [period]);
 
 
   const processedData = useMemo(() => {
-    // --- 1. TIME FILTERING ---
-    const timeFilteredData = teamData.filter(row => {
-        try {
-            if (!row || !row['Month']) return false;
-            
-            const [yearStr, monthStr] = row['Month'].toString().split('/');
-            const yearNum = parseInt(yearStr, 10);
-            const monthNum = parseInt(monthStr, 10);
-            if (isNaN(yearNum) || isNaN(monthNum)) return false;
-            
-            const rowDate = new Date(Date.UTC(yearNum, monthNum - 1, 1));
-            if (isNaN(rowDate.getTime())) return false;
+    // --- 1. TIME FILTERING (与 TeamDimensionTab FilterSection 逻辑一致) ---
+    let cardStartDate: Date | undefined, cardEndDate: Date | undefined;
 
-            if (period === 'custom') {
-                if (!customStartDate || !customEndDate) return false;
-                const startUTC = new Date(Date.UTC(customStartDate.getFullYear(), customStartDate.getMonth(), 1));
-                const endUTC = new Date(Date.UTC(customEndDate.getFullYear(), customEndDate.getMonth() + 1, 0));
-                return rowDate >= startUTC && rowDate <= endUTC;
-
-            } else if (selectedYear) {
-                const year = parseInt(selectedYear, 10);
-                let startMonth = 0;
-                let endMonth = 11;
-
-                if (period !== 'annually' && selectedPeriodValue !== null) {
-                    const val = parseInt(selectedPeriodValue, 10);
-                    switch (period) {
-                        case 'monthly': startMonth = endMonth = val; break;
-                        case 'quarterly': startMonth = val * 3; endMonth = startMonth + 2; break;
-                        case 'semiannually': startMonth = val * 6; endMonth = startMonth + 5; break;
-                    }
-                }
-                const startDate = new Date(Date.UTC(year, startMonth, 1));
-                const endDate = new Date(Date.UTC(year, endMonth + 1, 0));
-                return rowDate >= startDate && rowDate <= endDate;
-            }
-            return false; // Default to no data if conditions not met
-        } catch {
-            return false;
+    if (period === 'custom') {
+      cardStartDate = customStartDate ? new Date(customStartDate.getFullYear(), customStartDate.getMonth(), 1) : undefined;
+      cardEndDate = customEndDate ? new Date(customEndDate.getFullYear(), customEndDate.getMonth() + 1, 0) : undefined;
+    } else if (selectedYear) {
+      const year = parseInt(selectedYear, 10);
+      if (period === 'annually') {
+        cardStartDate = new Date(year, 0, 1);
+        cardEndDate = new Date(year, 11, 31);
+      } else if (selectedPeriodValue !== null && (period === 'monthly' || period === 'quarterly' || period === 'semiannually')) {
+        const val = parseInt(selectedPeriodValue, 10);
+        switch (period) {
+          case 'monthly':
+            cardStartDate = new Date(year, val, 1);
+            cardEndDate = new Date(year, val + 1, 0);
+            break;
+          case 'quarterly':
+            cardStartDate = new Date(year, val * 3, 1);
+            cardEndDate = new Date(year, val * 3 + 3, 0);
+            break;
+          case 'semiannually':
+            cardStartDate = new Date(year, val * 6, 1);
+            cardEndDate = new Date(year, val * 6 + 6, 0);
+            break;
         }
+      } else if (selectedYear && !selectedPeriodValue && (period === 'quarterly' || period === 'semiannually')) {
+        // 未选择具体期间时，显示整年数据
+        cardStartDate = new Date(year, 0, 1);
+        cardEndDate = new Date(year, 11, 31);
+      }
+    }
+
+    // 默认使用最新月份数据
+    if (!cardStartDate || !cardEndDate) {
+      const latestMonthInData = teamData.length > 0 ? teamData.reduce((latest, row) => {
+        const d = parseMonthString(row['Month']);
+        return d && d > latest ? d : latest;
+      }, new Date(0)) : new Date(0);
+
+      if (latestMonthInData.getTime() > 0) {
+        cardStartDate = new Date(latestMonthInData.getFullYear(), latestMonthInData.getMonth(), 1);
+        cardEndDate = new Date(latestMonthInData.getFullYear(), latestMonthInData.getMonth() + 1, 0);
+      } else {
+        const now = new Date();
+        cardStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        cardEndDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      }
+    }
+
+    const timeFilteredData = teamData.filter(row => {
+      try {
+        if (!row || !row['Month']) return false;
+        const rowDate = parseMonthString(row['Month']);
+        if (!rowDate) return false;
+        return rowDate >= cardStartDate! && rowDate <= cardEndDate!;
+      } catch {
+        return false;
+      }
     });
 
     // --- 2. DATA CLEANING, MAPPING & AGGREGATION ---
@@ -226,10 +753,10 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
         </CardHeader>
         <CardContent className="flex pt-6">
           <ResponsiveContainer width="70%" height={400}>
-            <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+            <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 50 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" dataKey="x" name="Deal/Matter Category" ticks={ticks} tickFormatter={tickFormatter} domain={['dataMin - 0.5', 'dataMax + 0.5']} />
-              <YAxis type="number" dataKey="hours" name="Duration" unit="h" domain={[0, yMax]} />
+              <YAxis type="number" dataKey="hours" name="Duration" domain={[0, 'auto']} tickFormatter={(value) => `${value}h`} width={60} />
               <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3' }} />
               <Legend />
               {categories.map(cat => (
@@ -260,36 +787,25 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center space-x-2 mb-4 flex-wrap">
-        <Button variant={period === 'monthly' ? 'secondary' : 'outline'} onClick={() => setPeriod('monthly')}>月度</Button>
-        <Button variant={period === 'quarterly' ? 'secondary' : 'outline'} onClick={() => setPeriod('quarterly')}>季度</Button>
-        <Button variant={period === 'semiannually' ? 'secondary' : 'outline'} onClick={() => setPeriod('semiannually')}>半年度</Button>
-        <Button variant={period === 'annually' ? 'secondary' : 'outline'} onClick={() => setPeriod('annually')}>年度</Button>
-        <Button variant={period === 'custom' ? 'secondary' : 'outline'} onClick={() => setPeriod('custom')}>自定义</Button>
-        
-        {period !== 'custom' && availableYears.length > 0 && (
-          <Select value={selectedYear || ''} onValueChange={(val) => setSelectedYear(val)}>
-            <SelectTrigger className="w-[120px]"><SelectValue placeholder="选择年份" /></SelectTrigger>
-            <SelectContent>{availableYears.map(year => <SelectItem key={year} value={year}>{year}</SelectItem>)}</SelectContent>
-          </Select>
-        )}
-
-        {period !== 'annually' && period !== 'custom' && selectedYear && periodOptions[period] && (
-            <Select value={selectedPeriodValue || ''} onValueChange={(val) => setSelectedPeriodValue(val)}>
-                <SelectTrigger className="w-[180px]"><SelectValue placeholder={`选择${period === 'monthly' ? '月份' : period === 'quarterly' ? '季度' : '半年度'}`} /></SelectTrigger>
-                <SelectContent>{(periodOptions[period] as any[]).map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-            </Select>
-        )}
-
-        {period === 'custom' && (
-          <div className="flex items-center space-x-2">
-            <MonthPicker value={customStartDate} onChange={setCustomStartDate} />
-            <MonthPicker value={customEndDate} onChange={setCustomEndDate} />
-          </div>
-        )}
+    <div className="space-y-6">
+      {/* 极简日期筛选器 */}
+      <div className="flex items-center justify-between animate-fade-in-up">
+        <MinimalPeriodFilter
+          period={period}
+          setPeriod={handlePeriodChange}
+          selectedYear={selectedYear}
+          setSelectedYear={setSelectedYear}
+          selectedPeriodValue={selectedPeriodValue}
+          setSelectedPeriodValue={setSelectedPeriodValue}
+          customStartDate={customStartDate}
+          setCustomStartDate={setCustomStartDate}
+          customEndDate={customEndDate}
+          setCustomEndDate={setCustomEndDate}
+          availableYears={availableYears}
+          periodOptions={periodOptions}
+        />
       </div>
-      <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
+      <div className={`grid grid-cols-1 lg:grid-cols-2 gap-6 ${isPending ? "opacity-70 transition-opacity duration-150" : ""}`}>
         {/* Chart 1: Total Hours by Category - Modern Gradient Design */}
         <Card className="overflow-hidden border-0 shadow-lg bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
           <CardHeader className="pb-2 border-b border-slate-200/50 dark:border-slate-700/50">
@@ -394,7 +910,7 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
           </CardContent>
         </Card>
 
-        {/* Chart 2: Top 10 Ranking - Light theme to match left */}
+        {/* Chart 2: Top 10 Ranking - Premium Design with Category Colors */}
         <Card className="overflow-hidden border-0 shadow-lg bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
           <CardHeader className="pb-2 border-b border-slate-200/50 dark:border-slate-700/50">
             <CardTitle className="text-base font-semibold tracking-tight text-slate-800 dark:text-slate-100">
@@ -403,26 +919,36 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
           </CardHeader>
           <CardContent className="pt-4 pb-2">
             <ResponsiveContainer width="100%" height={340}>
-              <BarChart data={processedData.top10Data} layout="vertical" margin={{ left: 10, right: 50, top: 5, bottom: 5 }}>
+              <BarChart data={processedData.top10Data} layout="vertical" margin={{ left: 10, right: 60, top: 5, bottom: 5 }}>
                 <defs>
-                  <linearGradient id="rankGradientGold" x1="0" y1="0" x2="1" y2="0">
+                  {/* Category-based gradients matching left chart */}
+                  <linearGradient id="rankGradientIPO" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#55A868" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#6bbe7a" stopOpacity={1} />
+                  </linearGradient>
+                  <linearGradient id="rankGradientCorporate" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#4C72B0" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#6b8fc7" stopOpacity={1} />
+                  </linearGradient>
+                  <linearGradient id="rankGradientMA" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#C44E52" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#d4696c" stopOpacity={1} />
+                  </linearGradient>
+                  {/* Medal accent gradients for top 3 */}
+                  <linearGradient id="medalGold" x1="0" y1="0" x2="1" y2="0">
                     <stop offset="0%" stopColor="#fbbf24" stopOpacity={1} />
                     <stop offset="100%" stopColor="#f59e0b" stopOpacity={1} />
                   </linearGradient>
-                  <linearGradient id="rankGradientSilver" x1="0" y1="0" x2="1" y2="0">
+                  <linearGradient id="medalSilver" x1="0" y1="0" x2="1" y2="0">
                     <stop offset="0%" stopColor="#94a3b8" stopOpacity={1} />
                     <stop offset="100%" stopColor="#cbd5e1" stopOpacity={1} />
                   </linearGradient>
-                  <linearGradient id="rankGradientBronze" x1="0" y1="0" x2="1" y2="0">
+                  <linearGradient id="medalBronze" x1="0" y1="0" x2="1" y2="0">
                     <stop offset="0%" stopColor="#d97706" stopOpacity={1} />
-                    <stop offset="100%" stopColor="#fbbf24" stopOpacity={0.7} />
-                  </linearGradient>
-                  <linearGradient id="rankGradientBlue" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="#60a5fa" stopOpacity={0.8} />
-                    <stop offset="100%" stopColor="#93c5fd" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#fbbf24" stopOpacity={0.8} />
                   </linearGradient>
                   <filter id="shadow2" x="-20%" y="-20%" width="140%" height="140%">
-                    <feDropShadow dx="2" dy="2" stdDeviation="2" floodOpacity="0.1" />
+                    <feDropShadow dx="2" dy="2" stdDeviation="3" floodOpacity="0.15" />
                   </filter>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.5} horizontal={true} vertical={false} />
@@ -430,7 +956,7 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
                   type="number" 
                   axisLine={false} 
                   tickLine={false}
-                  tick={{ fill: '#64748b', fontSize: 10, fontWeight: 500 }}
+                  tick={{ fill: '#64748b', fontSize: 11, fontWeight: 500 }}
                   tickFormatter={(value) => `${value}h`}
                 />
                 <YAxis 
@@ -440,11 +966,16 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
                     const { x, y, payload } = props;
                     const item = processedData.top10Data.find((d: any) => d.name === payload.value);
                     const actualRank = item ? 11 - item.rank : 0;
-                    const medalColors: Record<number, string> = { 1: '#f59e0b', 2: '#64748b', 3: '#d97706' };
+                    const category = item?.category;
+                    // Use category colors for text
+                    let textColor = '#475569';
+                    if (category === 'IPO') textColor = '#55A868';
+                    else if (category === 'Corporate Matter') textColor = '#4C72B0';
+                    else if (category === 'M&A') textColor = '#C44E52';
                     const displayName = payload.value.length > 10 ? payload.value.substring(0, 10) + '...' : payload.value;
                     return (
                       <g transform={`translate(${x},${y})`}>
-                        <text x={-8} y={0} dy={4} textAnchor="end" fill={actualRank <= 3 ? medalColors[actualRank] : '#475569'} fontSize={11} fontWeight={actualRank <= 3 ? 700 : 500}>
+                        <text x={-8} y={0} dy={4} textAnchor="end" fill={textColor} fontSize={11} fontWeight={actualRank <= 3 ? 700 : 500}>
                           {displayName}
                         </text>
                       </g>
@@ -457,7 +988,8 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
                 <Tooltip 
                   formatter={(value: number, _name, props) => {
                     const actualRank = 11 - (props.payload.rank || 0);
-                    return [`${value.toFixed(1)} hours`, `Rank #${actualRank}`];
+                    const category = props.payload.category || '';
+                    return [`${value.toFixed(1)} hours`, `#${actualRank} · ${category}`];
                   }}
                   contentStyle={{ 
                     backgroundColor: 'rgba(255,255,255,0.98)', 
@@ -467,37 +999,57 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
                     padding: '12px 16px'
                   }}
                   labelStyle={{ fontWeight: 700, color: '#1e293b', marginBottom: '4px' }}
-                  itemStyle={{ color: '#f59e0b', fontWeight: 600 }}
-                  cursor={{ fill: 'rgba(251, 191, 36, 0.08)' }}
+                  itemStyle={{ color: '#0ea5e9', fontWeight: 600 }}
+                  cursor={{ fill: 'rgba(14, 165, 233, 0.08)' }}
                 />
                 <Bar 
                   dataKey="hours" 
                   name="Hours" 
-                  radius={[0, 6, 6, 0]}
-                  animationDuration={1000}
+                  radius={[0, 8, 8, 0]}
+                  animationDuration={800}
                   animationEasing="ease-out"
                   filter="url(#shadow2)"
                   shape={(props: any) => {
                     const { x, y, width, height, payload } = props;
                     const actualRank = 11 - (payload.rank || 0);
-                    let fillUrl = 'url(#rankGradientBlue)';
-                    if (actualRank === 1) fillUrl = 'url(#rankGradientGold)';
-                    else if (actualRank === 2) fillUrl = 'url(#rankGradientSilver)';
-                    else if (actualRank === 3) fillUrl = 'url(#rankGradientBronze)';
+                    const category = payload.category;
+                    
+                    // Use category-based colors (matching left chart)
+                    let fillUrl = 'url(#rankGradientIPO)';
+                    if (category === 'Corporate Matter') fillUrl = 'url(#rankGradientCorporate)';
+                    else if (category === 'M&A') fillUrl = 'url(#rankGradientMA)';
+                    
+                    // Medal colors for rank badges
+                    const medalColors: Record<number, { bg: string, text: string }> = {
+                      1: { bg: 'url(#medalGold)', text: '#92400e' },
+                      2: { bg: 'url(#medalSilver)', text: '#475569' },
+                      3: { bg: 'url(#medalBronze)', text: '#92400e' }
+                    };
+                    
                     return (
                       <g>
-                        <rect x={x} y={y} width={width} height={height} fill={fillUrl} rx={6} ry={6} filter="url(#shadow2)" />
-                        {actualRank <= 3 && (
-                          <text x={x + width + 8} y={y + height / 2 + 4} fill={actualRank === 1 ? '#f59e0b' : actualRank === 2 ? '#64748b' : '#d97706'} fontSize={11} fontWeight={700}>
-                            #{actualRank}
-                          </text>
-                        )}
+                        <rect x={x} y={y} width={width} height={height} fill={fillUrl} rx={8} ry={8} filter="url(#shadow2)" />
                       </g>
                     );
                   }}
                 />
               </BarChart>
             </ResponsiveContainer>
+            {/* Category Legend - matching left chart style */}
+            <div className="mt-3 pt-3 border-t border-slate-200/50 dark:border-slate-700/50 flex justify-center gap-6">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ background: 'linear-gradient(90deg, #55A868, #6bbe7a)' }} />
+                <span className="text-xs text-slate-600 font-medium">IPO</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ background: 'linear-gradient(90deg, #4C72B0, #6b8fc7)' }} />
+                <span className="text-xs text-slate-600 font-medium">Corporate Matter</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ background: 'linear-gradient(90deg, #C44E52, #d4696c)' }} />
+                <span className="text-xs text-slate-600 font-medium">M&A</span>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -513,6 +1065,14 @@ const CorporateFinanceCenterAnalysis = ({ data }: { data: any[] }) => {
   const [selectedPeriodValue, setSelectedPeriodValue] = useState<string | null>(null);
   const [customStartDate, setCustomStartDate] = useState<Date | undefined>(undefined);
   const [customEndDate, setCustomEndDate] = useState<Date | undefined>(undefined);
+  const [isPending, startTransition] = useTransition();
+
+  // 使用 useTransition 包装周期切换，让 UI 更快响应
+  const handlePeriodChange = useCallback((newPeriod: Period) => {
+    startTransition(() => {
+      setPeriod(newPeriod);
+    });
+  }, []);
 
   const teamFilteredData = useMemo(() => data.filter(row => row && row['团队'] === '公司及国际金融事务中心'), [data]);
 
@@ -521,7 +1081,10 @@ const CorporateFinanceCenterAnalysis = ({ data }: { data: any[] }) => {
     if (!validData || validData.length === 0) {
       return { availableYears: [], periodOptions: {} };
     }
-    const years = [...new Set(validData.map(row => new Date(row['Month'].toString() + '/01').getFullYear()))].filter(year => !isNaN(year));
+    const years = [...new Set(validData.map(row => {
+      const parsed = parseMonthString(row['Month']);
+      return parsed ? parsed.getFullYear() : NaN;
+    }))].filter(year => !isNaN(year));
     const sortedYears = years.sort((a, b) => b - a);
 
     const options: any = {
@@ -542,57 +1105,92 @@ const CorporateFinanceCenterAnalysis = ({ data }: { data: any[] }) => {
     return { availableYears: sortedYears.map(y => y.toString()), periodOptions: options };
   }, [teamFilteredData]);
 
+  // 初始化：设置默认年份和最新月份
   useEffect(() => {
     if (availableYears.length > 0 && !selectedYear) {
       setSelectedYear(availableYears[0]);
     }
-  }, [availableYears, selectedYear]);
+    // 默认选中最新月份（仅在月度模式下）
+    if (period === 'monthly' && !selectedPeriodValue && teamFilteredData.length > 0) {
+      const latestMonth = teamFilteredData.reduce((latest, row) => {
+        const d = parseMonthString(row['Month']);
+        return d && d > latest ? d : latest;
+      }, new Date(0));
+      if (latestMonth.getTime() > 0) {
+        setSelectedYear(latestMonth.getFullYear().toString());
+        setSelectedPeriodValue(latestMonth.getMonth().toString());
+      }
+    }
+  }, [availableYears, teamFilteredData, selectedYear]);
 
+  // 切换周期时重置期间值
   useEffect(() => {
-    setSelectedPeriodValue(null);
+    if (period !== 'monthly') {
+      setSelectedPeriodValue(null);
+    }
   }, [period]);
 
   const heatmapData = useMemo(() => {
-    // --- 1. TIME FILTERING ---
-    const timeFilteredData = teamFilteredData.filter(row => {
-        try {
-            if (!row || !row['Month']) return false;
-            
-            const [yearStr, monthStr] = row['Month'].toString().split('/');
-            const yearNum = parseInt(yearStr, 10);
-            const monthNum = parseInt(monthStr, 10);
-            if (isNaN(yearNum) || isNaN(monthNum)) return false;
-            
-            const rowDate = new Date(Date.UTC(yearNum, monthNum - 1, 1));
-            if (isNaN(rowDate.getTime())) return false;
+    // --- 1. TIME FILTERING (与 TeamDimensionTab FilterSection 逻辑一致) ---
+    let cardStartDate: Date | undefined, cardEndDate: Date | undefined;
 
-            if (period === 'custom') {
-                if (!customStartDate || !customEndDate) return false;
-                const startUTC = new Date(Date.UTC(customStartDate.getFullYear(), customStartDate.getMonth(), 1));
-                const endUTC = new Date(Date.UTC(customEndDate.getFullYear(), customEndDate.getMonth() + 1, 0));
-                return rowDate >= startUTC && rowDate <= endUTC;
-
-            } else if (selectedYear) {
-                const year = parseInt(selectedYear, 10);
-                let startMonth = 0;
-                let endMonth = 11;
-
-                if (period !== 'annually' && selectedPeriodValue !== null) {
-                    const val = parseInt(selectedPeriodValue, 10);
-                    switch (period) {
-                        case 'monthly': startMonth = endMonth = val; break;
-                        case 'quarterly': startMonth = val * 3; endMonth = startMonth + 2; break;
-                        case 'semiannually': startMonth = val * 6; endMonth = startMonth + 5; break;
-                    }
-                }
-                const startDate = new Date(Date.UTC(year, startMonth, 1));
-                const endDate = new Date(Date.UTC(year, endMonth + 1, 0));
-                return rowDate >= startDate && rowDate <= endDate;
-            }
-            return false;
-        } catch {
-            return false;
+    if (period === 'custom') {
+      cardStartDate = customStartDate ? new Date(customStartDate.getFullYear(), customStartDate.getMonth(), 1) : undefined;
+      cardEndDate = customEndDate ? new Date(customEndDate.getFullYear(), customEndDate.getMonth() + 1, 0) : undefined;
+    } else if (selectedYear) {
+      const year = parseInt(selectedYear, 10);
+      if (period === 'annually') {
+        cardStartDate = new Date(year, 0, 1);
+        cardEndDate = new Date(year, 11, 31);
+      } else if (selectedPeriodValue !== null && (period === 'monthly' || period === 'quarterly' || period === 'semiannually')) {
+        const val = parseInt(selectedPeriodValue, 10);
+        switch (period) {
+          case 'monthly':
+            cardStartDate = new Date(year, val, 1);
+            cardEndDate = new Date(year, val + 1, 0);
+            break;
+          case 'quarterly':
+            cardStartDate = new Date(year, val * 3, 1);
+            cardEndDate = new Date(year, val * 3 + 3, 0);
+            break;
+          case 'semiannually':
+            cardStartDate = new Date(year, val * 6, 1);
+            cardEndDate = new Date(year, val * 6 + 6, 0);
+            break;
         }
+      } else if (selectedYear && !selectedPeriodValue && (period === 'quarterly' || period === 'semiannually')) {
+        // 未选择具体期间时，显示整年数据
+        cardStartDate = new Date(year, 0, 1);
+        cardEndDate = new Date(year, 11, 31);
+      }
+    }
+
+    // 默认使用最新月份数据
+    if (!cardStartDate || !cardEndDate) {
+      const latestMonthInData = teamFilteredData.length > 0 ? teamFilteredData.reduce((latest, row) => {
+        const d = parseMonthString(row['Month']);
+        return d && d > latest ? d : latest;
+      }, new Date(0)) : new Date(0);
+
+      if (latestMonthInData.getTime() > 0) {
+        cardStartDate = new Date(latestMonthInData.getFullYear(), latestMonthInData.getMonth(), 1);
+        cardEndDate = new Date(latestMonthInData.getFullYear(), latestMonthInData.getMonth() + 1, 0);
+      } else {
+        const now = new Date();
+        cardStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        cardEndDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      }
+    }
+
+    const timeFilteredData = teamFilteredData.filter(row => {
+      try {
+        if (!row || !row['Month']) return false;
+        const rowDate = parseMonthString(row['Month']);
+        if (!rowDate) return false;
+        return rowDate >= cardStartDate! && rowDate <= cardEndDate!;
+      } catch {
+        return false;
+      }
     });
 
     // --- 2. DATA PROCESSING FOR HEATMAP ---
@@ -897,36 +1495,27 @@ const CorporateFinanceCenterAnalysis = ({ data }: { data: any[] }) => {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center space-x-2 mb-4 flex-wrap">
-        <Button variant={period === 'monthly' ? 'secondary' : 'outline'} onClick={() => setPeriod('monthly')}>月度</Button>
-        <Button variant={period === 'quarterly' ? 'secondary' : 'outline'} onClick={() => setPeriod('quarterly')}>季度</Button>
-        <Button variant={period === 'semiannually' ? 'secondary' : 'outline'} onClick={() => setPeriod('semiannually')}>半年度</Button>
-        <Button variant={period === 'annually' ? 'secondary' : 'outline'} onClick={() => setPeriod('annually')}>年度</Button>
-        <Button variant={period === 'custom' ? 'secondary' : 'outline'} onClick={() => setPeriod('custom')}>自定义</Button>
-        
-        {period !== 'custom' && availableYears.length > 0 && (
-          <Select value={selectedYear || ''} onValueChange={(val) => setSelectedYear(val)}>
-            <SelectTrigger className="w-[120px]"><SelectValue placeholder="选择年份" /></SelectTrigger>
-            <SelectContent>{availableYears.map(year => <SelectItem key={year} value={year}>{year}</SelectItem>)}</SelectContent>
-          </Select>
-        )}
-
-        {period !== 'annually' && period !== 'custom' && selectedYear && periodOptions[period] && (
-            <Select value={selectedPeriodValue || ''} onValueChange={(val) => setSelectedPeriodValue(val)}>
-                <SelectTrigger className="w-[180px]"><SelectValue placeholder={`选择${period === 'monthly' ? '月份' : period === 'quarterly' ? '季度' : '半年度'}`} /></SelectTrigger>
-                <SelectContent>{(periodOptions[period] as any[]).map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-            </Select>
-        )}
-
-        {period === 'custom' && (
-          <div className="flex items-center space-x-2">
-            <MonthPicker value={customStartDate} onChange={setCustomStartDate} />
-            <MonthPicker value={customEndDate} onChange={setCustomEndDate} />
-          </div>
-        )}
+    <div className="space-y-6">
+      {/* 极简日期筛选器 */}
+      <div className="flex items-center justify-between animate-fade-in-up">
+        <MinimalPeriodFilter
+          period={period}
+          setPeriod={handlePeriodChange}
+          selectedYear={selectedYear}
+          setSelectedYear={setSelectedYear}
+          selectedPeriodValue={selectedPeriodValue}
+          setSelectedPeriodValue={setSelectedPeriodValue}
+          customStartDate={customStartDate}
+          setCustomStartDate={setCustomStartDate}
+          customEndDate={customEndDate}
+          setCustomEndDate={setCustomEndDate}
+          availableYears={availableYears}
+          periodOptions={periodOptions}
+        />
       </div>
-      {renderContent()}
+      <div className={isPending ? "opacity-70 transition-opacity duration-150" : ""}>
+        {renderContent()}
+      </div>
     </div>
   );
 };

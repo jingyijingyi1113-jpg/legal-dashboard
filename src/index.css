@@ -21,6 +21,32 @@ code, pre {
   font-family: 'JetBrains Mono', monospace;
 }
 
+/* Fast animation duration for popovers and dropdowns */
+.animate-duration-100 {
+  animation-duration: 100ms !important;
+}
+
+.animate-duration-75 {
+  animation-duration: 75ms !important;
+}
+
+/* Instant touch response for interactive elements */
+.touch-action-manipulation {
+  touch-action: manipulation;
+}
+
+/* Remove tap highlight on mobile */
+button, a, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Ensure buttons are immediately clickable */
+button {
+  cursor: pointer;
+  user-select: none;
+}
+
 /* Premium Card Enhancement */
 .card-premium {
   position: relative;
@@ -262,4 +288,41 @@ input:focus, textarea:focus {
 
 .loading-pulse {
   animation: loadingPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Print Styles - 防止图表被分页截断 */
+@media print {
+  html, body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  .no-print {
+    display: none !important;
+  }
+  
+  /* 防止卡片和图表被分页截断 */
+  .card-premium,
+  [class*="Card"],
+  .recharts-wrapper,
+  .recharts-responsive-container,
+  table,
+  [class*="chart"],
+  [class*="Chart"],
+  .print-section {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  
+  /* 图表容器 */
+  .recharts-wrapper {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  
+  /* 卡片组 */
+  .grid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
 }
