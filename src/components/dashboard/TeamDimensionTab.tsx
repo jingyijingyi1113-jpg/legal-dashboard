@@ -220,13 +220,25 @@ const DetailsDialog = ({ isOpen, onClose, title, data }: { isOpen: boolean, onCl
                        <TableBody className="bg-white" style={{ backgroundColor: '#ffffff' }}>
                            {filteredData.length > 0 ? filteredData.map((row, i) => (
                                <TableRow key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 odd:bg-white even:bg-slate-50 dark:odd:bg-slate-900 dark:even:bg-slate-800">
-                                   {allKeys.map(key => (
-                                       <TableCell key={key} className="whitespace-nowrap px-4 py-2 border-b border-r last:border-r-0 max-w-[400px] truncate text-sm" title={row[key]?.toString()}>
-                                           {key === 'Hours' || key === 'Total Hours' 
-                                                ? (typeof row[key] === 'number' ? row[key].toFixed(2) : row[key]) 
-                                                : row[key]}
-                                       </TableCell>
-                                   ))}
+                                   {allKeys.map(key => {
+                                       let displayValue = row[key];
+                                       // Format Month field - convert Excel serial number to date string
+                                       if (key === 'Month' && displayValue !== null && displayValue !== undefined) {
+                                           const parsed = parseMonthString(displayValue);
+                                           if (parsed) {
+                                               displayValue = normalizeMonthString(displayValue);
+                                           }
+                                       }
+                                       // Format Hours fields
+                                       if ((key === 'Hours' || key === 'Total Hours') && typeof displayValue === 'number') {
+                                           displayValue = displayValue.toFixed(2);
+                                       }
+                                       return (
+                                           <TableCell key={key} className="whitespace-nowrap px-4 py-2 border-b border-r last:border-r-0 max-w-[400px] truncate text-sm" title={displayValue?.toString()}>
+                                               {displayValue}
+                                           </TableCell>
+                                       );
+                                   })}
                                </TableRow>
                            )) : <TableRow><TableCell colSpan={allKeys.length} className="text-center py-4">No data found</TableCell></TableRow>}
                        </TableBody>
@@ -409,6 +421,17 @@ const DealCategoryPieChartSection = ({ filteredData, totalHours }: { filteredDat
     const [dialogData, setDialogData] = useState<any[]>([]);
     const [dialogTitle, setDialogTitle] = useState('');
 
+    // Fixed order for Deal/Matter Categories
+    const DEAL_CATEGORY_ORDER = [
+        'Investment Related - M&A Deal',
+        'Investment Related - Corporate Matter',
+        'Investment Related - IPO',
+        'Non-Investment Related - Other Departments',
+        'Public - Infrastructure & Guidance',
+        'Public - Knowledge Accumulation & Sharing',
+        'Public - Others',
+    ];
+
     const dealCategoryAllocation = useMemo(() => {
         const dealCategoryHours: { [key: string]: { hours: number; name: string } } = {};
         filteredData.forEach(row => {
@@ -426,7 +449,18 @@ const DealCategoryPieChartSection = ({ filteredData, totalHours }: { filteredDat
             name,
             value: hours,
             percentage: totalHours > 0 ? (hours / totalHours) * 100 : 0
-        })).sort((a, b) => b.value - a.value);
+        })).sort((a, b) => {
+            // Sort by fixed order
+            const indexA = DEAL_CATEGORY_ORDER.findIndex(cat => fieldsMatch(cat, a.name));
+            const indexB = DEAL_CATEGORY_ORDER.findIndex(cat => fieldsMatch(cat, b.name));
+            // If both are in the order list, sort by order
+            if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+            // If only one is in the list, it comes first
+            if (indexA !== -1) return -1;
+            if (indexB !== -1) return 1;
+            // Otherwise sort by value descending
+            return b.value - a.value;
+        });
     }, [filteredData, totalHours]);
 
     const handlePieClick = (entry: any) => {
@@ -459,26 +493,27 @@ const DealCategoryPieChartSection = ({ filteredData, totalHours }: { filteredDat
         return <div className="h-full flex items-center justify-center text-muted-foreground"><p>当期无数据</p></div>;
     }
 
-    // Premium color palette for deal categories
+    // Premium color palette for deal categories - matched to DEAL_CATEGORY_ORDER
+    // M&A=Red, Corporate Matter=Blue, IPO=Green, then other categories
     const DEAL_COLORS = [
-        '#0ea5e9', // Sky
-        '#10b981', // Emerald
-        '#f59e0b', // Amber
-        '#ef4444', // Red
-        '#06b6d4', // Cyan
-        '#ec4899', // Pink
-        '#84cc16', // Lime
+        '#C44E52', // Red - M&A Deal
+        '#4C72B0', // Blue - Corporate Matter
+        '#55A868', // Green - IPO
+        '#84cc16', // Lime - Non-Investment Related
+        '#06b6d4', // Cyan - Public Infrastructure
+        '#f59e0b', // Amber - Public Knowledge
+        '#ec4899', // Pink - Public Others
     ];
 
     return (
         <div className="relative">
-            <div className="text-xs text-slate-500 mb-4 flex items-center gap-1.5">
+            <div className="text-xs text-slate-500 mb-2 flex items-center gap-1.5">
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Click on slices or legend to view details
             </div>
-            <div className="flex flex-col lg:flex-row items-center gap-6">
+            <div className="flex flex-col lg:flex-row items-center gap-4">
                 <div className="w-full lg:w-1/2">
-                    <ResponsiveContainer width="100%" height={280}>
+                    <ResponsiveContainer width="100%" height={220}>
                         <PieChart>
                             <defs>
                                 {DEAL_COLORS.map((color, index) => (
@@ -496,8 +531,8 @@ const DealCategoryPieChartSection = ({ filteredData, totalHours }: { filteredDat
                                 cx="50%"
                                 cy="50%"
                                 labelLine={false}
-                                innerRadius={50}
-                                outerRadius={100}
+                                innerRadius={40}
+                                outerRadius={80}
                                 paddingAngle={3}
                                 dataKey="value"
                                 onClick={handlePieClick}
@@ -519,7 +554,7 @@ const DealCategoryPieChartSection = ({ filteredData, totalHours }: { filteredDat
                             <Tooltip 
                                 formatter={(value: number, _name: any, entry: any) => [
                                     `${value.toFixed(1)}h (${(entry.payload as any).percentage.toFixed(1)}%)`, 
-                                    ''
+                                    (entry.payload as any).name
                                 ]}
                                 contentStyle={{
                                     backgroundColor: 'rgba(255,255,255,0.98)',
@@ -534,24 +569,24 @@ const DealCategoryPieChartSection = ({ filteredData, totalHours }: { filteredDat
                     </ResponsiveContainer>
                 </div>
                 {/* Custom Legend with stats */}
-                <div className="w-full lg:w-1/2 space-y-2">
+                <div className="w-full lg:w-1/2 space-y-1">
                     {dealCategoryAllocation.map((entry, index) => (
                         <div 
                             key={entry.name}
-                            className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-all group border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
+                            className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-all group border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
                             onClick={() => handleLegendClick({ value: entry.name })}
                         >
                             <div 
-                                className="w-4 h-4 rounded-md flex-shrink-0 group-hover:scale-110 transition-transform shadow-sm"
+                                className="w-3 h-3 rounded-md flex-shrink-0 group-hover:scale-110 transition-transform shadow-sm"
                                 style={{ backgroundColor: DEAL_COLORS[index % DEAL_COLORS.length] }}
                             />
                             <div className="flex-1 min-w-0">
-                                <div className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">
+                                <div className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
                                     {entry.name}
                                 </div>
                             </div>
                             <div className="text-right flex-shrink-0">
-                                <div className="text-sm font-bold" style={{ color: DEAL_COLORS[index % DEAL_COLORS.length] }}>
+                                <div className="text-xs font-bold" style={{ color: DEAL_COLORS[index % DEAL_COLORS.length] }}>
                                     {entry.value.toFixed(0)}h
                                 </div>
                                 <div className="text-[10px] text-slate-500">
@@ -671,6 +706,26 @@ const UtilizationTrendChart = ({ data, teamData }: { data: any[], teamData: any[
     };
 
     // Custom tooltip with premium styling - filter out Area duplicates
+    // Sort order: M&A Deal -> Corporate Matter -> IPO (matching line order from top to bottom)
+    const TOOLTIP_ORDER = ['M&A Deal', 'Corporate Matter', 'IPO'];
+    
+    // Get the last month in data for comparison
+    const lastMonth = data.length > 0 ? data[data.length - 1]?.month : null;
+
+    // Handle tooltip item click
+    const handleTooltipItemClick = (categoryName: string, monthStr: string) => {
+        const fullCategoryName = Object.keys(LINE_COLORS).find(key => key.includes(categoryName)) || categoryName;
+        const details = teamData.filter(row => {
+            if (!row || !row['Month'] || !row['Deal/Matter Category']) return false;
+            const rowMonth = normalizeMonthString(row['Month']);
+            const rowCategory = row['Deal/Matter Category']?.toString();
+            return rowMonth === monthStr && fieldsMatch(rowCategory, fullCategoryName);
+        });
+        setDialogTitle(`${fullCategoryName} - ${monthStr}`);
+        setDialogData(details);
+        setIsDialogOpen(true);
+    };
+    
     const PremiumTooltip = ({ active, payload, label }: any) => {
         if (!active || !payload || !payload.length) return null;
         
@@ -681,26 +736,58 @@ const UtilizationTrendChart = ({ data, teamData }: { data: any[], teamData: any[
         
         if (!filteredPayload.length) return null;
         
+        // Sort by fixed order
+        const sortedPayload = [...filteredPayload].sort((a: any, b: any) => {
+            const indexA = TOOLTIP_ORDER.indexOf(a.name);
+            const indexB = TOOLTIP_ORDER.indexOf(b.name);
+            return indexA - indexB;
+        });
+
+        // Calculate total for percentage
+        const total = sortedPayload.reduce((sum: number, entry: any) => sum + (Number(entry.value) || 0), 0);
+
+        // Check if this is the last data point
+        const isLastPoint = label === lastMonth;
+        
         return (
-            <div className="bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-xl p-4 min-w-[180px]">
+            <div 
+                className="bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-xl p-4 min-w-[220px]"
+                style={{ ...(isLastPoint ? { transform: 'translateX(-110%)' } : {}), pointerEvents: 'auto' }}
+            >
                 <div className="text-sm font-semibold text-slate-800 mb-3 pb-2 border-b border-slate-100">
                     {label}
                 </div>
                 <div className="space-y-2">
-                    {filteredPayload.map((entry: any, index: number) => (
-                        <div key={index} className="flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-2">
-                                <div 
-                                    className="w-3 h-3 rounded-full shadow-sm"
-                                    style={{ backgroundColor: entry.color }}
-                                />
-                                <span className="text-xs text-slate-600">{entry.name}</span>
+                    {sortedPayload.map((entry: any, index: number) => {
+                        const percentage = total > 0 ? ((Number(entry.value) || 0) / total) * 100 : 0;
+                        return (
+                            <div 
+                                key={index} 
+                                className="flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-50 rounded px-1 py-0.5 transition-colors"
+                                onClick={() => handleTooltipItemClick(entry.name, label)}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <div 
+                                        className="w-3 h-3 rounded-full shadow-sm"
+                                        style={{ backgroundColor: entry.color }}
+                                    />
+                                    <span className="text-xs text-slate-600">{entry.name}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <span className="text-xs font-semibold text-slate-800">
+                                        {Number(entry.value).toFixed(1)}h
+                                    </span>
+                                    <span className="text-xs text-slate-400">
+                                        ({percentage.toFixed(0)}%)
+                                    </span>
+                                </div>
                             </div>
-                            <span className="text-xs font-semibold text-slate-800">
-                                {Number(entry.value).toFixed(1)}h
-                            </span>
-                        </div>
-                    ))}
+                        );
+                    })}
+                </div>
+                <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-600">Total</span>
+                    <span className="text-xs font-bold text-slate-800">{total.toFixed(1)}h</span>
                 </div>
             </div>
         );
@@ -1453,8 +1540,29 @@ const VirtualGroupHoursChart = ({ filteredData }: { filteredData: any[] }) => {
     const [dialogData, setDialogData] = useState<any[]>([]);
     const [dialogTitle, setDialogTitle] = useState('');
 
-    // Premium color palette - high contrast colors
-    const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#84cc16', '#f97316'];
+    // Fixed order for Deal/Matter Categories
+    const CATEGORY_ORDER = [
+        'Investment Related - M&A Deal',
+        'Investment Related - Corporate Matter',
+        'Investment Related - IPO',
+        'Non-Investment Related - Other Departments',
+        'Public - Infrastructure & Guidance',
+        'Public - Knowledge Accumulation & Sharing',
+        'Public - Others',
+    ];
+
+    // Premium color palette - matched to CATEGORY_ORDER
+    // M&A=Red, Corporate Matter=Blue, IPO=Green, then other categories
+    const CHART_COLORS = [
+        '#C44E52', // Red - M&A Deal
+        '#4C72B0', // Blue - Corporate Matter
+        '#55A868', // Green - IPO
+        '#84cc16', // Lime - Non-Investment Related
+        '#06b6d4', // Cyan - Public Infrastructure
+        '#f59e0b', // Amber - Public Knowledge
+        '#ec4899', // Pink - Public Others
+        '#f97316'  // Orange - fallback
+    ];
 
     const virtualGroupData: { [key: string]: { [key: string]: number } } = {};
     const virtualGroupCategories = new Set<string>();
@@ -1485,7 +1593,16 @@ const VirtualGroupHoursChart = ({ filteredData }: { filteredData: any[] }) => {
          });
          return entry;
     }).sort((a, b) => b.totalHours - a.totalHours);
-    const virtualGroupCategoryList = Array.from(virtualGroupCategories);
+    
+    // Sort categories by fixed order
+    const virtualGroupCategoryList = Array.from(virtualGroupCategories).sort((a, b) => {
+        const indexA = CATEGORY_ORDER.findIndex(cat => fieldsMatch(cat, a));
+        const indexB = CATEGORY_ORDER.findIndex(cat => fieldsMatch(cat, b));
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+        return a.localeCompare(b);
+    });
 
     const handleBarClick = (data: any, dataKey: string) => {
         if (!data || !data.name) return;
@@ -1526,36 +1643,65 @@ const VirtualGroupHoursChart = ({ filteredData }: { filteredData: any[] }) => {
         setIsDialogOpen(true);
     };
 
-    // Premium tooltip
+    // Premium tooltip with hover to show full name
     const PremiumBarTooltip = ({ active, payload, label }: any) => {
         if (!active || !payload || !payload.length) return null;
+        
+        // Sort payload by fixed category order
+        const sortedPayload = [...payload].sort((a: any, b: any) => {
+            const indexA = CATEGORY_ORDER.findIndex(cat => fieldsMatch(cat, a.dataKey));
+            const indexB = CATEGORY_ORDER.findIndex(cat => fieldsMatch(cat, b.dataKey));
+            if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+            if (indexA !== -1) return -1;
+            if (indexB !== -1) return 1;
+            return 0;
+        });
         
         const total = payload.reduce((sum: number, entry: any) => sum + (entry.value || 0), 0);
         
         return (
-            <div className="bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-xl p-4 min-w-[220px]">
-                <div className="text-sm font-semibold text-slate-800 mb-3 pb-2 border-b border-slate-100 truncate max-w-[200px]">
+            <div 
+                className="bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-xl p-4 min-w-[320px]"
+                style={{ pointerEvents: 'auto' }}
+            >
+                <div className="text-sm font-semibold text-slate-800 mb-3 pb-2 border-b border-slate-100">
                     {label}
                 </div>
-                <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                    {payload.map((entry: any, index: number) => (
-                        <div 
-                            key={index} 
-                            className="flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 rounded px-1 py-0.5 transition-colors"
-                            onClick={() => handleTooltipItemClick(entry.dataKey, label)}
-                        >
-                            <div className="flex items-center gap-2">
-                                <div 
-                                    className="w-3 h-3 rounded-sm shadow-sm"
-                                    style={{ backgroundColor: entry.color }}
-                                />
-                                <span className="text-xs text-slate-600 truncate max-w-[100px]">{entry.name}</span>
+                <div 
+                    className="space-y-2 overflow-y-auto pr-1"
+                    style={{ maxHeight: '200px', pointerEvents: 'auto' }}
+                >
+                    {sortedPayload.map((entry: any, index: number) => {
+                        // Get color from the category index in sorted list
+                        const categoryIndex = virtualGroupCategoryList.indexOf(entry.dataKey);
+                        const color = CHART_COLORS[categoryIndex % CHART_COLORS.length];
+                        return (
+                            <div 
+                                key={index} 
+                                className="group flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-100 rounded px-2 py-1.5 transition-colors relative"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleTooltipItemClick(entry.dataKey, label);
+                                }}
+                            >
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    <div 
+                                        className="w-3 h-3 rounded-sm shadow-sm flex-shrink-0"
+                                        style={{ backgroundColor: color }}
+                                    />
+                                    <span className="text-xs text-slate-600 truncate group-hover:whitespace-normal group-hover:break-words">{entry.dataKey}</span>
+                                </div>
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                    <span className="text-xs font-semibold text-slate-800">
+                                        {Number(entry.value).toFixed(1)}h
+                                    </span>
+                                    <span className="text-xs text-slate-400">
+                                        ({total > 0 ? ((Number(entry.value) / total) * 100).toFixed(0) : 0}%)
+                                    </span>
+                                </div>
                             </div>
-                            <span className="text-xs font-semibold text-slate-800">
-                                {Number(entry.value).toFixed(1)}h
-                            </span>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
                 <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between">
                     <span className="text-xs font-medium text-slate-500">Total</span>
@@ -1589,8 +1735,8 @@ const VirtualGroupHoursChart = ({ filteredData }: { filteredData: any[] }) => {
                 ))}
             </div>
             
-            <ResponsiveContainer width="100%" height={450}>
-                <BarChart layout="vertical" data={virtualGroupChartData} margin={{ top: 10, right: 30, left: 20, bottom: 10 }}>
+            <ResponsiveContainer width="100%" height={320}>
+                <BarChart layout="vertical" data={virtualGroupChartData} margin={{ top: 10, right: 30, left: 20, bottom: 10 }} barSize={22}>
                     <defs>
                         {CHART_COLORS.map((color, index) => (
                             <linearGradient key={`barGrad${index}`} id={`barGradient${index}`} x1="0" y1="0" x2="1" y2="0">
@@ -1602,7 +1748,7 @@ const VirtualGroupHoursChart = ({ filteredData }: { filteredData: any[] }) => {
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.6} horizontal={true} vertical={false} />
                     <XAxis type="number" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
                     <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11, fill: '#475569' }} axisLine={false} tickLine={false} />
-                    <Tooltip content={<PremiumBarTooltip />} cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }} />
+                    <Tooltip content={<PremiumBarTooltip />} cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }} wrapperStyle={{ pointerEvents: 'auto' }} />
                     {virtualGroupCategoryList.map((category, index) => (
                         <Bar 
                             key={category} 
@@ -1679,30 +1825,67 @@ const AverageMonthlyHourPerPersonChart = ({ teamData }: { teamData: any[] }) => 
         setIsDialogOpen(true);
     };
 
+    // Handle tooltip item click
+    const handleTooltipItemClick = (sourcePath: string, monthStr: string) => {
+        const details = teamData.filter(row => {
+            if (!row || !row['Month'] || !row['Source Path']) return false;
+            const rowMonth = normalizeMonthString(row['Month']);
+            if (!rowMonth) return false;
+            const rawSourcePath = row['Source Path'].toString();
+            const rowSourcePath = rawSourcePath ? rawSourcePath.trim().replace('工时统计-', '').replace(/\\s+/g, ' ') : '';
+            return rowMonth === monthStr && rowSourcePath === sourcePath;
+        });
+        setDialogTitle(`${sourcePath} - ${monthStr}`);
+        setDialogData(details);
+        setIsDialogOpen(true);
+    };
+
     // Premium tooltip
     const PremiumAvgTooltip = ({ active, payload, label }: any) => {
         if (!active || !payload || !payload.length) return null;
         
+        // Calculate total for percentage
+        const total = payload.reduce((sum: number, entry: any) => sum + (Number(entry.value) || 0), 0);
+        
         return (
-            <div className="bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-xl p-4 min-w-[200px]">
+            <div className="bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-xl p-4 min-w-[220px]" style={{ pointerEvents: 'auto' }}>
                 <div className="text-sm font-semibold text-slate-800 mb-3 pb-2 border-b border-slate-100">
                     {label}
                 </div>
                 <div className="space-y-2">
-                    {payload.map((entry: any, index: number) => (
-                        <div key={index} className="flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-2">
-                                <div 
-                                    className="w-3 h-3 rounded-sm shadow-sm"
-                                    style={{ backgroundColor: entry.color }}
-                                />
-                                <span className="text-xs text-slate-600 truncate max-w-[100px]">{entry.name}</span>
+                    {payload.map((entry: any, index: number) => {
+                        // Get color from sourcePathList index
+                        const sourceIndex = sourcePathList.indexOf(entry.dataKey);
+                        const color = GROUP_COLORS[sourceIndex >= 0 ? sourceIndex % GROUP_COLORS.length : index % GROUP_COLORS.length];
+                        const percentage = total > 0 ? ((Number(entry.value) || 0) / total) * 100 : 0;
+                        return (
+                            <div 
+                                key={index} 
+                                className="flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-50 rounded px-1 py-0.5 transition-colors"
+                                onClick={() => handleTooltipItemClick(entry.dataKey, label)}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <div 
+                                        className="w-3 h-3 rounded-sm shadow-sm flex-shrink-0"
+                                        style={{ backgroundColor: color }}
+                                    />
+                                    <span className="text-xs text-slate-600 truncate max-w-[100px]">{entry.name}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <span className="text-xs font-semibold text-slate-800">
+                                        {Number(entry.value).toFixed(2)}h
+                                    </span>
+                                    <span className="text-xs text-slate-400">
+                                        ({percentage.toFixed(0)}%)
+                                    </span>
+                                </div>
                             </div>
-                            <span className="text-xs font-semibold text-slate-800">
-                                {Number(entry.value).toFixed(2)}h
-                            </span>
-                        </div>
-                    ))}
+                        );
+                    })}
+                </div>
+                <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-600">Total</span>
+                    <span className="text-xs font-bold text-slate-800">{total.toFixed(2)}h</span>
                 </div>
             </div>
         );
@@ -1808,13 +1991,13 @@ const ClickableHoursCell = ({
         <>
             <div 
                 onClick={handleClick}
-                className="flex flex-col items-end cursor-pointer hover:scale-105 transition-transform"
+                className={`flex flex-col items-end cursor-pointer hover:scale-105 transition-transform ${isGroup ? 'gap-0' : ''}`}
             >
-                <span className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 tabular-nums underline decoration-dotted underline-offset-2">
+                <span className={`font-semibold text-indigo-600 hover:text-indigo-800 tabular-nums underline decoration-dotted underline-offset-2 ${isGroup ? 'text-xs leading-tight' : 'text-sm'}`}>
                     {hours.toFixed(1)}h
                 </span>
                 {percentage !== undefined && (
-                    <span className="text-[10px] text-slate-400">
+                    <span className={`text-slate-400 ${isGroup ? 'text-[9px] leading-tight' : 'text-[10px]'}`}>
                         {percentage.toFixed(1)}%
                     </span>
                 )}
@@ -2478,24 +2661,14 @@ const FilterSection = ({
     );
 };
 
-// Investment Work Category Comparison Component - shows Work Category distribution by Deal/Matter Category
-const InvestmentWorkCategoryComparison = ({ teamData }: { teamData: any[] }) => {
+// Investment Work Category Section - wrapper with shared time filter
+const InvestmentWorkCategorySection = ({ teamData }: { teamData: any[] }) => {
     const [period, setPeriod] = useState<Period>('monthly');
     const [selectedYear, setSelectedYear] = useState<string | null>(null);
     const [selectedPeriodValue, setSelectedPeriodValue] = useState<string | null>(null);
     const [customStartDate, setCustomStartDate] = useState<Date | undefined>(undefined);
     const [customEndDate, setCustomEndDate] = useState<Date | undefined>(undefined);
-    const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [dialogData, setDialogData] = useState<any[]>([]);
-    const [dialogTitle, setDialogTitle] = useState('');
-
-    // Investment-related categories to filter
-    const investmentCategories = [
-        'Investment Related - M&A Deal',
-        'Investment Related - IPO',
-        'Investment Related - Corporate Matter'
-    ];
-
+    
     const availableYears = useMemo(() => {
         const validData = teamData.filter(row => row && row._parsedDate);
         if (!validData || validData.length === 0) return [];
@@ -2524,6 +2697,66 @@ const InvestmentWorkCategoryComparison = ({ teamData }: { teamData: any[] }) => 
             setSelectedPeriodValue(null);
         }
     }, [period]);
+
+    return (
+        <div className="space-y-4">
+            {/* Time filter above both charts */}
+            <div>
+                <PeriodFilter 
+                    period={period} setPeriod={setPeriod}
+                    selectedYear={selectedYear} setSelectedYear={setSelectedYear}
+                    selectedPeriodValue={selectedPeriodValue} setSelectedPeriodValue={setSelectedPeriodValue}
+                    customStartDate={customStartDate} setCustomStartDate={setCustomStartDate}
+                    customEndDate={customEndDate} setCustomEndDate={setCustomEndDate}
+                    availableYears={availableYears}
+                    periodOptions={PERIOD_OPTIONS}
+                />
+            </div>
+            
+            {/* Two-column layout for comparison and trend */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <InvestmentWorkCategoryComparison 
+                    teamData={teamData} 
+                    period={period}
+                    selectedYear={selectedYear}
+                    selectedPeriodValue={selectedPeriodValue}
+                    customStartDate={customStartDate}
+                    customEndDate={customEndDate}
+                />
+                <DraftingReviewingMonthlyTrend teamData={teamData} />
+            </div>
+        </div>
+    );
+};
+
+// Investment Work Category Comparison Component - shows Work Category distribution by Deal/Matter Category
+interface InvestmentWorkCategoryComparisonProps {
+    teamData: any[];
+    period: Period;
+    selectedYear: string | null;
+    selectedPeriodValue: string | null;
+    customStartDate: Date | undefined;
+    customEndDate: Date | undefined;
+}
+
+const InvestmentWorkCategoryComparison = ({ 
+    teamData, 
+    period, 
+    selectedYear, 
+    selectedPeriodValue, 
+    customStartDate, 
+    customEndDate 
+}: InvestmentWorkCategoryComparisonProps) => {
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [dialogData, setDialogData] = useState<any[]>([]);
+    const [dialogTitle, setDialogTitle] = useState('');
+
+    // Investment-related categories to filter
+    const investmentCategories = [
+        'Investment Related - M&A Deal',
+        'Investment Related - IPO',
+        'Investment Related - Corporate Matter'
+    ];
 
     // Filter data based on period selection
     const filteredData = useMemo(() => {
@@ -2582,7 +2815,7 @@ const InvestmentWorkCategoryComparison = ({ teamData }: { teamData: any[] }) => 
         });
     }, [teamData, period, selectedYear, selectedPeriodValue, customStartDate, customEndDate]);
 
-    // Process chart data - group by Deal/Matter Category (X-axis) and Work Category (bars)
+    // Process chart data - group by Work Category (X-axis) and Deal/Matter Category (stacked bars)
     const chartData = useMemo(() => {
         // First filter to only investment-related categories
         const investmentData = filteredData.filter(row => {
@@ -2590,9 +2823,8 @@ const InvestmentWorkCategoryComparison = ({ teamData }: { teamData: any[] }) => 
             return investmentCategories.some(invCat => fieldsMatch(invCat, category));
         });
 
-        // Group by Deal/Matter Category
-        const categoryGroups: { [key: string]: { [workCat: string]: number } } = {};
-        const allWorkCategories = new Set<string>();
+        // Group by Work Category, then by Deal/Matter Category
+        const workCategoryGroups: { [workCat: string]: { [dealCat: string]: number } } = {};
         const workCategoryMap: { [key: string]: string } = {}; // normalized key -> display name
 
         investmentData.forEach(row => {
@@ -2611,79 +2843,84 @@ const InvestmentWorkCategoryComparison = ({ teamData }: { teamData: any[] }) => 
                 workCategoryMap[workCatKey] = rawWorkCategory.trim().replace(/\s+/g, ' ');
             }
             const workCategory = workCategoryMap[workCatKey];
-            allWorkCategories.add(workCategory);
 
-            if (!categoryGroups[matchedDealCategory]) {
-                categoryGroups[matchedDealCategory] = {};
+            if (!workCategoryGroups[workCategory]) {
+                workCategoryGroups[workCategory] = {};
             }
-            categoryGroups[matchedDealCategory][workCategory] = (categoryGroups[matchedDealCategory][workCategory] || 0) + hours;
+            workCategoryGroups[workCategory][matchedDealCategory] = (workCategoryGroups[workCategory][matchedDealCategory] || 0) + hours;
         });
 
-        // Convert to chart format
-        const data = investmentCategories.map(dealCategory => {
+        // Calculate totals for each work category to sort
+        const workCatTotals: { [key: string]: number } = {};
+        Object.entries(workCategoryGroups).forEach(([workCat, dealCats]) => {
+            workCatTotals[workCat] = Object.values(dealCats).reduce((sum, hours) => sum + hours, 0);
+        });
+
+        // Sort work categories by total hours (descending)
+        const sortedWorkCategories = Object.keys(workCategoryGroups).sort((a, b) => workCatTotals[b] - workCatTotals[a]);
+
+        // Convert to chart format - each entry is a Work Category with Deal/Matter Category values
+        const data = sortedWorkCategories.map(workCategory => {
             const entry: any = { 
-                category: dealCategory.replace('Investment Related - ', ''), // Shorter label
-                fullCategory: dealCategory
+                category: workCategory,
+                fullCategory: workCategory
             };
-            allWorkCategories.forEach(workCat => {
-                entry[workCat] = categoryGroups[dealCategory]?.[workCat] || 0;
+            investmentCategories.forEach(dealCat => {
+                const shortLabel = dealCat.replace('Investment Related - ', '');
+                entry[shortLabel] = workCategoryGroups[workCategory]?.[dealCat] || 0;
             });
             return entry;
         });
 
-        // Sort work categories by total hours
-        const workCatTotals: { [key: string]: number } = {};
-        Array.from(allWorkCategories).forEach(wc => {
-            workCatTotals[wc] = data.reduce((sum, d) => sum + (d[wc] || 0), 0);
-        });
-        const sortedWorkCategories = Array.from(allWorkCategories).sort((a, b) => workCatTotals[b] - workCatTotals[a]);
+        // Deal/Matter categories for legend (short labels)
+        const dealCategoryLabels = investmentCategories.map(dc => dc.replace('Investment Related - ', ''));
 
-        return { data, workCategories: sortedWorkCategories };
+        return { data, dealCategories: dealCategoryLabels, fullDealCategories: investmentCategories };
     }, [filteredData]);
 
-    const handleBarClick = (barData: any, workCategory: string) => {
+    // Colors for Deal/Matter Categories (3 colors)
+    const DEAL_CATEGORY_COLORS = ['#C44E52', '#55A868', '#4C72B0']; // Red (M&A), Green (IPO), Blue (Corporate Matter)
+
+    const handleBarClick = (barData: any, dealCategoryLabel: string) => {
         if (!barData || !barData.fullCategory) return;
-        const dealCategory = barData.fullCategory;
+        const workCategory = barData.fullCategory;
+        const fullDealCategory = investmentCategories.find(dc => dc.includes(dealCategoryLabel)) || dealCategoryLabel;
         
         const details = filteredData.filter(row => {
             const rowDealCat = row['Deal/Matter Category']?.toString();
             const rowWorkCat = row['Work Category']?.toString();
-            return fieldsMatch(rowDealCat, dealCategory) && fieldsMatch(rowWorkCat, workCategory);
+            return fieldsMatch(rowDealCat, fullDealCategory) && fieldsMatch(rowWorkCat, workCategory);
         });
         
-        setDialogTitle(`${dealCategory} - ${workCategory}`);
+        setDialogTitle(`${workCategory} - ${fullDealCategory}`);
         setDialogData(details);
         setIsDialogOpen(true);
     };
 
     const handleLegendClick = (e: any) => {
         if (!e || !e.dataKey) return;
-        const workCategory = e.dataKey;
+        const dealCategoryLabel = e.dataKey;
+        const fullDealCategory = investmentCategories.find(dc => dc.includes(dealCategoryLabel)) || dealCategoryLabel;
         
         const details = filteredData.filter(row => {
             const rowDealCat = row['Deal/Matter Category']?.toString();
-            const rowWorkCat = row['Work Category']?.toString();
-            const isInvestmentCategory = investmentCategories.some(invCat => fieldsMatch(invCat, rowDealCat));
-            return isInvestmentCategory && fieldsMatch(rowWorkCat, workCategory);
+            return fieldsMatch(rowDealCat, fullDealCategory);
         });
         
-        setDialogTitle(`All records for ${workCategory}`);
+        setDialogTitle(`All records for ${fullDealCategory}`);
         setDialogData(details);
         setIsDialogOpen(true);
     };
 
-    // Premium color palette - high contrast colors
-    const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#a855f7', '#14b8a6', '#e11d48', '#22c55e', '#eab308', '#3b82f6', '#d946ef'];
-
     // Handle tooltip item click
-    const handleTooltipItemClick = (workCategory: string, dealCategory: string) => {
-        const fullDealCategory = chartData.data.find(d => d.category === dealCategory)?.fullCategory || dealCategory;
+    const handleTooltipItemClick = (dealCategoryLabel: string, workCategory: string) => {
+        const fullDealCategory = investmentCategories.find(dc => dc.includes(dealCategoryLabel)) || dealCategoryLabel;
         const details = filteredData.filter(row => {
             const rowDealCat = row['Deal/Matter Category']?.toString();
             const rowWorkCat = row['Work Category']?.toString();
             return fieldsMatch(rowDealCat, fullDealCategory) && fieldsMatch(rowWorkCat, workCategory);
         });
-        setDialogTitle(`${fullDealCategory} - ${workCategory}`);
+        setDialogTitle(`${workCategory} - ${fullDealCategory}`);
         setDialogData(details);
         setIsDialogOpen(true);
     };
@@ -2692,7 +2929,7 @@ const InvestmentWorkCategoryComparison = ({ teamData }: { teamData: any[] }) => 
     const PremiumComparisonTooltip = ({ active, payload, label }: any) => {
         if (!active || !payload || !payload.length) return null;
         
-        // Filter entries with value > 0 (don't filter by color since we use gradients)
+        // Filter entries with value > 0
         const filteredPayload = payload.filter((entry: any) => entry.value > 0);
         
         if (filteredPayload.length === 0) return null;
@@ -2708,16 +2945,16 @@ const InvestmentWorkCategoryComparison = ({ teamData }: { teamData: any[] }) => 
                 style={{ pointerEvents: 'auto' }}
             >
                 <div className="text-sm font-semibold text-slate-800 mb-3 pb-2 border-b border-slate-100">
-                    Deal/Matter: {label}
+                    Work Category: {label}
                 </div>
                 <div 
                     className="space-y-2 overflow-y-auto pr-1"
                     style={{ maxHeight: '250px', pointerEvents: 'auto' }}
                 >
                     {sortedPayload.map((entry: any, index: number) => {
-                        // 找到该 workCategory 在 workCategories 中的索引以获取正确颜色
-                        const categoryIndex = chartData.workCategories.findIndex((cat: string) => cat === entry.name);
-                        const color = categoryIndex >= 0 ? CHART_COLORS[categoryIndex % CHART_COLORS.length] : '#6366f1';
+                        // 找到该 dealCategory 在 dealCategories 中的索引以获取正确颜色
+                        const categoryIndex = chartData.dealCategories.findIndex((cat: string) => cat === entry.name);
+                        const color = categoryIndex >= 0 ? DEAL_CATEGORY_COLORS[categoryIndex % DEAL_CATEGORY_COLORS.length] : '#6366f1';
                         return (
                             <div 
                                 key={index} 
@@ -2754,51 +2991,38 @@ const InvestmentWorkCategoryComparison = ({ teamData }: { teamData: any[] }) => 
     return (
         <Card className="border-slate-200/60 shadow-sm hover:shadow-md transition-all duration-200">
             <CardHeader className="pb-4">
-                <div className="flex flex-col space-y-4 xl:flex-row xl:items-center xl:justify-between xl:space-y-0">
-                    <CardTitle className="text-sm font-medium">Comparison of Work Category by Deal/Matter Category</CardTitle>
-                    <div className="origin-left xl:origin-right">
-                        <PeriodFilter 
-                            period={period} setPeriod={setPeriod}
-                            selectedYear={selectedYear} setSelectedYear={setSelectedYear}
-                            selectedPeriodValue={selectedPeriodValue} setSelectedPeriodValue={setSelectedPeriodValue}
-                            customStartDate={customStartDate} setCustomStartDate={setCustomStartDate}
-                            customEndDate={customEndDate} setCustomEndDate={setCustomEndDate}
-                            availableYears={availableYears}
-                            periodOptions={PERIOD_OPTIONS}
-                        />
-                    </div>
-                </div>
+                <CardTitle className="text-sm font-medium">Comparison of Work Category by Deal/Matter Category</CardTitle>
             </CardHeader>
             <CardContent>
-                {chartData.data.length > 0 && chartData.workCategories.length > 0 ? (
+                {chartData.data.length > 0 && chartData.dealCategories.length > 0 ? (
                     <div className="relative">
                         <div className="text-xs text-slate-400 mb-3 flex items-center gap-1.5">
                             <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
                             Click on legend labels or bars to view detailed data
                         </div>
                         
-                        {/* Custom Legend */}
-                        <div className="flex flex-wrap items-center justify-center gap-2 mb-4">
-                            {chartData.workCategories.map((workCat, index) => (
+                        {/* Custom Legend - Deal/Matter Categories */}
+                        <div className="flex flex-wrap items-center justify-center gap-3 mb-4">
+                            {chartData.dealCategories.map((dealCat, index) => (
                                 <div 
-                                    key={workCat} 
+                                    key={dealCat} 
                                     className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-slate-100 cursor-pointer transition-colors"
-                                    onClick={() => handleLegendClick({ dataKey: workCat })}
+                                    onClick={() => handleLegendClick({ dataKey: dealCat })}
                                 >
                                     <div 
                                         className="w-3 h-3 rounded-sm"
-                                        style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}
+                                        style={{ backgroundColor: DEAL_CATEGORY_COLORS[index % DEAL_CATEGORY_COLORS.length] }}
                                     />
-                                    <span className="text-xs text-slate-600 hover:text-slate-800">{workCat}</span>
+                                    <span className="text-xs text-slate-600 hover:text-slate-800">{dealCat}</span>
                                 </div>
                             ))}
                         </div>
                         
-                        <ResponsiveContainer width="100%" height={500}>
-                            <BarChart data={chartData.data} margin={{ top: 20, right: 30, left: 20, bottom: 60 }} barSize={12}>
+                        <ResponsiveContainer width="100%" height={380}>
+                            <BarChart data={chartData.data} margin={{ top: 20, right: 30, left: 40, bottom: 100 }} barSize={40}>
                                 <defs>
-                                    {CHART_COLORS.map((color, index) => (
-                                        <linearGradient key={`invWorkGrad${index}`} id={`invWorkGradient${index}`} x1="0" y1="0" x2="0" y2="1">
+                                    {DEAL_CATEGORY_COLORS.map((color, index) => (
+                                        <linearGradient key={`dealCatGrad${index}`} id={`dealCatGradient${index}`} x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="0%" stopColor={color} stopOpacity={0.95}/>
                                             <stop offset="100%" stopColor={color} stopOpacity={0.7}/>
                                         </linearGradient>
@@ -2807,10 +3031,33 @@ const InvestmentWorkCategoryComparison = ({ teamData }: { teamData: any[] }) => 
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.6} vertical={false} />
                                 <XAxis 
                                     dataKey="category" 
-                                    tick={{ fontSize: 12, fill: '#475569' }} 
+                                    tick={({ x, y, payload }) => {
+                                        // 截断逻辑：保留前三个单词（按 / 或空格分隔）
+                                        const words = payload.value.split(/[\/\s]+/);
+                                        let text = payload.value;
+                                        if (words.length > 3) {
+                                            text = words.slice(0, 3).join('/') + '...';
+                                        } else if (payload.value.length > 25) {
+                                            text = payload.value.substring(0, 25) + '...';
+                                        }
+                                        return (
+                                            <g transform={`translate(${x},${y})`}>
+                                                <text 
+                                                    x={0} 
+                                                    y={0} 
+                                                    dy={8} 
+                                                    textAnchor="end" 
+                                                    fill="#475569" 
+                                                    fontSize={10}
+                                                    transform="rotate(-45)"
+                                                >
+                                                    <title>{payload.value}</title>
+                                                    {text}
+                                                </text>
+                                            </g>
+                                        );
+                                    }}
                                     interval={0}
-                                    angle={-15}
-                                    textAnchor="end"
                                     height={80}
                                     axisLine={{ stroke: '#e2e8f0' }}
                                     tickLine={false}
@@ -2826,18 +3073,291 @@ const InvestmentWorkCategoryComparison = ({ teamData }: { teamData: any[] }) => 
                                     cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
                                     wrapperStyle={{ pointerEvents: 'auto' }}
                                 />
-                                {chartData.workCategories.map((workCat, index) => (
+                                {chartData.dealCategories.map((dealCat, index) => (
                                     <Bar 
-                                        key={workCat} 
-                                        dataKey={workCat} 
-                                        name={workCat} 
-                                        fill={`url(#invWorkGradient${index % CHART_COLORS.length})`}
-                                        onClick={(data) => handleBarClick(data, workCat)}
+                                        key={dealCat} 
+                                        dataKey={dealCat} 
+                                        name={dealCat} 
+                                        stackId="dealCategory"
+                                        fill={`url(#dealCatGradient${index % DEAL_CATEGORY_COLORS.length})`}
+                                        onClick={(data) => handleBarClick(data, dealCat)}
                                         cursor="pointer"
-                                        radius={[4, 4, 0, 0]}
                                     />
                                 ))}
                             </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                ) : (
+                    <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                        <p>当期无数据</p>
+                    </div>
+                )}
+                <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+            </CardContent>
+        </Card>
+    );
+};
+
+// Drafting/reviewing/revising Monthly Trend with MoM Component
+const DraftingReviewingMonthlyTrend = ({ teamData }: { teamData: any[] }) => {
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [dialogData, setDialogData] = useState<any[]>([]);
+    const [dialogTitle, setDialogTitle] = useState('');
+
+    // Investment-related categories
+    const investmentCategories = [
+        { key: 'Investment Related - M&A Deal', label: 'M&A Deal', color: '#C44E52' },
+        { key: 'Investment Related - IPO', label: 'IPO', color: '#55A868' },
+        { key: 'Investment Related - Corporate Matter', label: 'Corporate Matter', color: '#4C72B0' }
+    ];
+
+    // Target work category
+    const targetWorkCategory = 'Drafting/reviewing/revising legal documents';
+
+    // Process chart data
+    const chartData = useMemo(() => {
+        // Get all months from data and filter >= 2025/10
+        const monthThreshold = '2025/10';
+        const allMonths = new Set<string>();
+        
+        teamData.forEach(row => {
+            if (row._parsedDate) {
+                const monthStr = format(row._parsedDate, 'yyyy/MM');
+                if (monthStr >= monthThreshold) {
+                    allMonths.add(monthStr);
+                }
+            }
+        });
+        
+        const sortedMonths = Array.from(allMonths).sort();
+        
+        // Aggregate total hours by month for the target work category (all deal categories combined)
+        const monthlyTotalHours: { [month: string]: number } = {};
+        
+        // Initialize all months
+        sortedMonths.forEach(month => {
+            monthlyTotalHours[month] = 0;
+        });
+        
+        // Filter and aggregate data
+        teamData.forEach(row => {
+            if (!row._parsedDate) return;
+            
+            const monthStr = format(row._parsedDate, 'yyyy/MM');
+            if (monthStr < monthThreshold) return;
+            
+            const rawDealCat = row['Deal/Matter Category']?.toString();
+            const rawWorkCat = row['Work Category']?.toString();
+            const hours = Number(row['Hours']) || 0;
+            
+            if (!rawDealCat || !rawWorkCat || hours <= 0) return;
+            
+            // Check if it's the target work category
+            if (!fieldsMatch(rawWorkCat, targetWorkCategory)) return;
+            
+            // Check if it's an investment category
+            const isInvestmentCat = investmentCategories.some(({ key }) => fieldsMatch(rawDealCat, key));
+            if (!isInvestmentCat) return;
+            
+            monthlyTotalHours[monthStr] += hours;
+        });
+        
+        // Convert to chart format and calculate overall MoM
+        const data = sortedMonths.map((month, index) => {
+            const entry: any = {
+                month: month,
+                fullMonth: month
+            };
+            
+            // Total hours for this month (bar chart)
+            const totalMonthlyHours = monthlyTotalHours[month] || 0;
+            entry['Total Hours'] = totalMonthlyHours;
+            
+            // Calculate overall MoM percentage for the target work category (line chart)
+            if (index > 0) {
+                const prevMonth = sortedMonths[index - 1];
+                const prevHours = monthlyTotalHours[prevMonth] || 0;
+                if (prevHours > 0) {
+                    entry['MoM'] = ((totalMonthlyHours - prevHours) / prevHours) * 100;
+                } else {
+                    entry['MoM'] = totalMonthlyHours > 0 ? 100 : 0;
+                }
+            } else {
+                entry['MoM'] = 0;
+            }
+            
+            return entry;
+        });
+        
+        return { data, months: sortedMonths };
+    }, [teamData]);
+
+    // Handle bar click - show all three deal categories combined
+    const handleBarClick = (data: any) => {
+        if (!data || !data.fullMonth) return;
+        const month = data.fullMonth;
+        
+        const details = teamData.filter(row => {
+            if (!row._parsedDate) return false;
+            const rowMonth = format(row._parsedDate, 'yyyy/MM');
+            const rowDealCat = row['Deal/Matter Category']?.toString();
+            const rowWorkCat = row['Work Category']?.toString();
+            const isInvestmentCategory = investmentCategories.some(cat => fieldsMatch(rowDealCat, cat.key));
+            return rowMonth === month && 
+                   isInvestmentCategory && 
+                   fieldsMatch(rowWorkCat, targetWorkCategory);
+        });
+        
+        setDialogTitle(`${month} - All Deal/Matter Categories - ${targetWorkCategory}`);
+        setDialogData(details);
+        setIsDialogOpen(true);
+    };
+
+    // Custom tooltip
+    const CustomTooltipContent = ({ active, payload, label }: any) => {
+        if (!active || !payload || !payload.length) return null;
+        
+        // Separate bars and lines
+        const barEntries = payload.filter((p: any) => p.dataKey === 'Total Hours');
+        const lineEntries = payload.filter((p: any) => p.dataKey === 'MoM');
+        
+        return (
+            <div className="bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-xl p-4 min-w-[240px]">
+                <div className="text-sm font-semibold text-slate-800 mb-3 pb-2 border-b border-slate-100">
+                    {label}
+                </div>
+                {barEntries.length > 0 && (
+                    <div className="space-y-2 mb-3">
+                        <div className="text-xs text-slate-500 font-medium">总用时</div>
+                        {barEntries.map((entry: any, index: number) => (
+                            <div key={index} className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#6366f1' }} />
+                                    <span className="text-xs text-slate-600">总用时</span>
+                                </div>
+                                <span className="text-xs font-semibold text-slate-800">
+                                    {Number(entry.value).toFixed(1)}h
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {lineEntries.length > 0 && (
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                        <div className="text-xs text-slate-500 font-medium mb-1">环比</div>
+                        {lineEntries.map((entry: any, index: number) => {
+                            const value = Number(entry.value);
+                            const isPositive = value >= 0;
+                            return (
+                                <div key={index} className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <div 
+                                            className="w-3 h-0.5 rounded"
+                                            style={{ backgroundColor: '#10b981' }}
+                                        />
+                                        <span className="text-xs text-slate-600">环比</span>
+                                    </div>
+                                    <span className={`text-xs font-semibold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                                        {isPositive ? '+' : ''}{value.toFixed(1)}%
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    return (
+        <Card className="border-slate-200/60 shadow-sm hover:shadow-md transition-all duration-200">
+            <CardHeader className="pb-4">
+                <CardTitle className="text-sm font-medium">
+                    Monthly Trend of "Drafting/reviewing/revising legal documents" (Investment Related)
+                </CardTitle>
+                <p className="text-xs text-slate-500 mt-1">
+                    
+                </p>
+            </CardHeader>
+            <CardContent>
+                {chartData.data.length > 0 ? (
+                    <div className="relative">
+                        <div className="text-xs text-slate-400 mb-3 flex items-center gap-1.5">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                            Click on bars to view detailed data
+                        </div>
+                        
+                        {/* Legend */}
+                        <div className="flex flex-wrap items-center justify-center gap-6 mb-4">
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#6366f1' }} />
+                                <span className="text-xs text-slate-600">总用时</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div 
+                                    className="w-3 h-0.5 rounded"
+                                    style={{ backgroundColor: '#10b981' }}
+                                />
+                                <span className="text-xs text-slate-600">环比</span>
+                            </div>
+                        </div>
+                        
+                        <ResponsiveContainer width="100%" height={380}>
+                            <ComposedChart data={chartData.data} margin={{ top: 20, right: 60, left: 20, bottom: 20 }}>
+                                <defs>
+                                    <linearGradient id="totalHoursGradient" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#6366f1" stopOpacity={0.9}/>
+                                        <stop offset="100%" stopColor="#6366f1" stopOpacity={0.6}/>
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.6} vertical={false} />
+                                <XAxis 
+                                    dataKey="month" 
+                                    tick={{ fontSize: 11, fill: '#475569' }}
+                                    axisLine={{ stroke: '#e2e8f0' }}
+                                    tickLine={false}
+                                />
+                                <YAxis 
+                                    yAxisId="left"
+                                    label={{ value: 'Hours', angle: -90, position: 'insideLeft', offset: 10, style: { fill: '#64748b', fontSize: 12 } }}
+                                    tick={{ fontSize: 11, fill: '#64748b' }}
+                                    axisLine={{ stroke: '#e2e8f0' }}
+                                    tickLine={false}
+                                />
+                                <YAxis 
+                                    yAxisId="right"
+                                    orientation="right"
+                                    label={{ value: '环比', angle: 90, position: 'insideRight', offset: 10, style: { fill: '#64748b', fontSize: 12 } }}
+                                    tick={{ fontSize: 11, fill: '#64748b' }}
+                                    axisLine={{ stroke: '#e2e8f0' }}
+                                    tickLine={false}
+                                    tickFormatter={(value) => `${value}%`}
+                                />
+                                <Tooltip content={<CustomTooltipContent />} />
+                                
+                                {/* Bar for total hours */}
+                                <Bar 
+                                    yAxisId="left"
+                                    dataKey="Total Hours"
+                                    name="总用时"
+                                    fill="url(#totalHoursGradient)"
+                                    barSize={40}
+                                    onClick={(data) => handleBarClick(data)}
+                                    cursor="pointer"
+                                />
+                                
+                                {/* Line for MoM */}
+                                <Line 
+                                    yAxisId="right"
+                                    type="monotone"
+                                    dataKey="MoM"
+                                    name="环比"
+                                    stroke="#10b981"
+                                    strokeWidth={2}
+                                    dot={{ fill: '#10b981', strokeWidth: 2, r: 4 }}
+                                    activeDot={{ r: 6, strokeWidth: 2 }}
+                                />
+                            </ComposedChart>
                         </ResponsiveContainer>
                     </div>
                 ) : (
@@ -3053,7 +3573,7 @@ const WorkCategoryTrendsByDealMatter = ({ teamData }: { teamData: any[] }) => {
             
             return (
                 <div 
-                    className="bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-xl p-4 min-w-[220px]"
+                    className="bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-xl p-4 min-w-[260px]"
                     style={{ pointerEvents: 'auto' }}
                 >
                     <div className="text-sm font-semibold text-slate-800 mb-3 pb-2 border-b border-slate-100">
@@ -3063,24 +3583,32 @@ const WorkCategoryTrendsByDealMatter = ({ teamData }: { teamData: any[] }) => {
                         className="space-y-2 overflow-y-auto pr-1"
                         style={{ maxHeight: '200px', pointerEvents: 'auto' }}
                     >
-                        {validItems.map((item, index) => (
-                            <div 
-                                key={index} 
-                                className="flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 rounded px-1 py-0.5 transition-colors"
-                                onClick={() => handleDotClick({ month: label }, item.name, dealLabel)}
-                            >
-                                <div className="flex items-center gap-2">
-                                    <div 
-                                        className="w-3 h-3 rounded-sm shadow-sm flex-shrink-0"
-                                        style={{ backgroundColor: item.color }}
-                                    />
-                                    <span className="text-xs text-slate-600 truncate max-w-[120px]">{item.name}</span>
+                        {validItems.map((item, index) => {
+                            const percentage = total > 0 ? (item.value / total) * 100 : 0;
+                            return (
+                                <div 
+                                    key={index} 
+                                    className="flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 rounded px-1 py-0.5 transition-colors"
+                                    onClick={() => handleDotClick({ month: label }, item.name, dealLabel)}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <div 
+                                            className="w-3 h-3 rounded-sm shadow-sm flex-shrink-0"
+                                            style={{ backgroundColor: item.color }}
+                                        />
+                                        <span className="text-xs text-slate-600 truncate max-w-[120px]">{item.name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-xs font-semibold text-slate-800">
+                                            {Number(item.value).toFixed(1)}h
+                                        </span>
+                                        <span className="text-xs text-slate-400">
+                                            ({percentage.toFixed(0)}%)
+                                        </span>
+                                    </div>
                                 </div>
-                                <span className="text-xs font-semibold text-slate-800">
-                                    {Number(item.value).toFixed(1)}h
-                                </span>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                     <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between">
                         <span className="text-xs font-medium text-slate-500">Total</span>
@@ -3383,12 +3911,12 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                         const maxHours = mAndADeals.length > 0 ? Math.max(...mAndADeals.map(d => d.hours)) : 0;
 
                         return (
-                            <div className="max-h-[320px] overflow-y-auto rounded-lg border border-slate-200/60">
+                            <div className="max-h-[420px] overflow-y-auto rounded-lg border border-slate-200/60">
                                 <table className="w-full">
                                     <thead className="sticky top-0 z-10">
                                         <tr className="bg-gradient-to-r from-rose-50 to-orange-50 border-b border-slate-200/60">
-                                            <th className="text-left py-3 px-4 text-xs font-semibold text-slate-700 uppercase tracking-wider">Deal/Matter Name</th>
-                                            <th className="text-right py-3 px-4 text-xs font-semibold text-slate-700 uppercase tracking-wider w-32">Hours</th>
+                                            <th className="text-left py-1.5 px-3 text-xs font-semibold text-slate-700 uppercase tracking-wider">Deal/Matter Name</th>
+                                            <th className="text-right py-1.5 px-3 text-xs font-semibold text-slate-700 uppercase tracking-wider w-24">Hours</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
@@ -3396,20 +3924,19 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                                             <tr 
                                                 key={deal.name} 
                                                 className="group hover:bg-gradient-to-r hover:from-rose-50/50 hover:to-transparent transition-all duration-200"
-                                                style={{ animationDelay: `${idx * 30}ms` }}
                                             >
-                                                <td className="py-3 px-4">
-                                                    <div className="flex items-center gap-3">
+                                                <td className="py-px px-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs text-slate-400 font-medium w-5 flex-shrink-0">{idx + 1}.</span>
                                                         <div 
-                                                            className="w-1.5 h-8 rounded-full bg-gradient-to-b from-rose-400 to-rose-500 opacity-60 group-hover:opacity-100 transition-opacity"
-                                                            style={{ height: `${Math.max(20, (deal.hours / maxHours) * 32)}px` }}
+                                                            className="w-1 h-3 rounded-full bg-gradient-to-b from-rose-400 to-rose-500 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0"
                                                         />
-                                                        <span className="text-sm text-slate-700 group-hover:text-slate-900 transition-colors font-medium">
+                                                        <span className="text-sm text-slate-700 group-hover:text-slate-900 transition-colors font-medium truncate">
                                                             {deal.name}
                                                         </span>
                                                     </div>
                                                 </td>
-                                                <td className="py-3 px-4 text-right">
+                                                <td className="py-px px-3 text-right">
                                                     <ClickableHoursCell hours={deal.hours} dealName={deal.name} category="Investment Related - M&A Deal" filteredData={filteredData} percentage={deal.percentage} />
                                                 </td>
                                             </tr>
@@ -3446,12 +3973,12 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                         const maxHours = corporateMatters.length > 0 ? Math.max(...corporateMatters.map(d => d.hours)) : 0;
 
                         return (
-                            <div className="max-h-[320px] overflow-y-auto rounded-lg border border-slate-200/60">
+                            <div className="max-h-[420px] overflow-y-auto rounded-lg border border-slate-200/60">
                                 <table className="w-full">
                                     <thead className="sticky top-0 z-10">
                                         <tr className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-slate-200/60">
-                                            <th className="text-left py-3 px-4 text-xs font-semibold text-slate-700 uppercase tracking-wider">Deal/Matter Name</th>
-                                            <th className="text-right py-3 px-4 text-xs font-semibold text-slate-700 uppercase tracking-wider w-32">Hours</th>
+                                            <th className="text-left py-1.5 px-3 text-xs font-semibold text-slate-700 uppercase tracking-wider">Deal/Matter Name</th>
+                                            <th className="text-right py-1.5 px-3 text-xs font-semibold text-slate-700 uppercase tracking-wider w-24">Hours</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
@@ -3459,20 +3986,19 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                                             <tr 
                                                 key={matter.name} 
                                                 className="group hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent transition-all duration-200"
-                                                style={{ animationDelay: `${idx * 30}ms` }}
                                             >
-                                                <td className="py-3 px-4">
-                                                    <div className="flex items-center gap-3">
+                                                <td className="py-px px-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs text-slate-400 font-medium w-5 flex-shrink-0">{idx + 1}.</span>
                                                         <div 
-                                                            className="w-1.5 h-8 rounded-full bg-gradient-to-b from-blue-400 to-indigo-500 opacity-60 group-hover:opacity-100 transition-opacity"
-                                                            style={{ height: `${Math.max(20, (matter.hours / maxHours) * 32)}px` }}
+                                                            className="w-1 h-3 rounded-full bg-gradient-to-b from-blue-400 to-indigo-500 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0"
                                                         />
-                                                        <span className="text-sm text-slate-700 group-hover:text-slate-900 transition-colors font-medium">
+                                                        <span className="text-sm text-slate-700 group-hover:text-slate-900 transition-colors font-medium truncate">
                                                             {matter.name}
                                                         </span>
                                                     </div>
                                                 </td>
-                                                <td className="py-3 px-4 text-right">
+                                                <td className="py-px px-3 text-right">
                                                     <ClickableHoursCell hours={matter.hours} dealName={matter.name} category="Investment Related - Corporate Matter" filteredData={filteredData} percentage={matter.percentage} />
                                                 </td>
                                             </tr>
@@ -3552,12 +4078,12 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                                         </div>
                                         
                                         {/* Table Content */}
-                                        <div className="max-h-[280px] overflow-y-auto">
+                                        <div className="h-[310px] overflow-y-auto">
                                             <table className="w-full">
                                                 <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm">
                                                     <tr className="border-b border-slate-100">
-                                                        <th className="text-left py-2 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Name</th>
-                                                        <th className="text-right py-2 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider w-20">Hours</th>
+                                                        <th className="text-left py-1 px-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Name</th>
+                                                        <th className="text-right py-1 px-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wider w-20">Hours</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-50">
@@ -3566,18 +4092,18 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                                                             key={idx} 
                                                             className={`group hover:bg-gradient-to-r ${colorScheme.bgHover} hover:to-transparent transition-all duration-200`}
                                                         >
-                                                            <td className="py-2.5 px-3">
-                                                                <div className="flex items-center gap-2">
+                                                            <td className="py-px px-2">
+                                                                <div className="flex items-center gap-1">
+                                                                    <span className="text-[10px] text-slate-400 w-4 flex-shrink-0">{idx + 1}.</span>
                                                                     <div 
-                                                                        className={`w-1 rounded-full bg-gradient-to-b ${colorScheme.from} ${colorScheme.to} opacity-50 group-hover:opacity-100 transition-opacity`}
-                                                                        style={{ height: `${Math.max(16, (item.hours / maxHours) * 24)}px` }}
+                                                                        className={`w-1 h-3 rounded-full bg-gradient-to-b ${colorScheme.from} ${colorScheme.to} opacity-50 group-hover:opacity-100 transition-opacity flex-shrink-0`}
                                                                     />
-                                                                    <span className="text-xs text-slate-600 group-hover:text-slate-800 transition-colors truncate max-w-[120px]" title={item.name}>
+                                                                    <span className="text-[11px] text-slate-600 group-hover:text-slate-800 transition-colors truncate max-w-[110px]" title={item.name}>
                                                                         {item.name}
                                                                     </span>
                                                                 </div>
                                                             </td>
-                                                            <td className="py-2.5 px-3 text-right">
+                                                            <td className="py-px px-2 text-right">
                                                                 <ClickableHoursCell 
                                                                     hours={item.hours} 
                                                                     dealName={item.name} 
@@ -3604,8 +4130,8 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                 }}
             </FilterSection>
 
-            {/* Comparison of Work Category by Deal/Matter Category */}
-            <InvestmentWorkCategoryComparison teamData={teamData} />
+            {/* Investment Work Category Section with shared time filter */}
+            <InvestmentWorkCategorySection teamData={teamData} />
 
             {/* Work Category Trends by Deal/Matter Categories */}
             <WorkCategoryTrendsByDealMatter teamData={teamData} />

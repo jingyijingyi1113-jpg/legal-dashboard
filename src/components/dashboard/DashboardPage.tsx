@@ -249,15 +249,15 @@ export function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <ComposedChart data={monthlyData}>
+                  <ComposedChart data={monthlyData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" />
-                    <XAxis dataKey="month" stroke="rgba(0,0,0,0.3)" tick={{ fontSize: 12 }} />
-                    <YAxis yAxisId="left" label={{ value: '小时', angle: -90, position: 'insideLeft' }} stroke="rgba(0,0,0,0.3)" tick={{ fontSize: 12 }} />
-                    <YAxis yAxisId="right" orientation="right" label={{ value: '%', angle: -90, position: 'insideRight' }} stroke="rgba(0,0,0,0.3)" tick={{ fontSize: 12 }} />
+                    <XAxis dataKey="month" stroke="rgba(0,0,0,0.3)" tick={{ fontSize: 11 }} />
+                    <YAxis yAxisId="left" label={{ value: 'Hours', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: '#64748b' }, dy: 20 }} stroke="rgba(0,0,0,0.3)" tick={{ fontSize: 11 }} />
+                    <YAxis yAxisId="right" orientation="right" label={{ value: 'MoM%', angle: 90, position: 'insideRight', style: { fontSize: 11, fill: '#64748b' }, dy: 20 }} stroke="rgba(0,0,0,0.3)" tick={{ fontSize: 11 }} />
                     <Tooltip formatter={(value: number) => value.toFixed(2)} />
                     <Legend />
-                    <Bar yAxisId="left" dataKey="totalHours" name="总用时" fill="#2563eb" radius={[8, 8, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="totalHoursTrend" name="环比 (%)" stroke="#10b981" strokeWidth={2} dot={{ fill: '#10b981', r: 4 }} />
+                    <Bar yAxisId="left" dataKey="totalHours" name="Total Hours" fill="#2563eb" radius={[8, 8, 0, 0]} />
+                    <Line yAxisId="right" type="monotone" dataKey="totalHoursTrend" name="MoM%" stroke="#10b981" strokeWidth={2} dot={{ fill: '#10b981', r: 4 }} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -268,15 +268,30 @@ export function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <ComposedChart data={monthlyData}>
+                  <ComposedChart data={monthlyData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" />
-                    <XAxis dataKey="month" stroke="rgba(0,0,0,0.3)" tick={{ fontSize: 12 }} />
-                    <YAxis yAxisId="left" label={{ value: '小时', angle: -90, position: 'insideLeft' }} stroke="rgba(0,0,0,0.3)" tick={{ fontSize: 12 }} />
-                    <YAxis yAxisId="right" orientation="right" label={{ value: '%', angle: -90, position: 'insideRight' }} stroke="rgba(0,0,0,0.3)" tick={{ fontSize: 12 }} />
+                    <XAxis dataKey="month" stroke="rgba(0,0,0,0.3)" tick={{ fontSize: 11 }} />
+                    <YAxis yAxisId="left" label={{ value: 'Hours', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: '#64748b' }, dy: 20 }} stroke="rgba(0,0,0,0.3)" tick={{ fontSize: 11 }} />
+                    <YAxis yAxisId="right" orientation="right" label={{ value: 'MoM%', angle: 90, position: 'insideRight', style: { fontSize: 11, fill: '#64748b' }, dy: 20 }} stroke="rgba(0,0,0,0.3)" tick={{ fontSize: 11 }} />
                     <Tooltip formatter={(value: number) => value.toFixed(2)} />
-                    <Legend />
-                    <Bar yAxisId="left" dataKey="avgHoursPerUser" name="人均用时" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="avgHoursTrend" name="环比 (%)" stroke="#f59e0b" strokeWidth={2} dot={{ fill: '#f59e0b', r: 4 }} />
+                    <Legend 
+                      content={() => (
+                        <div className="flex justify-center gap-6 mt-2">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-4 h-0.5 bg-[#f59e0b]" style={{ position: 'relative' }}>
+                              <div className="w-2 h-2 rounded-full bg-[#f59e0b] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                            </div>
+                            <span className="text-sm text-gray-600">MoM%</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-3 h-3 bg-[#0ea5e9]" />
+                            <span className="text-sm text-gray-600">Avg Hours/Person</span>
+                          </div>
+                        </div>
+                      )}
+                    />
+                    <Bar yAxisId="left" dataKey="avgHoursPerUser" name="Avg Hours/Person" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
+                    <Line yAxisId="right" type="monotone" dataKey="avgHoursTrend" name="MoM%" stroke="#f59e0b" strokeWidth={2} dot={{ fill: '#f59e0b', r: 4 }} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </CardContent>
