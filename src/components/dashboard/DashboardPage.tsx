@@ -351,7 +351,7 @@ export function DashboardPage() {
                   <ComposedChart data={monthlyData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" />
                     <XAxis dataKey="month" stroke="rgba(0,0,0,0.3)" tick={{ fontSize: 11 }} />
-                    <YAxis yAxisId="left" label={{ value: 'Hours', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: '#64748b' }, dy: 20 }} stroke="rgba(0,0,0,0.3)" tick={{ fontSize: 11 }} />
+                    <YAxis yAxisId="left" label={{ value: 'Hours', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: '#64748b' }, dx: -10, dy: 20 }} stroke="rgba(0,0,0,0.3)" tick={{ fontSize: 11 }} />
                     <YAxis yAxisId="right" orientation="right" label={{ value: 'MoM%', angle: 90, position: 'insideRight', style: { fontSize: 11, fill: '#64748b' }, dy: 20 }} stroke="rgba(0,0,0,0.3)" tick={{ fontSize: 11 }} />
                     <Tooltip formatter={(value: number) => value.toFixed(2)} />
                     <Legend />

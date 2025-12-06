@@ -4618,8 +4618,8 @@ const InvestmentLegalCenterPanel = ({ data, onDataUpdate }: { data: any[], onDat
                             <ComposedChart data={trendData.monthlyTrends} margin={{ top: 20, right: 20, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="left" label={{ value: 'Hours', angle: -90, position: 'insideLeft', dy: 20, fontSize: 11 }} tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="right" orientation="right" label={{ value: 'MoM%', angle: 90, position: 'insideRight', dy: 30, fontSize: 11 }} tick={{ fontSize: 12 }}/>
+                                <YAxis yAxisId="left" label={{ value: 'Hours', angle: -90, position: 'insideLeft', dx: -10, dy: 20, fontSize: 11 }} tick={{ fontSize: 12 }} />
+                                <YAxis yAxisId="right" orientation="right" label={{ value: 'MoM%', angle: 90, position: 'insideRight', dy: 25, fontSize: 11 }} tick={{ fontSize: 12 }}/>
                                 <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
                                 <Legend iconType="rect" />
                                 <Bar yAxisId="left" dataKey="totalHours" name="Total Hours" fill="#3b82f6" radius={[8, 8, 0, 0]} />
@@ -4635,8 +4635,8 @@ const InvestmentLegalCenterPanel = ({ data, onDataUpdate }: { data: any[], onDat
                             <ComposedChart data={trendData.monthlyTrends} margin={{ top: 20, right: 20, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="left" label={{ value: 'Hours', angle: -90, position: 'insideLeft', dy: 20, fontSize: 11 }} tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="right" orientation="right" label={{ value: 'MoM%', angle: 90, position: 'insideRight', dy: 30, fontSize: 11 }} tick={{ fontSize: 12 }}/>
+                                <YAxis yAxisId="left" label={{ value: 'Hours', angle: -90, position: 'insideLeft', dx: -10, dy: 20, fontSize: 11 }} tick={{ fontSize: 12 }} />
+                                <YAxis yAxisId="right" orientation="right" label={{ value: 'MoM%', angle: 90, position: 'insideRight', dy: 25, fontSize: 11 }} tick={{ fontSize: 12 }}/>
                                 <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
                                 <Legend content={() => (
                                     <div className="flex justify-center gap-6 mt-2">
@@ -5737,8 +5737,8 @@ const CorporateFinancePanel = ({ data, onDataUpdate }: { data: any[], onDataUpda
                             <ComposedChart data={trendData.monthlyTrends} margin={{ top: 20, right: 20, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="left" label={{ value: 'Hours', angle: -90, position: 'insideLeft', dy: 20, fontSize: 11 }} tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="right" orientation="right" label={{ value: 'MoM%', angle: 90, position: 'insideRight', dy: 30, fontSize: 11 }} tick={{ fontSize: 12 }}/>
+                                <YAxis yAxisId="left" label={{ value: 'Hours', angle: -90, position: 'insideLeft', dx: -10, dy: 20, fontSize: 11 }} tick={{ fontSize: 12 }} />
+                                <YAxis yAxisId="right" orientation="right" label={{ value: 'MoM%', angle: 90, position: 'insideRight', dy: 25, fontSize: 11 }} tick={{ fontSize: 12 }}/>
                                 <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
                                 <Legend iconType="rect" />
                                 <Bar yAxisId="left" dataKey="totalHours" name="Total Hours" fill="#3b82f6" radius={[8, 8, 0, 0]} />
@@ -5754,8 +5754,8 @@ const CorporateFinancePanel = ({ data, onDataUpdate }: { data: any[], onDataUpda
                             <ComposedChart data={trendData.monthlyTrends} margin={{ top: 20, right: 20, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="left" label={{ value: 'Hours', angle: -90, position: 'insideLeft', dy: 20, fontSize: 11 }} tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="right" orientation="right" label={{ value: 'MoM%', angle: 90, position: 'insideRight', dy: 30, fontSize: 11 }} tick={{ fontSize: 12 }}/>
+                                <YAxis yAxisId="left" label={{ value: 'Hours', angle: -90, position: 'insideLeft', dx: -10, dy: 20, fontSize: 11 }} tick={{ fontSize: 12 }} />
+                                <YAxis yAxisId="right" orientation="right" label={{ value: 'MoM%', angle: 90, position: 'insideRight', dy: 25, fontSize: 11 }} tick={{ fontSize: 12 }}/>
                                 <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
                                 <Legend content={() => (
                                     <div className="flex justify-center gap-6 mt-2">
