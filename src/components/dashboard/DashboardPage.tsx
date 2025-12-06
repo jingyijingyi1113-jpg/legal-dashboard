@@ -5,11 +5,17 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import * as XLSX from 'xlsx';
-import { getWorkdaysInMonth, parseMonthString, normalizeMonthString } from '@/lib/date-utils';
+import { getWorkdaysInMonth, parseMonthString, normalizeMonthString, normalizeCategoryDisplay } from '@/lib/date-utils';
 import { MonthPicker } from './MonthPicker';
 import { ProjectDimensionTab } from './ProjectDimensionTab';
 import { TeamDimensionTab } from './TeamDimensionTab';
 import { useReactToPrint } from 'react-to-print';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import { format, parse } from 'date-fns';
 
@@ -27,7 +33,100 @@ export function DashboardPage() {
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [activeTab, setActiveTab] = useState<string>('overview');
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
+
+  // 数据更新回调函数 - 用于子组件修改数据后同步更新
+  const handleDataUpdate = (updatedRecords: any[]) => {
+    setRawData(prevData => {
+      const newData = [...prevData];
+      updatedRecords.forEach(updatedRecord => {
+        // 通过唯一标识找到并更新记录
+        // 使用多个字段进行匹配，提高准确性
+        const index = newData.findIndex(row => {
+          const monthMatch = String(row.Month || '') === String(updatedRecord._originalMonth || '');
+          const nameMatch = String(row.Name || '') === String(updatedRecord._originalName || '');
+          const dealNameMatch = String(row['Deal/Matter Name'] || '') === String(updatedRecord._originalDealMatterName || '');
+          const dealCategoryMatch = String(row['Deal/Matter Category'] || '') === String(updatedRecord._originalDealMatterCategory || '');
+          const hoursMatch = Math.abs(Number(row.Hours || 0) - Number(updatedRecord._originalHours || 0)) < 0.001;
+          const tagMatch = String(row['OKR/BSC Tag'] || '') === String(updatedRecord._originalOKRBSCTag || '');
+          return monthMatch && nameMatch && dealNameMatch && dealCategoryMatch && hoursMatch && tagMatch;
+        });
+        if (index !== -1) {
+          // 移除内部标识字段，但保留_isModified标记
+          const { _originalMonth, _originalName, _originalDealMatterName, _originalDealMatterCategory, _originalHours, _originalOKRBSCTag, _parsedDate, _modifiedFields, ...cleanRecord } = updatedRecord;
+          newData[index] = { ...newData[index], ...cleanRecord };
+        }
+      });
+      return newData;
+    });
+  };
+
+  // Excel导出功能
+  const handleExportExcel = () => {
+    if (rawData.length === 0) {
+      alert('没有数据可导出');
+      return;
+    }
+    
+    // 创建工作簿
+    const wb = XLSX.utils.book_new();
+    
+    // 过滤掉内部字段（以_开头的字段），并格式化Month字段
+    // 同时添加"已修改"标记列
+    const exportData = rawData.map(row => {
+      const cleanRow: any = {};
+      const isModified = row._isModified === true;
+      
+      Object.keys(row).forEach(key => {
+        if (!key.startsWith('_')) {
+          let value = row[key];
+          // 格式化Month字段
+          if (key === 'Month' && value !== null && value !== undefined) {
+            const formatted = normalizeMonthString(value);
+            if (formatted) {
+              value = formatted;
+            }
+          }
+          cleanRow[key] = value;
+        }
+      });
+      
+      // 添加修改标记列
+      cleanRow['已修改'] = isModified ? '是' : '';
+      
+      return cleanRow;
+    });
+    
+    // 创建工作表
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    
+    // 获取列头
+    const headers = Object.keys(exportData[0] || {});
+    
+    // 设置列宽
+    const colWidths = headers.map((header) => {
+      if (header === 'Month') return { wch: 10 };
+      if (header === 'Name') return { wch: 15 };
+      if (header === 'Deal/Matter Category') return { wch: 30 };
+      if (header === 'Deal/Matter Name') return { wch: 25 };
+      if (header === 'OKR/BSC Tag') return { wch: 12 };
+      if (header === 'OKR/BSC Item') return { wch: 15 };
+      if (header === 'Hours') return { wch: 8 };
+      if (header === 'Work Category') return { wch: 15 };
+      if (header === 'Narrative (Optional)') return { wch: 30 };
+      if (header === '已修改') return { wch: 8 };
+      return { wch: 15 };
+    });
+    ws['!cols'] = colWidths;
+    
+    // 添加工作表到工作簿
+    XLSX.utils.book_append_sheet(wb, ws, '工时数据');
+    
+    // 导出文件
+    const fileName = `工时数据_${format(new Date(), 'yyyy-MM-dd_HHmmss')}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  };
 
   // 获取页面名称
   const getPageName = () => {
@@ -111,7 +210,7 @@ export function DashboardPage() {
                 monthlyAgg[month][team] = { hours: 0, users: new Set() };
             }
             monthlyAgg[month][team].hours += Number(item['Hours']) || 0;
-            const name = item.Name.toString().replace(/\s+/g, ' ').trim();
+            const name = normalizeCategoryDisplay(item.Name?.toString());
             monthlyAgg[month][team].users.add(name);
         }
     });
@@ -341,22 +440,36 @@ export function DashboardPage() {
             <h1 className="text-4xl font-bold text-neutral-900 tracking-tight">工时数据看板</h1>
             <p className="text-neutral-500 mt-2 text-sm font-medium">工时统计与趋势分析</p>
           </div>
-          <div className="flex items-center gap-4">
-            <Button asChild variant="outline" className="no-print shadow-elevation-2 hover:shadow-elevation-3 transition-all duration-300 hover:border-blue-300 group bg-white/80 backdrop-blur-sm">
-              <label htmlFor="file-upload" className="cursor-pointer flex items-center gap-2.5 px-4 py-2.5">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:scale-110 group-hover:rotate-12 transition-transform"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-                <span className="font-semibold text-neutral-700">导入数据</span>
+          <div className="flex items-center gap-3">
+            <Button asChild variant="ghost" className="no-print group relative overflow-hidden px-4 py-2 h-9 rounded-lg border border-slate-200/60 bg-white/60 backdrop-blur-sm hover:bg-slate-50/80 hover:border-slate-300/80 transition-all duration-200">
+              <label htmlFor="file-upload" className="cursor-pointer flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 group-hover:text-slate-700 transition-colors"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-800 transition-colors">导入数据</span>
               </label>
             </Button>
             <Input id="file-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" />
-            <Button 
-              variant="outline" 
-              className="no-print shadow-elevation-2 hover:shadow-elevation-3 transition-all duration-300 hover:border-red-300 group bg-white/80 backdrop-blur-sm"
-              onClick={() => handlePrint()}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:scale-110 transition-transform mr-2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-              <span className="font-semibold text-neutral-700">导出PDF</span>
-            </Button>
+            <DropdownMenu open={isExportMenuOpen} onOpenChange={setIsExportMenuOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  className="no-print group relative overflow-hidden px-4 py-2 h-9 rounded-lg border border-slate-200/60 bg-white/60 backdrop-blur-sm hover:bg-slate-50/80 hover:border-slate-300/80 transition-all duration-200"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 group-hover:text-slate-700 transition-colors mr-1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                  <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-800 transition-colors">导出</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="ml-1 text-slate-400 group-hover:text-slate-500 transition-colors"><polyline points="6 9 12 15 18 9"/></svg>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-36 p-1 rounded-lg border border-slate-200/80 bg-white/95 backdrop-blur-md shadow-lg">
+                <DropdownMenuItem onClick={() => handlePrint()} className="cursor-pointer rounded-md px-3 py-2 text-[13px] text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2 text-rose-500"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                  导出 PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportExcel} className="cursor-pointer rounded-md px-3 py-2 text-[13px] text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2 text-emerald-500"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M10 12l2 2 4-4"/></svg>
+                  导出 Excel
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
@@ -390,7 +503,7 @@ export function DashboardPage() {
           <div className="container mx-auto max-w-7xl animate-fade-in-up" ref={printRef}>
             <DepartmentOverviewTab />
             <TabsContent value="team" className="m-0 focus-visible:outline-none">
-              {activeTab === 'team' && <TeamDimensionTab data={rawData} />}
+              {activeTab === 'team' && <TeamDimensionTab data={rawData} onDataUpdate={handleDataUpdate} />}
             </TabsContent>
           </div>
         </Tabs>

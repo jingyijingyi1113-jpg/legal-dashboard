@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MonthPicker } from './MonthPicker';
-import { fieldsMatch, createNormalizedKey, parseMonthString } from '@/lib/date-utils';
+import { fieldsMatch, createNormalizedKey, parseMonthString, normalizeCategoryDisplay } from '@/lib/date-utils';
 import { cn } from "@/lib/utils";
 
 type Period = 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'custom';
@@ -1212,8 +1212,8 @@ const CorporateFinanceCenterAnalysis = ({ data }: { data: any[] }) => {
         const rawVirtualGroup = row['Virtual Group'] || row['Deal/Matter Category'];
         const rawInternalClient = row['Internal Client'] || row['Deal/Matter Name'];
         
-        const virtualGroup = rawVirtualGroup ? rawVirtualGroup.trim().replace(/\s+/g, ' ') : null;
-        const internalClient = rawInternalClient ? rawInternalClient.trim().replace(/\s+/g, ' ') : null;
+        const virtualGroup = rawVirtualGroup ? normalizeCategoryDisplay(rawVirtualGroup) : null;
+        const internalClient = rawInternalClient ? normalizeCategoryDisplay(rawInternalClient) : null;
         
         const hours = Number(row['Hours']);
 

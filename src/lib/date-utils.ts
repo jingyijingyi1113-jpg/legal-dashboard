@@ -107,13 +107,48 @@ export const normalizeMonthString = (monthStr: string | Date | number | null | u
 
 /**
  * Normalize a string field for comparison purposes.
- * Handles: trim, multiple spaces, case-insensitive comparison
+ * Handles: trim, multiple spaces, case-insensitive comparison,
+ * normalizes hyphens/dashes with surrounding spaces,
+ * and removes leading underscores
  * @param value - The string value to normalize
  * @returns Normalized lowercase string with single spaces
  */
 export const normalizeField = (value: string | null | undefined): string => {
     if (!value) return '';
-    return value.toString().trim().replace(/\s+/g, ' ').toLowerCase();
+    return value
+        .toString()
+        .trim()
+        // Remove leading underscores (e.g., "_BSC" -> "BSC")
+        .replace(/^_+/, '')
+        // Normalize various dash/hyphen characters to standard hyphen
+        .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-')
+        // Normalize spaces around hyphens: "Public - Others", "Public- Others", "Public -Others", "Public-Others" -> "Public - Others"
+        .replace(/\s*-\s*/g, ' - ')
+        // Replace multiple spaces with single space
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+};
+
+/**
+ * Normalize a category/tag string for display purposes (preserves case).
+ * Handles: trim, multiple spaces, normalizes hyphens/dashes with surrounding spaces,
+ * and removes leading underscores
+ * @param value - The string value to normalize
+ * @returns Normalized string with proper spacing around hyphens
+ */
+export const normalizeCategoryDisplay = (value: string | null | undefined): string => {
+    if (!value) return '';
+    return value
+        .toString()
+        .trim()
+        // Remove leading underscores (e.g., "_BSC" -> "BSC")
+        .replace(/^_+/, '')
+        // Normalize various dash/hyphen characters to standard hyphen
+        .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-')
+        // Normalize spaces around hyphens
+        .replace(/\s*-\s*/g, ' - ')
+        // Replace multiple spaces with single space
+        .replace(/\s+/g, ' ');
 };
 
 /**

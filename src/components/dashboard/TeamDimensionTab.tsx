@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MonthPicker } from './MonthPicker';
-import { getWorkdaysInMonth, normalizeField, fieldsMatch, createNormalizedKey, parseMonthString, normalizeMonthString } from '@/lib/date-utils';
+import { getWorkdaysInMonth, normalizeField, fieldsMatch, createNormalizedKey, parseMonthString, normalizeMonthString, normalizeCategoryDisplay } from '@/lib/date-utils';
 import { ComposedChart, Line, Bar, BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, Area, LineChart } from 'recharts';
 import { format, startOfMonth, endOfMonth, eachMonthOfInterval, getYear, getMonth } from 'date-fns';
 import {
@@ -87,50 +87,87 @@ const CustomTooltip = ({ active, payload, label, onItemClick }: any) => {
 
 
 
-const DetailsDialog = ({ isOpen, onClose, title, data }: { isOpen: boolean, onClose: () => void, title: string, data: any[] }) => {
+const DetailsDialog = ({ isOpen, onClose, title, data, onSave }: { isOpen: boolean, onClose: () => void, title: string, data: any[], onSave?: (updatedData: any[]) => void }) => {
     const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
+    const [editableData, setEditableData] = useState<any[]>([]);
+    const [editingCell, setEditingCell] = useState<{ rowIndex: number, key: string } | null>(null);
+    const [hasChanges, setHasChanges] = useState(false);
+    const [selectedCell, setSelectedCell] = useState<{ rowIndex: number, key: string } | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
+    const [dragEndRow, setDragEndRow] = useState<number | null>(null);
+    const tableRef = useRef<HTMLDivElement>(null);
     
-    // Reset filters when dialog opens with new data
+    // Reset filters and editable data when dialog opens with new data
     useEffect(() => {
         if (isOpen) {
             setColumnFilters({});
+            // Deep copy data and add original values for tracking
+            // Include more fields for better matching accuracy
+            setEditableData(data.map(row => ({
+                ...row,
+                _originalMonth: row.Month,
+                _originalName: row.Name,
+                _originalDealMatterName: row['Deal/Matter Name'],
+                _originalDealMatterCategory: row['Deal/Matter Category'],
+                _originalHours: row.Hours,
+                _originalOKRBSCTag: row['OKR/BSC Tag'],
+                _modifiedFields: {} // Track which fields have been modified
+            })));
+            setHasChanges(false);
+            setEditingCell(null);
+            setSelectedCell(null);
         }
     }, [isOpen, data]);
 
     // ESC key handler - must be before any conditional returns
     useEffect(() => {
         const handleEsc = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
+            if (e.key === 'Escape') {
+                if (editingCell) {
+                    setEditingCell(null);
+                } else {
+                    onClose();
+                }
+            }
         };
         window.addEventListener('keydown', handleEsc);
         return () => window.removeEventListener('keydown', handleEsc);
-    }, [onClose]);
+    }, [onClose, editingCell]);
+
+    // Define all standard columns that should always be displayed
+    const standardColumns = [
+        'Month', 
+        'Name', 
+        'Deal/Matter Category', 
+        'Deal/Matter Name', 
+        'OKR/BSC Tag', 
+        'OKR/BSC Item', 
+        'Hours', 
+        'Work Category', 
+        'Narrative (Optional)',
+        'Source Path', 
+        '团队'
+    ];
 
     const allKeys = useMemo(() => {
         if (!data || data.length === 0) return [];
         const keys = new Set<string>();
+        
+        // First add all standard columns
+        standardColumns.forEach(col => keys.add(col));
+        
+        // Then add any additional columns from data
         data.forEach(row => {
              if(row) Object.keys(row).forEach(k => {
                  // Filter out internal fields
                  if (!k.startsWith('_')) keys.add(k);
              });
         });
-        const preferredOrder = [
-            'Month', 
-            'Name', 
-            'Deal/Matter Category', 
-            'Deal/Matter Name', 
-            'OKR/BSC Tag', 
-            'OKR/BSC Item', 
-            'Hours', 
-            'Work Category', 
-            'Narrative (Optional)',
-            'Source Path', 
-            '团队'
-        ];
+        
+        // Sort by preferred order
         return Array.from(keys).sort((a, b) => {
-            const idxA = preferredOrder.indexOf(a);
-            const idxB = preferredOrder.indexOf(b);
+            const idxA = standardColumns.indexOf(a);
+            const idxB = standardColumns.indexOf(b);
             if (idxA !== -1 && idxB !== -1) return idxA - idxB;
             if (idxA !== -1) return -1;
             if (idxB !== -1) return 1;
@@ -140,8 +177,8 @@ const DetailsDialog = ({ isOpen, onClose, title, data }: { isOpen: boolean, onCl
 
     // Filter data based on column filters
     const filteredData = useMemo(() => {
-        if (!data || data.length === 0) return [];
-        return data.filter(row => {
+        if (!editableData || editableData.length === 0) return [];
+        return editableData.filter(row => {
             if (!row) return false;
             return Object.entries(columnFilters).every(([key, filterValue]) => {
                 if (!filterValue || filterValue.trim() === '') return true;
@@ -150,7 +187,7 @@ const DetailsDialog = ({ isOpen, onClose, title, data }: { isOpen: boolean, onCl
                 return cellValue.toString().toLowerCase().includes(filterValue.toLowerCase());
             });
         });
-    }, [data, columnFilters]);
+    }, [editableData, columnFilters]);
 
     const handleFilterChange = (key: string, value: string) => {
         setColumnFilters(prev => ({
@@ -164,6 +201,199 @@ const DetailsDialog = ({ isOpen, onClose, title, data }: { isOpen: boolean, onCl
     };
 
     const hasActiveFilters = Object.values(columnFilters).some(v => v && v.trim() !== '');
+
+    // Handle cell edit
+    const handleCellClick = (rowIndex: number, key: string) => {
+        if (onSave) { // Only allow editing if onSave is provided
+            setEditingCell({ rowIndex, key });
+        }
+    };
+
+    // Handle single click for selection (for fill down feature)
+    const handleCellSelect = (rowIndex: number, key: string) => {
+        if (onSave) {
+            setSelectedCell({ rowIndex, key });
+        }
+    };
+
+    const handleCellChange = (rowIndex: number, key: string, value: string) => {
+        setEditableData(prev => {
+            const newData = [...prev];
+            const actualIndex = editableData.findIndex(row => row === filteredData[rowIndex]);
+            if (actualIndex !== -1) {
+                // Convert to number if it's the Hours field
+                const newValue = key === 'Hours' ? (parseFloat(value) || 0) : value;
+                newData[actualIndex] = { 
+                    ...newData[actualIndex], 
+                    [key]: newValue,
+                    _modifiedFields: { 
+                        ...newData[actualIndex]._modifiedFields, 
+                        [key]: true 
+                    }
+                };
+            }
+            return newData;
+        });
+        setHasChanges(true);
+    };
+
+    const handleCellBlur = () => {
+        setEditingCell(null);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent, rowIndex: number, key: string) => {
+        if (e.key === 'Enter') {
+            setEditingCell(null);
+        } else if (e.key === 'Tab') {
+            e.preventDefault();
+            const currentKeyIndex = allKeys.indexOf(key);
+            const nextKeyIndex = e.shiftKey ? currentKeyIndex - 1 : currentKeyIndex + 1;
+            if (nextKeyIndex >= 0 && nextKeyIndex < allKeys.length) {
+                setEditingCell({ rowIndex, key: allKeys[nextKeyIndex] });
+            }
+        }
+    };
+
+    // Fill down function - copy selected cell value to all cells below in the same column
+    const handleFillDown = () => {
+        if (!selectedCell) return;
+        const { rowIndex, key } = selectedCell;
+        const sourceValue = filteredData[rowIndex]?.[key];
+        
+        setEditableData(prev => {
+            const newData = [...prev];
+            // Fill from selected row to the end
+            for (let i = rowIndex + 1; i < filteredData.length; i++) {
+                const actualIndex = editableData.findIndex(row => row === filteredData[i]);
+                if (actualIndex !== -1) {
+                    newData[actualIndex] = { 
+                        ...newData[actualIndex], 
+                        [key]: sourceValue,
+                        _modifiedFields: { 
+                            ...newData[actualIndex]._modifiedFields, 
+                            [key]: true 
+                        }
+                    };
+                }
+            }
+            return newData;
+        });
+        setHasChanges(true);
+    };
+
+    // Fill all function - copy selected cell value to ALL cells in the same column
+    const handleFillAll = () => {
+        if (!selectedCell) return;
+        const { rowIndex, key } = selectedCell;
+        const sourceValue = filteredData[rowIndex]?.[key];
+        
+        setEditableData(prev => {
+            const newData = [...prev];
+            // Fill all rows in the filtered data
+            filteredData.forEach((row, i) => {
+                if (i !== rowIndex) { // Skip the source row
+                    const actualIndex = editableData.findIndex(r => r === row);
+                    if (actualIndex !== -1) {
+                        newData[actualIndex] = { 
+                            ...newData[actualIndex], 
+                            [key]: sourceValue,
+                            _modifiedFields: { 
+                                ...newData[actualIndex]._modifiedFields, 
+                                [key]: true 
+                            }
+                        };
+                    }
+                }
+            });
+            return newData;
+        });
+        setHasChanges(true);
+    };
+
+    // Drag fill handlers - Excel-like drag to fill
+    const handleDragStart = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!selectedCell) return;
+        setIsDragging(true);
+        setDragEndRow(selectedCell.rowIndex);
+    };
+
+    const handleMouseMove = (rowIndex: number) => {
+        if (isDragging && selectedCell) {
+            // Only allow dragging downward from selected cell
+            if (rowIndex >= selectedCell.rowIndex) {
+                setDragEndRow(rowIndex);
+            }
+        }
+    };
+
+    const handleMouseUp = () => {
+        if (isDragging && selectedCell && dragEndRow !== null && dragEndRow > selectedCell.rowIndex) {
+            const { rowIndex, key } = selectedCell;
+            const sourceValue = filteredData[rowIndex]?.[key];
+            
+            setEditableData(prev => {
+                const newData = [...prev];
+                // Fill from selected row + 1 to drag end row
+                for (let i = rowIndex + 1; i <= dragEndRow; i++) {
+                    const actualIndex = editableData.findIndex(row => row === filteredData[i]);
+                    if (actualIndex !== -1) {
+                        newData[actualIndex] = { 
+                            ...newData[actualIndex], 
+                            [key]: sourceValue,
+                            _modifiedFields: { 
+                                ...newData[actualIndex]._modifiedFields, 
+                                [key]: true 
+                            }
+                        };
+                    }
+                }
+                return newData;
+            });
+            setHasChanges(true);
+        }
+        setIsDragging(false);
+        setDragEndRow(null);
+    };
+
+    // Global mouse up handler for drag fill
+    useEffect(() => {
+        const handleGlobalMouseUp = () => {
+            if (isDragging) {
+                handleMouseUp();
+            }
+        };
+        window.addEventListener('mouseup', handleGlobalMouseUp);
+        return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+    }, [isDragging, selectedCell, dragEndRow]);
+
+    // Check if a cell is in the drag selection range
+    const isInDragRange = (rowIndex: number, key: string) => {
+        if (!isDragging || !selectedCell || dragEndRow === null) return false;
+        return key === selectedCell.key && rowIndex > selectedCell.rowIndex && rowIndex <= dragEndRow;
+    };
+
+    const handleSave = () => {
+        if (onSave && hasChanges) {
+            // Mark rows that have any modified fields with _isModified flag
+            const dataWithModifiedFlag = editableData.map(row => {
+                const hasModifications = row._modifiedFields && Object.keys(row._modifiedFields).length > 0;
+                return {
+                    ...row,
+                    _isModified: hasModifications
+                };
+            });
+            onSave(dataWithModifiedFlag);
+            setHasChanges(false);
+            onClose();
+        }
+    };
+
+    // Check if a cell has been modified
+    const isCellModified = (row: any, key: string) => {
+        return row._modifiedFields && row._modifiedFields[key];
+    };
 
     // Conditional return AFTER all hooks
     if (!isOpen) return null;
@@ -190,13 +420,56 @@ const DetailsDialog = ({ isOpen, onClose, title, data }: { isOpen: boolean, onCl
                                 清除筛选
                             </Button>
                         )}
+                        {hasChanges && (
+                            <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
+                                有未保存的修改
+                            </span>
+                        )}
                     </div>
-                    <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0 rounded-full">
-                        <span className="sr-only">Close</span>
-                        ✕
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0 rounded-full">
+                            <span className="sr-only">Close</span>
+                            ✕
+                        </Button>
+                    </div>
                 </div>
-                <div className="flex-1 overflow-auto relative w-full bg-white dark:bg-slate-900" style={{ backgroundColor: '#ffffff' }}>
+                {onSave && (
+                    <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 text-xs text-blue-700 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            <span>双击编辑 | 单击选中后可使用填充功能 | 修改的单元格会高亮显示</span>
+                        </div>
+                        {selectedCell && (
+                            <div className="flex items-center gap-2">
+                                <span className="text-slate-500">已选中: 第{selectedCell.rowIndex + 1}行 [{selectedCell.key}]</span>
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={handleFillDown}
+                                    className="h-6 px-2 text-xs bg-white border-blue-300 text-blue-600 hover:bg-blue-100"
+                                    title="将选中单元格的值填充到下方所有单元格"
+                                >
+                                    ↓ 向下填充
+                                </Button>
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={handleFillAll}
+                                    className="h-6 px-2 text-xs bg-white border-purple-300 text-purple-600 hover:bg-purple-100"
+                                    title="将选中单元格的值填充到该列所有单元格"
+                                >
+                                    ⬇ 填充全部
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                )}
+                <div 
+                    ref={tableRef}
+                    className="flex-1 overflow-auto relative w-full bg-white dark:bg-slate-900" 
+                    style={{ backgroundColor: '#ffffff' }}
+                    onMouseUp={handleMouseUp}
+                >
                    <Table className="w-max min-w-full border-collapse bg-white dark:bg-slate-900" style={{ backgroundColor: '#ffffff' }}>
                        <TableHeader className="sticky top-0 z-10 shadow-sm bg-slate-100" style={{ backgroundColor: '#f1f5f9' }}>
                            <TableRow className="bg-slate-100 hover:bg-slate-100" style={{ backgroundColor: '#f1f5f9' }}>
@@ -222,20 +495,54 @@ const DetailsDialog = ({ isOpen, onClose, title, data }: { isOpen: boolean, onCl
                                <TableRow key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 odd:bg-white even:bg-slate-50 dark:odd:bg-slate-900 dark:even:bg-slate-800">
                                    {allKeys.map(key => {
                                        let displayValue = row[key];
+                                       const isEditing = editingCell?.rowIndex === i && editingCell?.key === key;
+                                       
                                        // Format Month field - convert Excel serial number to date string
-                                       if (key === 'Month' && displayValue !== null && displayValue !== undefined) {
+                                       if (key === 'Month' && displayValue !== null && displayValue !== undefined && !isEditing) {
                                            const parsed = parseMonthString(displayValue);
                                            if (parsed) {
                                                displayValue = normalizeMonthString(displayValue);
                                            }
                                        }
                                        // Format Hours fields
-                                       if ((key === 'Hours' || key === 'Total Hours') && typeof displayValue === 'number') {
+                                       if ((key === 'Hours' || key === 'Total Hours') && typeof displayValue === 'number' && !isEditing) {
                                            displayValue = displayValue.toFixed(2);
                                        }
+                                       
                                        return (
-                                           <TableCell key={key} className="whitespace-nowrap px-4 py-2 border-b border-r last:border-r-0 max-w-[400px] truncate text-sm" title={displayValue?.toString()}>
-                                               {displayValue}
+                                           <TableCell 
+                                               key={key} 
+                                               className={`whitespace-nowrap px-4 py-2 border-b border-r last:border-r-0 max-w-[400px] text-sm relative ${onSave ? 'cursor-pointer hover:bg-blue-50' : ''} ${isCellModified(row, key) ? 'bg-amber-50' : ''} ${selectedCell?.rowIndex === i && selectedCell?.key === key ? 'ring-2 ring-blue-500 ring-inset' : ''} ${isInDragRange(i, key) ? 'bg-blue-100 ring-1 ring-blue-400 ring-inset' : ''}`}
+                                               onDoubleClick={() => handleCellClick(i, key)}
+                                               onClick={() => handleCellSelect(i, key)}
+                                               onMouseEnter={() => handleMouseMove(i)}
+                                               title={displayValue?.toString()}
+                                           >
+                                               {isEditing ? (
+                                                   <input
+                                                       type={key === 'Hours' ? 'number' : 'text'}
+                                                       value={row[key] ?? ''}
+                                                       onChange={(e) => handleCellChange(i, key, e.target.value)}
+                                                       onBlur={handleCellBlur}
+                                                       onKeyDown={(e) => handleKeyDown(e, i, key)}
+                                                       className="w-full px-2 py-1 text-sm border border-blue-400 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                       autoFocus
+                                                       step={key === 'Hours' ? '0.01' : undefined}
+                                                   />
+                                               ) : (
+                                                   <>
+                                                       <span className={`truncate block ${isCellModified(row, key) ? 'text-amber-700 font-medium' : ''}`}>{displayValue}</span>
+                                                       {/* Drag handle - small square at bottom-right corner */}
+                                                       {selectedCell?.rowIndex === i && selectedCell?.key === key && onSave && (
+                                                           <div
+                                                               className="absolute bottom-0 right-0 w-3 h-3 bg-blue-500 cursor-crosshair hover:bg-blue-600 z-20"
+                                                               style={{ transform: 'translate(50%, 50%)' }}
+                                                               onMouseDown={handleDragStart}
+                                                               title="拖动向下填充"
+                                                           />
+                                                       )}
+                                                   </>
+                                               )}
                                            </TableCell>
                                        );
                                    })}
@@ -250,16 +557,37 @@ const DetailsDialog = ({ isOpen, onClose, title, data }: { isOpen: boolean, onCl
                 >
                     <div className="text-sm text-muted-foreground font-medium">
                         {hasActiveFilters && <span className="text-blue-600">筛选后: {filteredData.length} / </span>}
-                        Total Records: {data.length} | Total Hours: {filteredData.reduce((acc, r) => acc + (Number(r.Hours) || 0), 0).toFixed(2)}
-                        {hasActiveFilters && <span className="text-slate-400"> (原始: {data.reduce((acc, r) => acc + (Number(r.Hours) || 0), 0).toFixed(2)})</span>}
+                        Total Records: {editableData.length} | Total Hours: {filteredData.reduce((acc, r) => acc + (Number(r.Hours) || 0), 0).toFixed(2)}
+                        {hasActiveFilters && <span className="text-slate-400"> (原始: {editableData.reduce((acc, r) => acc + (Number(r.Hours) || 0), 0).toFixed(2)})</span>}
                     </div>
+                    {onSave && (
+                        <div className="flex items-center gap-2">
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={onClose}
+                                className="h-8 px-4"
+                            >
+                                取消
+                            </Button>
+                            <Button 
+                                variant="default" 
+                                size="sm" 
+                                onClick={handleSave}
+                                disabled={!hasChanges}
+                                className="h-8 px-4 bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                            >
+                                保存修改
+                            </Button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
     );
 };
 
-const BSCPieChartSection = ({ filteredData, totalHours }: { filteredData: any[], totalHours: number }) => {
+const BSCPieChartSection = ({ filteredData, totalHours, onDataUpdate }: { filteredData: any[], totalHours: number, onDataUpdate?: (updatedRecords: any[]) => void }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [dialogData, setDialogData] = useState<any[]>([]);
     const [dialogTitle, setDialogTitle] = useState('');
@@ -268,7 +596,7 @@ const BSCPieChartSection = ({ filteredData, totalHours }: { filteredData: any[],
         const bscHours: { [key: string]: { hours: number; name: string } } = {};
         filteredData.forEach(row => {
             const rawTag = row['OKR/BSC Tag']?.toString() || 'uncategoried';
-            const tag = rawTag.trim().replace(/\s+/g, ' ');
+            const tag = normalizeCategoryDisplay(rawTag);
             const key = createNormalizedKey(tag);
             const hours = Number(row['Hours']) || 0;
             if (hours > 0) {
@@ -305,6 +633,13 @@ const BSCPieChartSection = ({ filteredData, totalHours }: { filteredData: any[],
         setDialogTitle(`All records for ${categoryName}`);
         setDialogData(details);
         setIsDialogOpen(true);
+    };
+
+    // Handle save from DetailsDialog
+    const handleSave = (updatedData: any[]) => {
+        if (onDataUpdate) {
+            onDataUpdate(updatedData);
+        }
     };
 
     if (bscData.length === 0) {
@@ -411,15 +746,22 @@ const BSCPieChartSection = ({ filteredData, totalHours }: { filteredData: any[],
                     )}
                 </div>
             </div>
-            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} onSave={onDataUpdate ? handleSave : undefined} />
         </div>
     );
 };
 
-const DealCategoryPieChartSection = ({ filteredData, totalHours }: { filteredData: any[], totalHours: number }) => {
+const DealCategoryPieChartSection = ({ filteredData, totalHours, onDataUpdate }: { filteredData: any[], totalHours: number, onDataUpdate?: (updatedRecords: any[]) => void }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [dialogData, setDialogData] = useState<any[]>([]);
     const [dialogTitle, setDialogTitle] = useState('');
+
+    // Handle save from DetailsDialog
+    const handleSave = (updatedData: any[]) => {
+        if (onDataUpdate) {
+            onDataUpdate(updatedData);
+        }
+    };
 
     // Fixed order for Deal/Matter Categories
     const DEAL_CATEGORY_ORDER = [
@@ -436,8 +778,10 @@ const DealCategoryPieChartSection = ({ filteredData, totalHours }: { filteredDat
         const dealCategoryHours: { [key: string]: { hours: number; name: string } } = {};
         filteredData.forEach(row => {
             const rawCategory = row['Deal/Matter Category']?.toString();
-            // Ensure category is never empty string
-            const category = (rawCategory && rawCategory.trim()) ? rawCategory.replace(/\s+/g, ' ').trim() : 'Uncategorized';
+            // Normalize category using the standard function
+            const category = (rawCategory && rawCategory.trim()) 
+                ? normalizeCategoryDisplay(rawCategory)
+                : 'Uncategorized';
             const key = createNormalizedKey(category);
             const hours = Number(row['Hours']) || 0;
             if (hours > 0) {
@@ -468,7 +812,7 @@ const DealCategoryPieChartSection = ({ filteredData, totalHours }: { filteredDat
         const categoryName = entry.name;
         const details = filteredData.filter(row => {
             const rawCategory = row['Deal/Matter Category']?.toString();
-            const category = (rawCategory && rawCategory.trim()) ? rawCategory.replace(/\s+/g, ' ').trim() : 'Uncategorized';
+            const category = (rawCategory && rawCategory.trim()) ? normalizeCategoryDisplay(rawCategory) : 'Uncategorized';
             return fieldsMatch(category, categoryName);
         });
         setDialogTitle(`Details for ${categoryName}`);
@@ -481,7 +825,7 @@ const DealCategoryPieChartSection = ({ filteredData, totalHours }: { filteredDat
         const categoryName = e.value;
         const details = filteredData.filter(row => {
             const rawCategory = row['Deal/Matter Category']?.toString();
-            const category = (rawCategory && rawCategory.trim()) ? rawCategory.replace(/\s+/g, ' ').trim() : 'Uncategorized';
+            const category = (rawCategory && rawCategory.trim()) ? normalizeCategoryDisplay(rawCategory) : 'Uncategorized';
             return fieldsMatch(category, categoryName);
         });
         setDialogTitle(`All records for ${categoryName}`);
@@ -597,15 +941,22 @@ const DealCategoryPieChartSection = ({ filteredData, totalHours }: { filteredDat
                     ))}
                 </div>
             </div>
-            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} onSave={onDataUpdate ? handleSave : undefined} />
         </div>
     );
 };
 
-const UtilizationTrendChart = ({ data, teamData }: { data: any[], teamData: any[] }) => {
+const UtilizationTrendChart = ({ data, teamData, onDataUpdate }: { data: any[], teamData: any[], onDataUpdate?: (updatedRecords: any[]) => void }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [dialogData, setDialogData] = useState<any[]>([]);
     const [dialogTitle, setDialogTitle] = useState('');
+
+    // Handle save from DetailsDialog
+    const handleSave = (updatedData: any[]) => {
+        if (onDataUpdate) {
+            onDataUpdate(updatedData);
+        }
+    };
 
     // Premium color palette matching scatter plot colors
     const LINE_COLORS = {
@@ -939,21 +1290,37 @@ const UtilizationTrendChart = ({ data, teamData }: { data: any[], teamData: any[
                 Click on data points to view detailed records
             </div>
             
-            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} onSave={onDataUpdate ? handleSave : undefined} />
         </div>
     );
 };
 
-const VirtualGroupTrendChart = ({ data, teamData, groupList }: { data: any[], teamData: any[], groupList: string[] }) => {
+const VirtualGroupTrendChart = ({ data, teamData, groupList, onDataUpdate }: { data: any[], teamData: any[], groupList: string[], onDataUpdate?: (updatedRecords: any[]) => void }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [dialogData, setDialogData] = useState<any[]>([]);
     const [dialogTitle, setDialogTitle] = useState('');
+
+    // Handle save from DetailsDialog
+    const handleSave = (updatedData: any[]) => {
+        if (onDataUpdate) {
+            onDataUpdate(updatedData);
+        }
+    };
     
     // State for fixed tooltip
     const [tooltipData, setTooltipData] = useState<{ payload: any[], label: string } | null>(null);
     const [tooltipPosition, setTooltipPosition] = useState<{ x: number, y: number } | null>(null);
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const isTooltipHovered = useRef(false);
+    const lastTooltipLabel = useRef<string | null>(null);
+
+    // Reset tooltip hover state when dialog closes
+    useEffect(() => {
+        if (!isDialogOpen) {
+            isTooltipHovered.current = false;
+            lastTooltipLabel.current = null;
+        }
+    }, [isDialogOpen]);
 
     // Define allowed groups for case-insensitive matching
     const allowedGroups = ['Group Financing', 'International Financial', 'Listing Rules and Corporate Governance', 'Others'];
@@ -1004,9 +1371,7 @@ const VirtualGroupTrendChart = ({ data, teamData, groupList }: { data: any[], te
         setTooltipPosition(null);
     };
 
-    // Custom tooltip component that triggers state updates - use ref to prevent infinite loop
-    const lastTooltipLabel = useRef<string | null>(null);
-    
+    // Custom tooltip component that triggers state updates
     const TooltipTrigger = useCallback(({ active, payload, label, coordinate }: any) => {
         if (isTooltipHovered.current) return null;
         
@@ -1299,7 +1664,7 @@ const VirtualGroupTrendChart = ({ data, teamData, groupList }: { data: any[], te
                 Click on data points to view detailed records
             </div>
             
-            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} onSave={onDataUpdate ? handleSave : undefined} />
             
             {/* Custom scrollbar styles */}
             <style>{`
@@ -1323,10 +1688,17 @@ const VirtualGroupTrendChart = ({ data, teamData, groupList }: { data: any[], te
 };
 
 // Internal Client Monthly Trend Chart - Grouped Bar Chart with per-month sorting
-const InternalClientMonthlyTrendChart = ({ teamData }: { teamData: any[] }) => {
+const InternalClientMonthlyTrendChart = ({ teamData, onDataUpdate }: { teamData: any[], onDataUpdate?: (updatedRecords: any[]) => void }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [dialogData, setDialogData] = useState<any[]>([]);
     const [dialogTitle, setDialogTitle] = useState('');
+
+    // Handle save from DetailsDialog
+    const handleSave = (updatedData: any[]) => {
+        if (onDataUpdate) {
+            onDataUpdate(updatedData);
+        }
+    };
 
     // Extended color palette - 30 unique colors for more clients
     const PREMIUM_COLORS = [
@@ -1379,7 +1751,7 @@ const InternalClientMonthlyTrendChart = ({ teamData }: { teamData: any[] }) => {
             if (!monthStr) return;
 
             // Normalize client name to handle duplicates from input issues
-            const cleanName = rawName.trim().replace(/\s+/g, ' ');
+            const cleanName = normalizeCategoryDisplay(rawName);
             if (!cleanName || normalizeField(cleanName) === 'group matter') return;
             
             const normalizedKey = createNormalizedKey(cleanName);
@@ -1664,15 +2036,22 @@ const InternalClientMonthlyTrendChart = ({ teamData }: { teamData: any[] }) => {
                 Click on bars or legend items to view detailed records
             </div>
             
-            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} onSave={onDataUpdate ? handleSave : undefined} />
         </div>
     );
 };
 
-const VirtualGroupHoursChart = ({ filteredData }: { filteredData: any[] }) => {
+const VirtualGroupHoursChart = ({ filteredData, onDataUpdate }: { filteredData: any[], onDataUpdate?: (updatedRecords: any[]) => void }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [dialogData, setDialogData] = useState<any[]>([]);
     const [dialogTitle, setDialogTitle] = useState('');
+
+    // Handle save from DetailsDialog
+    const handleSave = (updatedData: any[]) => {
+        if (onDataUpdate) {
+            onDataUpdate(updatedData);
+        }
+    };
     
     // State for fixed tooltip
     const [tooltipData, setTooltipData] = useState<{ payload: any[], label: string } | null>(null);
@@ -1680,6 +2059,13 @@ const VirtualGroupHoursChart = ({ filteredData }: { filteredData: any[] }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
     const isTooltipHovered = useRef(false);
+
+    // Reset tooltip hover state when dialog closes
+    useEffect(() => {
+        if (!isDialogOpen) {
+            isTooltipHovered.current = false;
+        }
+    }, [isDialogOpen]);
 
     // Fixed order for Deal/Matter Categories
     const CATEGORY_ORDER = [
@@ -1966,7 +2352,7 @@ const VirtualGroupHoursChart = ({ filteredData }: { filteredData: any[] }) => {
             {/* Fixed Tooltip */}
             {renderFixedTooltip()}
             
-            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} onSave={onDataUpdate ? handleSave : undefined} />
             
             {/* Custom scrollbar styles */}
             <style>{`
@@ -1989,10 +2375,17 @@ const VirtualGroupHoursChart = ({ filteredData }: { filteredData: any[] }) => {
     );
 };
 
-const AverageMonthlyHourPerPersonChart = ({ teamData }: { teamData: any[] }) => {
+const AverageMonthlyHourPerPersonChart = ({ teamData, onDataUpdate }: { teamData: any[], onDataUpdate?: (updatedRecords: any[]) => void }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [dialogData, setDialogData] = useState<any[]>([]);
     const [dialogTitle, setDialogTitle] = useState('');
+
+    // Handle save from DetailsDialog
+    const handleSave = (updatedData: any[]) => {
+        if (onDataUpdate) {
+            onDataUpdate(updatedData);
+        }
+    };
 
     // Premium color palette for groups - high contrast colors
     const GROUP_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899'];
@@ -2160,7 +2553,7 @@ const AverageMonthlyHourPerPersonChart = ({ teamData }: { teamData: any[] }) => 
                             ))}
                         </BarChart>
                     </ResponsiveContainer>
-                    <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+                    <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} onSave={onDataUpdate ? handleSave : undefined} />
                 </div>
             </CardContent>
         </Card>
@@ -2173,18 +2566,27 @@ const ClickableHoursCell = ({
     category, 
     filteredData,
     isGroup,
-    percentage
+    percentage,
+    onDataUpdate
 }: { 
     hours: number, 
     dealName: string, 
     category: string, 
     filteredData: any[],
     isGroup?: boolean,
-    percentage?: number
+    percentage?: number,
+    onDataUpdate?: (updatedRecords: any[]) => void
 }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [dialogData, setDialogData] = useState<any[]>([]);
     const [dialogTitle, setDialogTitle] = useState('');
+
+    // Handle save from DetailsDialog
+    const handleSave = (updatedData: any[]) => {
+        if (onDataUpdate) {
+            onDataUpdate(updatedData);
+        }
+    };
 
     const handleClick = () => {
         let details: any[] = [];
@@ -2192,15 +2594,15 @@ const ClickableHoursCell = ({
         if (isGroup) {
             // For group tables, match by name only (already filtered by source path)
             details = filteredData.filter(row => {
-                const rowName = row['Deal/Matter Name']?.toString().replace(/\s+/g, ' ').trim();
-                return rowName === dealName;
+                const rowName = normalizeCategoryDisplay(row['Deal/Matter Name']?.toString());
+                return fieldsMatch(rowName, dealName);
             });
         } else {
             // For M&A and Corporate Matter tables, match by name and category
             details = filteredData.filter(row => {
-                const rowName = row['Deal/Matter Name']?.toString().replace(/\s+/g, ' ').trim();
-                const rowCategory = row['Deal/Matter Category']?.toString().replace(/\s+/g, ' ').trim();
-                return rowName === dealName && rowCategory === category;
+                const rowName = normalizeCategoryDisplay(row['Deal/Matter Name']?.toString());
+                const rowCategory = normalizeCategoryDisplay(row['Deal/Matter Category']?.toString());
+                return fieldsMatch(rowName, dealName) && fieldsMatch(rowCategory, category);
             });
         }
         
@@ -2224,7 +2626,7 @@ const ClickableHoursCell = ({
                     </span>
                 )}
             </div>
-            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} onSave={onDataUpdate ? handleSave : undefined} />
         </>
     );
 };
@@ -2884,7 +3286,7 @@ const FilterSection = ({
 };
 
 // Investment Work Category Section - wrapper with shared time filter
-const InvestmentWorkCategorySection = ({ teamData }: { teamData: any[] }) => {
+const InvestmentWorkCategorySection = ({ teamData, onDataUpdate }: { teamData: any[], onDataUpdate?: (updatedRecords: any[]) => void }) => {
     const [period, setPeriod] = useState<Period>('monthly');
     const [selectedYear, setSelectedYear] = useState<string | null>(null);
     const [selectedPeriodValue, setSelectedPeriodValue] = useState<string | null>(null);
@@ -2944,6 +3346,7 @@ const InvestmentWorkCategorySection = ({ teamData }: { teamData: any[] }) => {
                     selectedPeriodValue={selectedPeriodValue}
                     customStartDate={customStartDate}
                     customEndDate={customEndDate}
+                    onDataUpdate={onDataUpdate}
                 />
                 <DraftingReviewingMonthlyTrend teamData={teamData} />
             </div>
@@ -2959,6 +3362,7 @@ interface InvestmentWorkCategoryComparisonProps {
     selectedPeriodValue: string | null;
     customStartDate: Date | undefined;
     customEndDate: Date | undefined;
+    onDataUpdate?: (updatedRecords: any[]) => void;
 }
 
 const InvestmentWorkCategoryComparison = ({ 
@@ -2967,11 +3371,19 @@ const InvestmentWorkCategoryComparison = ({
     selectedYear, 
     selectedPeriodValue, 
     customStartDate, 
-    customEndDate 
+    customEndDate,
+    onDataUpdate
 }: InvestmentWorkCategoryComparisonProps) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [dialogData, setDialogData] = useState<any[]>([]);
     const [dialogTitle, setDialogTitle] = useState('');
+
+    // Handle save from DetailsDialog
+    const handleSave = (updatedData: any[]) => {
+        if (onDataUpdate) {
+            onDataUpdate(updatedData);
+        }
+    };
 
     // Investment-related categories to filter
     const investmentCategories = [
@@ -3062,7 +3474,7 @@ const InvestmentWorkCategoryComparison = ({
             // Normalize work category
             const workCatKey = createNormalizedKey(rawWorkCategory);
             if (!workCategoryMap[workCatKey]) {
-                workCategoryMap[workCatKey] = rawWorkCategory.trim().replace(/\s+/g, ' ');
+                workCategoryMap[workCatKey] = normalizeCategoryDisplay(rawWorkCategory);
             }
             const workCategory = workCategoryMap[workCatKey];
 
@@ -3294,6 +3706,9 @@ const InvestmentWorkCategoryComparison = ({
                                     content={<PremiumComparisonTooltip />}
                                     cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
                                     wrapperStyle={{ pointerEvents: 'auto' }}
+                                    position={{ y: 50 }}
+                                    offset={-260}
+                                    allowEscapeViewBox={{ x: true, y: true }}
                                 />
                                 {chartData.dealCategories.map((dealCat, index) => (
                                     <Bar 
@@ -3314,7 +3729,7 @@ const InvestmentWorkCategoryComparison = ({
                         <p>当期无数据</p>
                     </div>
                 )}
-                <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+                <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} onSave={onDataUpdate ? handleSave : undefined} />
             </CardContent>
         </Card>
     );
@@ -3594,10 +4009,17 @@ const DraftingReviewingMonthlyTrend = ({ teamData }: { teamData: any[] }) => {
 };
 
 // Work Category Trends by Deal/Matter Categories Component
-const WorkCategoryTrendsByDealMatter = ({ teamData }: { teamData: any[] }) => {
+const WorkCategoryTrendsByDealMatter = ({ teamData, onDataUpdate }: { teamData: any[], onDataUpdate?: (updatedRecords: any[]) => void }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [dialogData, setDialogData] = useState<any[]>([]);
     const [dialogTitle, setDialogTitle] = useState('');
+
+    // Handle save from DetailsDialog
+    const handleSave = (updatedData: any[]) => {
+        if (onDataUpdate) {
+            onDataUpdate(updatedData);
+        }
+    };
 
     // Deal/Matter categories mapping
     const dealCategories = [
@@ -3668,7 +4090,7 @@ const WorkCategoryTrendsByDealMatter = ({ teamData }: { teamData: any[] }) => {
                 if (!rawWorkCat || hours <= 0) return;
 
                 // Normalize work category name - remove leading underscores/special chars (input method issues)
-                const cleanedWorkCat = rawWorkCat.trim().replace(/^[_\s]+/, '').replace(/\s+/g, ' ');
+                const cleanedWorkCat = normalizeCategoryDisplay(rawWorkCat.replace(/^[_\s]+/, ''));
                 const workCatKey = createNormalizedKey(cleanedWorkCat);
                 if (!workCategoryMap[workCatKey]) {
                     workCategoryMap[workCatKey] = cleanedWorkCat;
@@ -4061,13 +4483,13 @@ const WorkCategoryTrendsByDealMatter = ({ teamData }: { teamData: any[] }) => {
                         />
                     ))}
                 </div>
-                <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+                <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} onSave={onDataUpdate ? handleSave : undefined} />
             </CardContent>
         </Card>
     );
 };
 
-const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
+const InvestmentLegalCenterPanel = ({ data, onDataUpdate }: { data: any[], onDataUpdate?: (updatedRecords: any[]) => void }) => {
     // Pre-process data once: filter team and parse dates
     const teamData = useMemo(() => {
         return data
@@ -4182,7 +4604,7 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                 
                 <FilterSection data={teamData} title="Working Hours (BSC vs Others)">
                     {(filteredData, totalHours) => (
-                        <BSCPieChartSection filteredData={filteredData} totalHours={totalHours} />
+                        <BSCPieChartSection filteredData={filteredData} totalHours={totalHours} onDataUpdate={onDataUpdate} />
                     )}
                 </FilterSection>
             </div>
@@ -4239,7 +4661,7 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
             {/* Pie Chart Section - Full Width */}
             <FilterSection data={teamData} title="Hours Allocation by Deal/Matters Categories">
                 {(filteredData, totalHours) => (
-                     <DealCategoryPieChartSection filteredData={filteredData} totalHours={totalHours} />
+                     <DealCategoryPieChartSection filteredData={filteredData} totalHours={totalHours} onDataUpdate={onDataUpdate} />
                 )}
             </FilterSection>
                 
@@ -4247,7 +4669,7 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
             <Card className="border-slate-200/60 shadow-sm hover:shadow-md transition-all duration-200">
                 <CardHeader><CardTitle className="text-sm font-medium">Working Hour Utilization Trends by Deal/Matter Categories</CardTitle></CardHeader>
                 <CardContent>
-                    <UtilizationTrendChart data={trendData.utilizationTrends} teamData={teamData} />
+                    <UtilizationTrendChart data={trendData.utilizationTrends} teamData={teamData} onDataUpdate={onDataUpdate} />
                 </CardContent>
             </Card>
 
@@ -4257,7 +4679,7 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                         const mAndADealsAgg: { [key: string]: { hours: number, name: string } } = {};
                         filteredData.filter(row => fieldsMatch(row['Deal/Matter Category'], 'Investment Related - M&A Deal') && row['Deal/Matter Name']).forEach(row => {
                                 const rawName = row['Deal/Matter Name'].toString();
-                                const name = rawName.replace(/\\s+/g, ' ').trim();
+                                const name = normalizeCategoryDisplay(rawName);
                                 if (!name) return;
                                 const key = createNormalizedKey(name);
                                 const hours = Number(row['Hours']) || 0;
@@ -4299,7 +4721,7 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                                                     </div>
                                                 </td>
                                                 <td className="py-px px-3 text-right">
-                                                    <ClickableHoursCell hours={deal.hours} dealName={deal.name} category="Investment Related - M&A Deal" filteredData={filteredData} percentage={deal.percentage} />
+                                                    <ClickableHoursCell hours={deal.hours} dealName={deal.name} category="Investment Related - M&A Deal" filteredData={filteredData} percentage={deal.percentage} onDataUpdate={onDataUpdate} />
                                                 </td>
                                             </tr>
                                         )) : (
@@ -4319,7 +4741,7 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                          const corporateMattersAgg: { [key: string]: { hours: number, name: string } } = {};
                         filteredData.filter(row => fieldsMatch(row['Deal/Matter Category'], 'Investment Related - Corporate Matter') && row['Deal/Matter Name']).forEach(row => {
                                 const rawName = row['Deal/Matter Name'].toString();
-                                const name = rawName.replace(/\\s+/g, ' ').trim();
+                                const name = normalizeCategoryDisplay(rawName);
                                 if (!name) return;
                                 const key = createNormalizedKey(name);
                                 const hours = Number(row['Hours']) || 0;
@@ -4361,7 +4783,7 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                                                     </div>
                                                 </td>
                                                 <td className="py-px px-3 text-right">
-                                                    <ClickableHoursCell hours={matter.hours} dealName={matter.name} category="Investment Related - Corporate Matter" filteredData={filteredData} percentage={matter.percentage} />
+                                                    <ClickableHoursCell hours={matter.hours} dealName={matter.name} category="Investment Related - Corporate Matter" filteredData={filteredData} percentage={matter.percentage} onDataUpdate={onDataUpdate} />
                                                 </td>
                                             </tr>
                                         )) : (
@@ -4379,12 +4801,12 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
 
             <FilterSection data={teamData} title="Working Hours of Each Virtual Group">
                 {(filteredData) => (
-                    <VirtualGroupHoursChart filteredData={filteredData} />
+                    <VirtualGroupHoursChart filteredData={filteredData} onDataUpdate={onDataUpdate} />
                 )}
             </FilterSection>
 
             {/* Average Monthly Hour - Trend Chart - No Filter */}
-            <AverageMonthlyHourPerPersonChart teamData={teamData} />
+            <AverageMonthlyHourPerPersonChart teamData={teamData} onDataUpdate={onDataUpdate} />
 
             <FilterSection data={teamData} title="Working Hours - Per Target Company (Groups 1-6)">
                 {(filteredData) => {
@@ -4473,6 +4895,7 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
                                                                     filteredData={groupFilteredData} 
                                                                     isGroup={true}
                                                                     percentage={item.percentage}
+                                                                    onDataUpdate={onDataUpdate}
                                                                 />
                                                             </td>
                                                         </tr>
@@ -4493,15 +4916,15 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
             </FilterSection>
 
             {/* Investment Work Category Section with shared time filter */}
-            <InvestmentWorkCategorySection teamData={teamData} />
+            <InvestmentWorkCategorySection teamData={teamData} onDataUpdate={onDataUpdate} />
 
             {/* Work Category Trends by Deal/Matter Categories */}
-            <WorkCategoryTrendsByDealMatter teamData={teamData} />
+            <WorkCategoryTrendsByDealMatter teamData={teamData} onDataUpdate={onDataUpdate} />
         </div>
     );
 }
 
-const WorkCategoryComparisonChart = ({ data, workCategoryList, teamData }: { data: any[], workCategoryList: string[], teamData: any[] }) => {
+const WorkCategoryComparisonChart = ({ data, workCategoryList, teamData, onDataUpdate }: { data: any[], workCategoryList: string[], teamData: any[], onDataUpdate?: (updatedRecords: any[]) => void }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [dialogData, setDialogData] = useState<any[]>([]);
     const [dialogTitle, setDialogTitle] = useState('');
@@ -4556,6 +4979,12 @@ const WorkCategoryComparisonChart = ({ data, workCategoryList, teamData }: { dat
         setDialogTitle(`All records for ${categoryName}`);
         setDialogData(details);
         setIsDialogOpen(true);
+    };
+
+    const handleSave = (updatedRecords: any[]) => {
+        if (onDataUpdate) {
+            onDataUpdate(updatedRecords);
+        }
     };
 
     // Premium tooltip
@@ -4701,13 +5130,13 @@ const WorkCategoryComparisonChart = ({ data, workCategoryList, teamData }: { dat
                     </div>
                 </CardContent>
             </Card>
-            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} onSave={onDataUpdate ? handleSave : undefined} />
         </>
     );
 };
 
 // BSC Items Comparison Chart Component
-const BSCItemsComparisonChart = ({ teamData }: { teamData: any[] }) => {
+const BSCItemsComparisonChart = ({ teamData, onDataUpdate }: { teamData: any[], onDataUpdate?: (updatedRecords: any[]) => void }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [dialogData, setDialogData] = useState<any[]>([]);
     const [dialogTitle, setDialogTitle] = useState('');
@@ -4748,7 +5177,7 @@ const BSCItemsComparisonChart = ({ teamData }: { teamData: any[] }) => {
             if (!monthStr) return;
 
             // Normalize item name to handle input variations
-            const cleanItem = rawItem.trim().replace(/\s+/g, ' ');
+            const cleanItem = normalizeCategoryDisplay(rawItem);
             const itemKey = createNormalizedKey(cleanItem);
             
             if (!normalizedItemMap[itemKey]) {
@@ -4828,6 +5257,12 @@ const BSCItemsComparisonChart = ({ teamData }: { teamData: any[] }) => {
         setDialogTitle(`All records for ${item}`);
         setDialogData(details);
         setIsDialogOpen(true);
+    };
+
+    const handleSave = (updatedRecords: any[]) => {
+        if (onDataUpdate) {
+            onDataUpdate(updatedRecords);
+        }
     };
 
     // Custom Tooltip for grouped bar chart
@@ -4986,12 +5421,12 @@ const BSCItemsComparisonChart = ({ teamData }: { teamData: any[] }) => {
                 </ResponsiveContainer>
                 </div>
             </div>
-            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} onSave={onDataUpdate ? handleSave : undefined} />
         </>
     );
 };
 
-const CorporateFinancePanel = ({ data }: { data: any[] }) => {
+const CorporateFinancePanel = ({ data, onDataUpdate }: { data: any[], onDataUpdate?: (updatedRecords: any[]) => void }) => {
     // Pre-process data once: filter team and parse dates
     const teamData = useMemo(() => {
         return data
@@ -5143,10 +5578,17 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                         const [dialogData, setDialogData] = useState<any[]>([]);
                         const [dialogTitle, setDialogTitle] = useState('');
 
+                        // Handle save from DetailsDialog
+                        const handleSave = (updatedData: any[]) => {
+                            if (onDataUpdate) {
+                                onDataUpdate(updatedData);
+                            }
+                        };
+
                         const bscHours: { [key: string]: { hours: number; name: string } } = {};
                         filteredData.forEach(row => {
                             const rawTag = row['OKR/BSC Tag']?.toString() || 'uncategoried';
-                            const tag = rawTag.trim().replace(/\\s+/g, ' ');
+                            const tag = normalizeCategoryDisplay(rawTag);
                             const key = createNormalizedKey(tag);
                             const hours = Number(row['Hours']) || 0;
                             if (hours > 0) {
@@ -5279,7 +5721,7 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                                         </div>
                                     </>
                                 ) : <div className="h-full flex items-center justify-center text-muted-foreground"><p>当期无BSC分类数据</p></div>}
-                                <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+                                <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} onSave={onDataUpdate ? handleSave : undefined} />
                             </div>
                         );
                     }}
@@ -5341,6 +5783,13 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                         const [isDialogOpen, setIsDialogOpen] = useState(false);
                         const [dialogData, setDialogData] = useState<any[]>([]);
                         const [dialogTitle, setDialogTitle] = useState('');
+
+                        // Handle save from DetailsDialog
+                        const handleSave = (updatedData: any[]) => {
+                            if (onDataUpdate) {
+                                onDataUpdate(updatedData);
+                            }
+                        };
 
                         const allowedVirtualGroups = ['Group Financing', 'International Financial', 'Listing Rules and Corporate Governance', 'Others'];
                         const virtualGroupHours: { [key: string]: { hours: number, name: string } } = {};
@@ -5484,7 +5933,7 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                                         </div>
                                     </>
                                 ) : <div className="h-full flex items-center justify-center text-muted-foreground"><p>当期无虚拟组数据</p></div>}
-                                <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+                                <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} onSave={onDataUpdate ? handleSave : undefined} />
                             </div>
                         );
                     }}
@@ -5494,7 +5943,7 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                 <Card>
                     <CardHeader><CardTitle className="text-sm font-medium">Comparison of Virtual Groups</CardTitle></CardHeader>
                     <CardContent className="pt-16 pb-12">
-                        <VirtualGroupTrendChart data={trendData.virtualGroupTrendData} teamData={teamData} groupList={trendData.virtualGroupList || []} />
+                        <VirtualGroupTrendChart data={trendData.virtualGroupTrendData} teamData={teamData} groupList={trendData.virtualGroupList || []} onDataUpdate={onDataUpdate} />
                     </CardContent>
                 </Card>
             </div>
@@ -5505,6 +5954,13 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                         const [isDialogOpen, setIsDialogOpen] = useState(false);
                         const [dialogData, setDialogData] = useState<any[]>([]);
                         const [dialogTitle, setDialogTitle] = useState('');
+
+                        // Handle save from DetailsDialog
+                        const handleSave = (updatedData: any[]) => {
+                            if (onDataUpdate) {
+                                onDataUpdate(updatedData);
+                            }
+                        };
 
                         const internalClientAgg: { [key: string]: { hours: number, displayName: string } } = {};
                         filteredData.forEach(row => {
@@ -5577,7 +6033,7 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                                         <Bar dataKey="hours" name="Hours" fill="url(#internalClientGrad)" onClick={handleBarClick} cursor="pointer" radius={[4, 4, 0, 0]} />
                                     </BarChart>
                                 </ResponsiveContainer>
-                                <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+                                <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} onSave={onDataUpdate ? handleSave : undefined} />
                             </div>
                         );
                     }}
@@ -5589,7 +6045,7 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                         <CardTitle className="text-sm font-medium text-slate-800">Monthly Working Hours by Internal Client</CardTitle>
                     </CardHeader>
                     <CardContent style={{ overflow: 'visible' }}>
-                        <InternalClientMonthlyTrendChart teamData={teamData} />
+                        <InternalClientMonthlyTrendChart teamData={teamData} onDataUpdate={onDataUpdate} />
                     </CardContent>
                 </Card>
 
@@ -5639,6 +6095,12 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                             setIsDialogOpen(true);
                         };
 
+                        const handleSave = (updatedRecords: any[]) => {
+                            if (onDataUpdate) {
+                                onDataUpdate(updatedRecords);
+                            }
+                        };
+
                         return (
                             <div className="relative">
                                 <div className="text-xs text-slate-400 mb-3 flex items-center gap-1.5">
@@ -5670,7 +6132,7 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                                         <Bar dataKey="hours" name="Hours" fill="url(#workCategoryGrad)" onClick={handleBarClick} cursor="pointer" radius={[0, 4, 4, 0]} />
                                     </BarChart>
                                 </ResponsiveContainer>
-                                <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+                                <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} onSave={onDataUpdate ? handleSave : undefined} />
                             </div>
                         );
                     }}
@@ -5678,7 +6140,7 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
             </div>
 
             {/* Work Category Comparison - Trend - No Filter */}
-            <WorkCategoryComparisonChart data={trendData.workCategoryTrendData} workCategoryList={trendData.workCategoryList || []} teamData={teamData} />
+            <WorkCategoryComparisonChart data={trendData.workCategoryTrendData} workCategoryList={trendData.workCategoryList || []} teamData={teamData} onDataUpdate={onDataUpdate} />
 
             {/* Working Hours (BSC items) - New Section */}
             <FilterSection data={teamData} title="Working Hours (BSC items)">
@@ -5751,6 +6213,12 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                         setIsDialogOpen(true);
                     };
 
+                    const handleSave = (updatedRecords: any[]) => {
+                        if (onDataUpdate) {
+                            onDataUpdate(updatedRecords);
+                        }
+                    };
+
                     return (
                         <div className="relative">
                             <div className="text-xs text-slate-500 mb-3 flex items-center gap-1.5">
@@ -5820,7 +6288,7 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                                     </table>
                                 </div>
                             </div>
-                            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+                            <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} onSave={onDataUpdate ? handleSave : undefined} />
                         </div>
                     );
                 }}
@@ -5832,14 +6300,14 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                     <CardTitle className="text-sm font-medium text-slate-800">Comparison of BSC Items</CardTitle>
                 </CardHeader>
                 <CardContent style={{ overflow: 'visible' }}>
-                    <BSCItemsComparisonChart teamData={teamData} />
+                    <BSCItemsComparisonChart teamData={teamData} onDataUpdate={onDataUpdate} />
                 </CardContent>
             </Card>
         </div>
     );
 }
 
-export function TeamDimensionTab({ data }: { data: any[] }) {
+export function TeamDimensionTab({ data, onDataUpdate }: { data: any[], onDataUpdate?: (updatedRecords: any[]) => void }) {
   const [activeSubTab, setActiveSubTab] = useState<string>('investment-legal');
   const [isReady, setIsReady] = useState(false);
   
@@ -5887,10 +6355,10 @@ export function TeamDimensionTab({ data }: { data: any[] }) {
           ) : (
             <>
               <TabsContent value="investment-legal" className="mt-6 space-y-6 focus-visible:outline-none animate-in fade-in-50 duration-300">
-                {activeSubTab === 'investment-legal' && <InvestmentLegalCenterPanel data={data} />}
+                {activeSubTab === 'investment-legal' && <InvestmentLegalCenterPanel data={data} onDataUpdate={onDataUpdate} />}
               </TabsContent>
               <TabsContent value="corporate-finance" className="mt-6 space-y-6 focus-visible:outline-none animate-in fade-in-50 duration-300">
-                {activeSubTab === 'corporate-finance' && <CorporateFinancePanel data={data} />}
+                {activeSubTab === 'corporate-finance' && <CorporateFinancePanel data={data} onDataUpdate={onDataUpdate} />}
               </TabsContent>
             </>
           )}
