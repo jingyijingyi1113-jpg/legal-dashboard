@@ -1,5 +1,5 @@
 
-import { useMemo, useState, useEffect, useTransition, useCallback } from 'react';
+import { useMemo, useState, useEffect, useTransition, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -855,7 +855,7 @@ const UtilizationTrendChart = ({ data, teamData }: { data: any[], teamData: any[
                         tickLine={{ stroke: '#e2e8f0' }}
                     />
                     <YAxis 
-                        label={{ value: '小时', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11, fill: '#64748b' } }} 
+                        label={{ value: 'Hours', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11, fill: '#64748b' } }} 
                         tick={{ fontSize: 11, fill: '#64748b' }}
                         axisLine={{ stroke: '#e2e8f0' }}
                         tickLine={{ stroke: '#e2e8f0' }}
@@ -948,6 +948,12 @@ const VirtualGroupTrendChart = ({ data, teamData, groupList }: { data: any[], te
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [dialogData, setDialogData] = useState<any[]>([]);
     const [dialogTitle, setDialogTitle] = useState('');
+    
+    // State for fixed tooltip
+    const [tooltipData, setTooltipData] = useState<{ payload: any[], label: string } | null>(null);
+    const [tooltipPosition, setTooltipPosition] = useState<{ x: number, y: number } | null>(null);
+    const chartContainerRef = useRef<HTMLDivElement>(null);
+    const isTooltipHovered = useRef(false);
 
     // Define allowed groups for case-insensitive matching
     const allowedGroups = ['Group Financing', 'International Financial', 'Listing Rules and Corporate Governance', 'Others'];
@@ -979,6 +985,77 @@ const VirtualGroupTrendChart = ({ data, teamData, groupList }: { data: any[], te
         setDialogTitle(`${groupName} - ${monthStr}`);
         setDialogData(details);
         setIsDialogOpen(true);
+    };
+
+    // Handle tooltip item click
+    const handleTooltipItemClick = (groupName: string, monthStr: string) => {
+        const details = teamData.filter(row => {
+            if (!row || !row['Month'] || !row['Deal/Matter Category']) return false;
+            const rowMonth = normalizeMonthString(row['Month']);
+            const rowGroup = row['Deal/Matter Category']?.toString();
+            const matchedGroup = allowedGroups.find(allowed => fieldsMatch(allowed, rowGroup));
+            return rowMonth === monthStr && matchedGroup === groupName;
+        });
+        
+        setDialogTitle(`${groupName} - ${monthStr}`);
+        setDialogData(details);
+        setIsDialogOpen(true);
+        setTooltipData(null);
+        setTooltipPosition(null);
+    };
+
+    // Custom tooltip component that triggers state updates - use ref to prevent infinite loop
+    const lastTooltipLabel = useRef<string | null>(null);
+    
+    const TooltipTrigger = useCallback(({ active, payload, label, coordinate }: any) => {
+        if (isTooltipHovered.current) return null;
+        
+        if (active && payload && payload.length > 0 && label !== lastTooltipLabel.current) {
+            lastTooltipLabel.current = label;
+            
+            const filteredPayload = payload.filter((entry: any) => {
+                const color = entry.color || entry.stroke;
+                return color && !color.startsWith('url(');
+            });
+            
+            if (filteredPayload.length > 0) {
+                // Use setTimeout to avoid state update during render
+                setTimeout(() => {
+                    setTooltipData({ payload: filteredPayload, label });
+                    // Position tooltip near the data point, adjust based on x position
+                    const chartWidth = chartContainerRef.current?.offsetWidth || 800;
+                    const tooltipWidth = 220;
+                    const xPos = coordinate?.x || 60;
+                    // If point is in the right half, show tooltip on the left of the point
+                    const adjustedX = xPos > chartWidth / 2 ? xPos - tooltipWidth - 20 : xPos + 20;
+                    setTooltipPosition({ x: Math.max(10, adjustedX), y: 30 });
+                }, 0);
+            }
+        }
+        
+        return null;
+    }, []);
+
+    // Handle mouse leave from chart area
+    const handleChartMouseLeave = () => {
+        lastTooltipLabel.current = null;
+        setTimeout(() => {
+            if (!isTooltipHovered.current) {
+                setTooltipData(null);
+                setTooltipPosition(null);
+            }
+        }, 100);
+    };
+
+    // Handle tooltip mouse enter/leave
+    const handleTooltipMouseEnter = () => {
+        isTooltipHovered.current = true;
+    };
+
+    const handleTooltipMouseLeave = () => {
+        isTooltipHovered.current = false;
+        setTooltipData(null);
+        setTooltipPosition(null);
     };
 
     const CustomDot = (props: any) => {
@@ -1054,45 +1131,76 @@ const VirtualGroupTrendChart = ({ data, teamData, groupList }: { data: any[], te
         );
     };
 
-    // Premium tooltip - filter out Area duplicates, keep Line entries with actual colors
-    const PremiumGroupTooltip = ({ active, payload, label }: any) => {
-        if (!active || !payload || !payload.length) return null;
+    // Render fixed tooltip
+    const renderFixedTooltip = () => {
+        if (!tooltipData || !tooltipPosition) return null;
         
-        // Filter to only show Line data (entries with actual hex colors, not gradient URLs)
-        const filteredPayload = payload.filter((entry: any) => {
-            // Line entries have hex colors like '#6366f1', Area entries have 'url(#...)' 
-            return entry.color && !entry.color.startsWith('url(');
-        });
-        
-        if (!filteredPayload.length) return null;
+        const { payload, label } = tooltipData;
+        const total = payload.reduce((sum: number, entry: any) => sum + (entry.value || 0), 0);
         
         return (
-            <div className="bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-xl p-4 min-w-[200px]">
+            <div 
+                className="absolute bg-white/98 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-2xl p-4 min-w-[220px] z-50"
+                style={{ 
+                    left: tooltipPosition.x, 
+                    top: tooltipPosition.y,
+                    pointerEvents: 'auto'
+                }}
+                onMouseEnter={handleTooltipMouseEnter}
+                onMouseLeave={handleTooltipMouseLeave}
+            >
                 <div className="text-sm font-semibold text-slate-800 mb-3 pb-2 border-b border-slate-100">
-                    {label}
+                    <span>{label}</span>
                 </div>
-                <div className="space-y-2">
-                    {filteredPayload.map((entry: any, index: number) => (
-                        <div key={index} className="flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-2">
-                                <div 
-                                    className="w-3 h-3 rounded-full shadow-sm"
-                                    style={{ backgroundColor: entry.color }}
-                                />
-                                <span className="text-xs text-slate-600 max-w-[120px] truncate">{entry.name}</span>
+                <div 
+                    className="space-y-1 overflow-y-auto pr-1 custom-scrollbar"
+                    style={{ maxHeight: '200px' }}
+                >
+                    {payload.map((entry: any, index: number) => {
+                        const entryColor = entry.color || entry.stroke || PREMIUM_COLORS[index % PREMIUM_COLORS.length];
+                        const itemName = entry.name || entry.dataKey;
+                        return (
+                            <div 
+                                key={index} 
+                                className="group relative flex items-center justify-between gap-2 cursor-pointer hover:bg-indigo-50 rounded-lg px-2 py-1.5 transition-all duration-150 border border-transparent hover:border-indigo-100"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleTooltipItemClick(itemName, label);
+                                }}
+                                title={itemName}
+                            >
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    <div 
+                                        className="w-2.5 h-2.5 rounded-full shadow-sm flex-shrink-0"
+                                        style={{ backgroundColor: entryColor }}
+                                    />
+                                    <span className="text-xs text-slate-600 truncate max-w-[100px] group-hover:text-indigo-700 transition-colors">{itemName}</span>
+                                </div>
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                    <span className="text-xs font-semibold text-slate-800 group-hover:text-indigo-700">
+                                        {Number(entry.value).toFixed(1)}h
+                                    </span>
+                                    <span className="text-xs text-slate-400">
+                                        ({total > 0 ? ((Number(entry.value) / total) * 100).toFixed(0) : 0}%)
+                                    </span>
+                                    <svg className="w-3 h-3 text-slate-300 group-hover:text-indigo-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
+                                </div>
                             </div>
-                            <span className="text-xs font-semibold text-slate-800">
-                                {Number(entry.value).toFixed(1)}h
-                            </span>
-                        </div>
-                    ))}
+                        );
+                    })}
+                </div>
+                <div className="mt-3 pt-2 border-t border-slate-100 flex justify-between items-center">
+                    <span className="text-xs font-medium text-slate-500">Total</span>
+                    <span className="text-sm font-bold text-slate-800">{total.toFixed(1)}h</span>
                 </div>
             </div>
         );
     };
 
     return (
-        <div className="relative">
+        <div className="relative" ref={chartContainerRef}>
             {/* Custom Legend - positioned above chart */}
             <div className="flex flex-wrap items-center justify-center gap-4 mb-4 -mt-12">
                 {groupList?.map((group, index) => (
@@ -1108,75 +1216,83 @@ const VirtualGroupTrendChart = ({ data, teamData, groupList }: { data: any[], te
                 ))}
             </div>
             
-            <ResponsiveContainer width="100%" height={280}>
-                <ComposedChart data={data} margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
-                    <defs>
-                        {/* Gradient definitions for area fills */}
-                        {PREMIUM_COLORS.map((color, index) => (
-                            <linearGradient key={`areaGrad${index}`} id={`areaGradient${index}`} x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor={color} stopOpacity={0.3}/>
-                                <stop offset="100%" stopColor={color} stopOpacity={0.02}/>
-                            </linearGradient>
+            <div onMouseLeave={handleChartMouseLeave}>
+                <ResponsiveContainer width="100%" height={280}>
+                    <ComposedChart 
+                        data={data} 
+                        margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
+                    >
+                        <defs>
+                            {/* Gradient definitions for area fills */}
+                            {PREMIUM_COLORS.map((color, index) => (
+                                <linearGradient key={`areaGrad${index}`} id={`areaGradient${index}`} x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor={color} stopOpacity={0.3}/>
+                                    <stop offset="100%" stopColor={color} stopOpacity={0.02}/>
+                                </linearGradient>
+                            ))}
+                            {/* Glow filter */}
+                            <filter id="lineGlowVG" x="-20%" y="-20%" width="140%" height="140%">
+                                <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                                <feMerge>
+                                    <feMergeNode in="coloredBlur"/>
+                                    <feMergeNode in="SourceGraphic"/>
+                                </feMerge>
+                            </filter>
+                        </defs>
+                        <CartesianGrid 
+                            strokeDasharray="3 3" 
+                            stroke="#e2e8f0" 
+                            strokeOpacity={0.6}
+                            vertical={false}
+                        />
+                        <XAxis 
+                            dataKey="month" 
+                            tick={{ fontSize: 11, fill: '#64748b' }} 
+                            axisLine={{ stroke: '#e2e8f0' }}
+                            tickLine={{ stroke: '#e2e8f0' }}
+                        />
+                        <YAxis 
+                            label={{ value: 'Hours', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11, fill: '#64748b' } }} 
+                            tick={{ fontSize: 11, fill: '#64748b' }}
+                            axisLine={{ stroke: '#e2e8f0' }}
+                            tickLine={{ stroke: '#e2e8f0' }}
+                        />
+                        <Tooltip content={<TooltipTrigger />} />
+                        
+                        {/* Area fills for visual depth */}
+                        {groupList?.map((group, index) => (
+                            <Area 
+                                key={`area-${group}`}
+                                type="monotone" 
+                                dataKey={group} 
+                                fill={`url(#areaGradient${index % PREMIUM_COLORS.length})`}
+                                stroke="none"
+                                fillOpacity={0.4}
+                            />
                         ))}
-                        {/* Glow filter */}
-                        <filter id="lineGlowVG" x="-20%" y="-20%" width="140%" height="140%">
-                            <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-                            <feMerge>
-                                <feMergeNode in="coloredBlur"/>
-                                <feMergeNode in="SourceGraphic"/>
-                            </feMerge>
-                        </filter>
-                    </defs>
-                    <CartesianGrid 
-                        strokeDasharray="3 3" 
-                        stroke="#e2e8f0" 
-                        strokeOpacity={0.6}
-                        vertical={false}
-                    />
-                    <XAxis 
-                        dataKey="month" 
-                        tick={{ fontSize: 11, fill: '#64748b' }} 
-                        axisLine={{ stroke: '#e2e8f0' }}
-                        tickLine={{ stroke: '#e2e8f0' }}
-                    />
-                    <YAxis 
-                        label={{ value: '小时', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11, fill: '#64748b' } }} 
-                        tick={{ fontSize: 11, fill: '#64748b' }}
-                        axisLine={{ stroke: '#e2e8f0' }}
-                        tickLine={{ stroke: '#e2e8f0' }}
-                    />
-                    <Tooltip content={<PremiumGroupTooltip />} />
-                    
-                    {/* Area fills for visual depth */}
-                    {groupList?.map((group, index) => (
-                        <Area 
-                            key={`area-${group}`}
-                            type="monotone" 
-                            dataKey={group} 
-                            fill={`url(#areaGradient${index % PREMIUM_COLORS.length})`}
-                            stroke="none"
-                            fillOpacity={0.4}
-                        />
-                    ))}
-                    
-                    {/* Lines with premium styling */}
-                    {groupList?.map((group, index) => (
-                        <Line 
-                            key={group} 
-                            type="monotone" 
-                            dataKey={group} 
-                            name={group} 
-                            stroke={PREMIUM_COLORS[index % PREMIUM_COLORS.length]}
-                            strokeWidth={3}
-                            dot={(props) => <CustomDot {...props} dataKey={group} />}
-                            activeDot={(props) => <CustomActiveDot {...props} dataKey={group} />}
-                            animationDuration={1000}
-                            animationEasing="ease-out"
-                            animationBegin={index * 150}
-                        />
-                    ))}
-                </ComposedChart>
-            </ResponsiveContainer>
+                        
+                        {/* Lines with premium styling */}
+                        {groupList?.map((group, index) => (
+                            <Line 
+                                key={group} 
+                                type="monotone" 
+                                dataKey={group} 
+                                name={group} 
+                                stroke={PREMIUM_COLORS[index % PREMIUM_COLORS.length]}
+                                strokeWidth={3}
+                                dot={(props) => <CustomDot {...props} dataKey={group} />}
+                                activeDot={(props) => <CustomActiveDot {...props} dataKey={group} />}
+                                animationDuration={1000}
+                                animationEasing="ease-out"
+                                animationBegin={index * 150}
+                            />
+                        ))}
+                    </ComposedChart>
+                </ResponsiveContainer>
+            </div>
+            
+            {/* Fixed Tooltip */}
+            {renderFixedTooltip()}
             
             {/* Hint text */}
             <div className="text-xs text-slate-400 text-center mt-2">
@@ -1184,6 +1300,24 @@ const VirtualGroupTrendChart = ({ data, teamData, groupList }: { data: any[], te
             </div>
             
             <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+            
+            {/* Custom scrollbar styles */}
+            <style>{`
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 6px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: #f1f5f9;
+                    border-radius: 3px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background: #cbd5e1;
+                    border-radius: 3px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                    background: #94a3b8;
+                }
+            `}</style>
         </div>
     );
 };
@@ -1465,7 +1599,7 @@ const InternalClientMonthlyTrendChart = ({ teamData }: { teamData: any[] }) => {
                         tickLine={{ stroke: '#e2e8f0' }}
                     />
                     <YAxis 
-                        label={{ value: '小时', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11, fill: '#64748b' } }} 
+                        label={{ value: 'Hours', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11, fill: '#64748b' } }} 
                         tick={{ fontSize: 11, fill: '#64748b' }}
                         axisLine={{ stroke: '#e2e8f0' }}
                         tickLine={{ stroke: '#e2e8f0' }}
@@ -1539,6 +1673,13 @@ const VirtualGroupHoursChart = ({ filteredData }: { filteredData: any[] }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [dialogData, setDialogData] = useState<any[]>([]);
     const [dialogTitle, setDialogTitle] = useState('');
+    
+    // State for fixed tooltip
+    const [tooltipData, setTooltipData] = useState<{ payload: any[], label: string } | null>(null);
+    const [tooltipPosition, setTooltipPosition] = useState<{ x: number, y: number } | null>(null);
+    const chartContainerRef = useRef<HTMLDivElement>(null);
+    const tooltipRef = useRef<HTMLDivElement>(null);
+    const isTooltipHovered = useRef(false);
 
     // Fixed order for Deal/Matter Categories
     const CATEGORY_ORDER = [
@@ -1570,7 +1711,7 @@ const VirtualGroupHoursChart = ({ filteredData }: { filteredData: any[] }) => {
     
     filteredData.forEach(row => {
         const rawSourcePath = row['Source Path']?.toString();
-        const sourcePath = rawSourcePath ? rawSourcePath.replace(/\\s+/g, ' ').trim() : '';
+        const sourcePath = rawSourcePath ? rawSourcePath.replace(/\\s+/g, ' ').trim().replace('工时统计-', '') : '';
         const rawCategory = row['Deal/Matter Category']?.toString().replace(/\\s+/g, ' ').trim();
         const hours = Number(row['Hours']) || 0;
 
@@ -1610,7 +1751,7 @@ const VirtualGroupHoursChart = ({ filteredData }: { filteredData: any[] }) => {
         const category = dataKey;
         const details = filteredData.filter(row => {
             const rawSourcePath = row['Source Path']?.toString();
-            const rowSourcePath = rawSourcePath ? rawSourcePath.replace(/\\s+/g, ' ').trim() : '';
+            const rowSourcePath = rawSourcePath ? rawSourcePath.replace(/\\s+/g, ' ').trim().replace('工时统计-', '') : '';
             const rawCategory = row['Deal/Matter Category']?.toString();
             return rowSourcePath === sourcePath && fieldsMatch(rawCategory, category);
         });
@@ -1622,7 +1763,7 @@ const VirtualGroupHoursChart = ({ filteredData }: { filteredData: any[] }) => {
     const handleTooltipItemClick = (category: string, sourcePath: string) => {
         const details = filteredData.filter(row => {
             const rawSourcePath = row['Source Path']?.toString();
-            const rowSourcePath = rawSourcePath ? rawSourcePath.replace(/\\s+/g, ' ').trim() : '';
+            const rowSourcePath = rawSourcePath ? rawSourcePath.replace(/\\s+/g, ' ').trim().replace('工时统计-', '') : '';
             const rawCategory = row['Deal/Matter Category']?.toString();
             return rowSourcePath === sourcePath && fieldsMatch(rawCategory, category);
         });
@@ -1643,9 +1784,54 @@ const VirtualGroupHoursChart = ({ filteredData }: { filteredData: any[] }) => {
         setIsDialogOpen(true);
     };
 
-    // Premium tooltip with hover to show full name
-    const PremiumBarTooltip = ({ active, payload, label }: any) => {
-        if (!active || !payload || !payload.length) return null;
+    // Handle mouse enter on bar - show fixed tooltip
+    const handleBarMouseEnter = (data: any) => {
+        if (isTooltipHovered.current) return;
+        
+        const payload = virtualGroupCategoryList
+            .filter(cat => data[cat] !== undefined && data[cat] > 0)
+            .map(cat => ({
+                dataKey: cat,
+                value: data[cat],
+                name: cat
+            }));
+        
+        setTooltipData({ payload, label: data.name });
+        
+        // Position tooltip to the right of the chart
+        if (chartContainerRef.current) {
+            const rect = chartContainerRef.current.getBoundingClientRect();
+            setTooltipPosition({ x: rect.width - 360, y: 60 });
+        }
+    };
+
+    // Handle mouse leave from chart area
+    const handleChartMouseLeave = () => {
+        // Delay hiding to allow mouse to enter tooltip
+        setTimeout(() => {
+            if (!isTooltipHovered.current) {
+                setTooltipData(null);
+                setTooltipPosition(null);
+            }
+        }, 100);
+    };
+
+    // Handle tooltip mouse enter/leave
+    const handleTooltipMouseEnter = () => {
+        isTooltipHovered.current = true;
+    };
+
+    const handleTooltipMouseLeave = () => {
+        isTooltipHovered.current = false;
+        setTooltipData(null);
+        setTooltipPosition(null);
+    };
+
+    // Render fixed tooltip
+    const renderFixedTooltip = () => {
+        if (!tooltipData || !tooltipPosition) return null;
+        
+        const { payload, label } = tooltipData;
         
         // Sort payload by fixed category order
         const sortedPayload = [...payload].sort((a: any, b: any) => {
@@ -1661,58 +1847,69 @@ const VirtualGroupHoursChart = ({ filteredData }: { filteredData: any[] }) => {
         
         return (
             <div 
-                className="bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-xl p-4 min-w-[320px]"
-                style={{ pointerEvents: 'auto' }}
+                ref={tooltipRef}
+                className="absolute bg-white/98 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-2xl p-4 min-w-[340px] z-50"
+                style={{ 
+                    left: tooltipPosition.x, 
+                    top: tooltipPosition.y,
+                    pointerEvents: 'auto'
+                }}
+                onMouseEnter={handleTooltipMouseEnter}
+                onMouseLeave={handleTooltipMouseLeave}
             >
                 <div className="text-sm font-semibold text-slate-800 mb-3 pb-2 border-b border-slate-100">
-                    {label}
+                    <span>{label}</span>
                 </div>
                 <div 
-                    className="space-y-2 overflow-y-auto pr-1"
-                    style={{ maxHeight: '200px', pointerEvents: 'auto' }}
+                    className="space-y-1 overflow-y-auto pr-1 custom-scrollbar"
+                    style={{ maxHeight: '220px' }}
                 >
                     {sortedPayload.map((entry: any, index: number) => {
-                        // Get color from the category index in sorted list
                         const categoryIndex = virtualGroupCategoryList.indexOf(entry.dataKey);
                         const color = CHART_COLORS[categoryIndex % CHART_COLORS.length];
                         return (
                             <div 
                                 key={index} 
-                                className="group flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-100 rounded px-2 py-1.5 transition-colors relative"
+                                className="group flex items-center justify-between gap-3 cursor-pointer hover:bg-indigo-50 rounded-lg px-3 py-2 transition-all duration-150 border border-transparent hover:border-indigo-100"
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     handleTooltipItemClick(entry.dataKey, label);
+                                    setTooltipData(null);
+                                    setTooltipPosition(null);
                                 }}
                             >
-                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <div className="flex items-center gap-2.5 flex-1 min-w-0">
                                     <div 
-                                        className="w-3 h-3 rounded-sm shadow-sm flex-shrink-0"
+                                        className="w-3 h-3 rounded-sm shadow-sm flex-shrink-0 transition-transform group-hover:scale-110"
                                         style={{ backgroundColor: color }}
                                     />
-                                    <span className="text-xs text-slate-600 truncate group-hover:whitespace-normal group-hover:break-words">{entry.dataKey}</span>
+                                    <span className="text-xs text-slate-600 truncate group-hover:text-indigo-700 transition-colors">{entry.dataKey}</span>
                                 </div>
-                                <div className="flex items-center gap-1 flex-shrink-0">
-                                    <span className="text-xs font-semibold text-slate-800">
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    <span className="text-xs font-semibold text-slate-800 group-hover:text-indigo-700">
                                         {Number(entry.value).toFixed(1)}h
                                     </span>
                                     <span className="text-xs text-slate-400">
                                         ({total > 0 ? ((Number(entry.value) / total) * 100).toFixed(0) : 0}%)
                                     </span>
+                                    <svg className="w-3.5 h-3.5 text-slate-300 group-hover:text-indigo-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
                                 </div>
                             </div>
                         );
                     })}
                 </div>
-                <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between">
+                <div className="mt-3 pt-2 border-t border-slate-100 flex justify-between items-center">
                     <span className="text-xs font-medium text-slate-500">Total</span>
-                    <span className="text-xs font-bold text-slate-800">{total.toFixed(1)}h</span>
+                    <span className="text-sm font-bold text-slate-800">{total.toFixed(1)}h</span>
                 </div>
             </div>
         );
     };
 
     return (
-        <div className="relative">
+        <div className="relative" ref={chartContainerRef}>
             <div className="text-xs text-slate-400 mb-3 flex items-center gap-1.5">
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
                 Click on legend labels or bars to view detailed data
@@ -1735,34 +1932,59 @@ const VirtualGroupHoursChart = ({ filteredData }: { filteredData: any[] }) => {
                 ))}
             </div>
             
-            <ResponsiveContainer width="100%" height={320}>
-                <BarChart layout="vertical" data={virtualGroupChartData} margin={{ top: 10, right: 30, left: 20, bottom: 10 }} barSize={22}>
-                    <defs>
-                        {CHART_COLORS.map((color, index) => (
-                            <linearGradient key={`barGrad${index}`} id={`barGradient${index}`} x1="0" y1="0" x2="1" y2="0">
-                                <stop offset="0%" stopColor={color} stopOpacity={0.9}/>
-                                <stop offset="100%" stopColor={color} stopOpacity={0.7}/>
-                            </linearGradient>
+            <div onMouseLeave={handleChartMouseLeave}>
+                <ResponsiveContainer width="100%" height={320}>
+                    <BarChart layout="vertical" data={virtualGroupChartData} margin={{ top: 10, right: 30, left: 20, bottom: 10 }} barSize={22}>
+                        <defs>
+                            {CHART_COLORS.map((color, index) => (
+                                <linearGradient key={`barGrad${index}`} id={`barGradient${index}`} x1="0" y1="0" x2="1" y2="0">
+                                    <stop offset="0%" stopColor={color} stopOpacity={0.9}/>
+                                    <stop offset="100%" stopColor={color} stopOpacity={0.7}/>
+                                </linearGradient>
+                            ))}
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.6} horizontal={true} vertical={false} />
+                        <XAxis type="number" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
+                        <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11, fill: '#475569' }} axisLine={false} tickLine={false} />
+                        <Tooltip content={() => null} cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }} />
+                        {virtualGroupCategoryList.map((category, index) => (
+                            <Bar 
+                                key={category} 
+                                dataKey={category} 
+                                stackId="a" 
+                                fill={`url(#barGradient${index % CHART_COLORS.length})`}
+                                onClick={(data) => handleBarClick(data, category)} 
+                                onMouseEnter={(data) => handleBarMouseEnter(data)}
+                                cursor="pointer"
+                                radius={index === virtualGroupCategoryList.length - 1 ? [0, 4, 4, 0] : [0, 0, 0, 0]}
+                            />
                         ))}
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.6} horizontal={true} vertical={false} />
-                    <XAxis type="number" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
-                    <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11, fill: '#475569' }} axisLine={false} tickLine={false} />
-                    <Tooltip content={<PremiumBarTooltip />} cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }} wrapperStyle={{ pointerEvents: 'auto' }} />
-                    {virtualGroupCategoryList.map((category, index) => (
-                        <Bar 
-                            key={category} 
-                            dataKey={category} 
-                            stackId="a" 
-                            fill={`url(#barGradient${index % CHART_COLORS.length})`}
-                            onClick={(data) => handleBarClick(data, category)} 
-                            cursor="pointer"
-                            radius={index === virtualGroupCategoryList.length - 1 ? [0, 4, 4, 0] : [0, 0, 0, 0]}
-                        />
-                    ))}
-                </BarChart>
-            </ResponsiveContainer>
+                    </BarChart>
+                </ResponsiveContainer>
+            </div>
+            
+            {/* Fixed Tooltip */}
+            {renderFixedTooltip()}
+            
             <DetailsDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} title={dialogTitle} data={dialogData} />
+            
+            {/* Custom scrollbar styles */}
+            <style>{`
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 6px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: #f1f5f9;
+                    border-radius: 3px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background: #cbd5e1;
+                    border-radius: 3px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                    background: #94a3b8;
+                }
+            `}</style>
         </div>
     );
 };
@@ -2991,7 +3213,7 @@ const InvestmentWorkCategoryComparison = ({
     return (
         <Card className="border-slate-200/60 shadow-sm hover:shadow-md transition-all duration-200">
             <CardHeader className="pb-4">
-                <CardTitle className="text-sm font-medium">Comparison of Work Category by Deal/Matter Category</CardTitle>
+                <CardTitle className="text-sm font-medium">Comparison of Work Category by Deal/Matter Category (Investment Related)</CardTitle>
             </CardHeader>
             <CardContent>
                 {chartData.data.length > 0 && chartData.dealCategories.length > 0 ? (
@@ -3515,7 +3737,55 @@ const WorkCategoryTrendsByDealMatter = ({ teamData }: { teamData: any[] }) => {
             result[label] = { data: chartData, workCategories: sortedWorkCategories, colorMap, maxBars };
         });
 
-        return result;
+        // Calculate Drafting trend data for each deal category (filtered from 2025/10, excluding 2025/09)
+        const draftingFilterThreshold = '2025/10';
+        const draftingTrendResult: { [dealKey: string]: { data: any[] } } = {};
+        
+        dealCategories.forEach(({ key: dealCategory, label }) => {
+            // Filter data for this deal category and "Drafting/reviewing/revising legal documents" work category
+            const draftingData = teamData.filter(row => {
+                const rowDealCat = row['Deal/Matter Category']?.toString();
+                const rowWorkCat = row['Work Category']?.toString();
+                return fieldsMatch(rowDealCat, dealCategory) && 
+                       rowWorkCat && rowWorkCat.toLowerCase().includes('drafting');
+            });
+
+            // Aggregate by month
+            const monthlyHours: { [month: string]: number } = {};
+            
+            draftingData.forEach(row => {
+                if (!row._parsedDate) return;
+                const month = format(row._parsedDate, 'yyyy/MM');
+                if (month < draftingFilterThreshold) return; // Filter out data before 2025/09
+                const hours = Number(row['Hours']) || 0;
+                monthlyHours[month] = (monthlyHours[month] || 0) + hours;
+            });
+
+            // Get sorted months starting from 2025/09
+            const draftingMonths = Object.keys(monthlyHours).sort();
+            
+            // Calculate MoM trend
+            const chartData = draftingMonths.map((month, index) => {
+                const hours = monthlyHours[month] || 0;
+                let mom = 0;
+                if (index > 0) {
+                    const prevMonth = draftingMonths[index - 1];
+                    const prevHours = monthlyHours[prevMonth] || 0;
+                    if (prevHours > 0) {
+                        mom = ((hours - prevHours) / prevHours) * 100;
+                    }
+                }
+                return {
+                    month,
+                    hours,
+                    MoM: mom
+                };
+            });
+
+            draftingTrendResult[label] = { data: chartData };
+        });
+
+        return { ...result, draftingTrend: draftingTrendResult };
     }, [teamData]);
 
     const handleDotClick = (entry: any, workCategory: string, dealCategory: string) => {
@@ -3538,7 +3808,7 @@ const WorkCategoryTrendsByDealMatter = ({ teamData }: { teamData: any[] }) => {
     };
 
     // Single chart component for each deal category
-    const DealCategoryTrendChart = ({ dealLabel, data, workCategories, colorMap, maxBars }: { dealLabel: string, data: any[], workCategories: string[], colorMap: { [wc: string]: string }, maxBars: number }) => {
+    const DealCategoryTrendChart = ({ dealLabel, data, workCategories, colorMap, maxBars, draftingData }: { dealLabel: string, data: any[], workCategories: string[], colorMap: { [wc: string]: string }, maxBars: number, draftingData: any[] }) => {
         // Handle bar click
         const handleBarClick = (barData: any, barIndex: number) => {
             if (!barData || !barData.month) return;
@@ -3546,6 +3816,12 @@ const WorkCategoryTrendsByDealMatter = ({ teamData }: { teamData: any[] }) => {
             if (workCategory) {
                 handleDotClick(barData, workCategory, dealLabel);
             }
+        };
+
+        // Handle drafting bar click
+        const handleDraftingBarClick = (barData: any) => {
+            if (!barData || !barData.month) return;
+            handleDotClick(barData, 'Drafting/reviewing/revising legal documents', dealLabel);
         };
 
         // Custom tooltip
@@ -3624,15 +3900,14 @@ const WorkCategoryTrendsByDealMatter = ({ teamData }: { teamData: any[] }) => {
                     <CardTitle className="text-sm font-medium">{dealLabel}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    {data.length > 0 && workCategories.length > 0 ? (
-                        <div className="relative">
+                    {/* Legend - show at top for both charts */}
+                    {data.length > 0 && workCategories.length > 0 && (
+                        <div className="mb-4">
                             <div className="text-xs text-slate-400 mb-2 flex items-center gap-1.5">
                                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
                                 Click on bars to view details
                             </div>
-                            
-                            {/* Legend - only show categories with data */}
-                            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 mb-4">
+                            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
                                 {workCategories.map((wc) => (
                                     <div key={wc} className="flex items-center gap-1.5">
                                         <div 
@@ -3643,50 +3918,125 @@ const WorkCategoryTrendsByDealMatter = ({ teamData }: { teamData: any[] }) => {
                                     </div>
                                 ))}
                             </div>
-                            
-                            <ResponsiveContainer width="100%" height={350}>
-                                <BarChart data={data} margin={{ top: 10, right: 20, left: 10, bottom: 5 }} barSize={12}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.6} vertical={false} />
-                                    <XAxis 
-                                        dataKey="month" 
-                                        tick={{ fontSize: 11, fill: '#64748b' }} 
-                                        axisLine={{ stroke: '#e2e8f0' }} 
-                                        tickLine={false}
-                                    />
-                                    <YAxis 
-                                        tick={{ fontSize: 11, fill: '#64748b' }} 
-                                        axisLine={{ stroke: '#e2e8f0' }} 
-                                        tickLine={false}
-                                        label={{ value: 'Hours', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: '#64748b' } }}
-                                    />
-                                    <Tooltip 
-                                        content={<TrendTooltip />}
-                                        wrapperStyle={{ pointerEvents: 'auto' }}
-                                    />
-                                    {Array.from({ length: maxBars }, (_, idx) => (
-                                        <Bar 
-                                            key={`bar${idx}`}
-                                            dataKey={`bar${idx}`}
-                                            onClick={(barData) => handleBarClick(barData, idx)}
-                                            cursor="pointer"
-                                            radius={[4, 4, 0, 0]}
-                                        >
-                                            {data.map((entry, index) => (
-                                                <Cell 
-                                                    key={`cell-${index}`} 
-                                                    fill={entry[`bar${idx}_color`] || '#e2e8f0'} 
-                                                />
-                                            ))}
-                                        </Bar>
-                                    ))}
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    ) : (
-                        <div className="h-[350px] flex items-center justify-center text-muted-foreground">
-                            <p className="text-sm">当期无数据</p>
                         </div>
                     )}
+                    
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Left: Work Category Bar Chart */}
+                        <div>
+                            {data.length > 0 && workCategories.length > 0 ? (
+                                <div className="relative">
+                                    
+                                    <ResponsiveContainer width="100%" height={350}>
+                                        <BarChart data={data} margin={{ top: 10, right: 20, left: 10, bottom: 5 }} barSize={12}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.6} vertical={false} />
+                                            <XAxis 
+                                                dataKey="month" 
+                                                tick={{ fontSize: 11, fill: '#64748b' }} 
+                                                axisLine={{ stroke: '#e2e8f0' }} 
+                                                tickLine={false}
+                                            />
+                                            <YAxis 
+                                                tick={{ fontSize: 11, fill: '#64748b' }} 
+                                                axisLine={{ stroke: '#e2e8f0' }} 
+                                                tickLine={false}
+                                                label={{ value: 'Hours', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: '#64748b' } }}
+                                            />
+                                            <Tooltip 
+                                                content={<TrendTooltip />}
+                                                wrapperStyle={{ pointerEvents: 'auto' }}
+                                            />
+                                            {Array.from({ length: maxBars }, (_, idx) => (
+                                                <Bar 
+                                                    key={`bar${idx}`}
+                                                    dataKey={`bar${idx}`}
+                                                    onClick={(barData) => handleBarClick(barData, idx)}
+                                                    cursor="pointer"
+                                                    radius={[4, 4, 0, 0]}
+                                                >
+                                                    {data.map((entry, index) => (
+                                                        <Cell 
+                                                            key={`cell-${index}`} 
+                                                            fill={entry[`bar${idx}_color`] || '#e2e8f0'} 
+                                                        />
+                                                    ))}
+                                                </Bar>
+                                            ))}
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            ) : (
+                                <div className="h-[350px] flex items-center justify-center text-muted-foreground">
+                                    <p className="text-sm">当期无数据</p>
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* Right: Drafting/reviewing/revising legal documents Trends */}
+                        <div className="pt-[70px]">
+                            {draftingData && draftingData.length > 0 ? (
+                                <div className="relative">
+                                    <div className="text-sm font-medium text-slate-700 mb-4">Drafting/reviewing/revising legal documents Trends</div>
+                                    <ResponsiveContainer width="100%" height={300}>
+                                        <ComposedChart data={draftingData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.6} vertical={false} />
+                                            <XAxis 
+                                                dataKey="month" 
+                                                tick={{ fontSize: 11, fill: '#64748b' }} 
+                                                axisLine={{ stroke: '#e2e8f0' }} 
+                                                tickLine={false}
+                                            />
+                                            <YAxis 
+                                                yAxisId="left"
+                                                tick={{ fontSize: 11, fill: '#64748b' }} 
+                                                axisLine={{ stroke: '#e2e8f0' }} 
+                                                tickLine={false}
+                                                label={{ value: 'Hours', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: '#64748b' } }}
+                                            />
+                                            <YAxis 
+                                                yAxisId="right"
+                                                orientation="right"
+                                                tick={{ fontSize: 11, fill: '#64748b' }} 
+                                                axisLine={{ stroke: '#e2e8f0' }} 
+                                                tickLine={false}
+                                                label={{ value: 'MoM%', angle: 90, position: 'insideRight', style: { fontSize: 11, fill: '#64748b' } }}
+                                            />
+                                            <Tooltip 
+                                                formatter={(value: number, name: string) => [
+                                                    name === 'hours' ? `${value.toFixed(1)}h` : `${value.toFixed(1)}%`,
+                                                    name === 'hours' ? 'Total Hours' : 'MoM%'
+                                                ]}
+                                            />
+                                            <Legend iconType="rect" wrapperStyle={{ paddingTop: '8px' }} />
+                                            <Bar 
+                                                yAxisId="left"
+                                                dataKey="hours" 
+                                                name="Total Hours" 
+                                                fill="#3b82f6" 
+                                                radius={[4, 4, 0, 0]}
+                                                onClick={handleDraftingBarClick}
+                                                cursor="pointer"
+                                                barSize={30}
+                                            />
+                                            <Line 
+                                                yAxisId="right"
+                                                type="monotone" 
+                                                dataKey="MoM" 
+                                                name="MoM%" 
+                                                stroke="#10b981" 
+                                                strokeWidth={2}
+                                                dot={{ fill: '#10b981', strokeWidth: 2, r: 4 }}
+                                            />
+                                        </ComposedChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            ) : (
+                                <div className="h-[350px] flex items-center justify-center text-muted-foreground">
+                                    <p className="text-sm">当期无数据</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </CardContent>
             </Card>
         );
@@ -3695,7 +4045,7 @@ const WorkCategoryTrendsByDealMatter = ({ teamData }: { teamData: any[] }) => {
     return (
         <Card className="border-slate-200/60 shadow-sm">
             <CardHeader>
-                <CardTitle className="text-sm font-medium">Work Category Trends by Deal/Matter Categories</CardTitle>
+                <CardTitle className="text-sm font-medium">Work Category Trends by Deal/Matter Category (Investment Related)</CardTitle>
             </CardHeader>
             <CardContent>
                 <div className="grid gap-4 grid-cols-1">
@@ -3707,6 +4057,7 @@ const WorkCategoryTrendsByDealMatter = ({ teamData }: { teamData: any[] }) => {
                             workCategories={trendData[label]?.workCategories || []}
                             colorMap={trendData[label]?.colorMap || {}}
                             maxBars={trendData[label]?.maxBars || 0}
+                            draftingData={trendData.draftingTrend?.[label]?.data || []}
                         />
                     ))}
                 </div>
@@ -3840,34 +4191,45 @@ const InvestmentLegalCenterPanel = ({ data }: { data: any[] }) => {
             <div className="grid gap-4 md:grid-cols-2">
                 <Card>
                     <CardHeader><CardTitle className="text-sm font-medium">Comparison of Total Working Hours</CardTitle></CardHeader>
-                    <CardContent>
+                    <CardContent className="pt-8">
                         <ResponsiveContainer width="100%" height={300}>
                             <ComposedChart data={trendData.monthlyTrends} margin={{ top: 20, right: 20, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="left" label={{ value: '小时', angle: -90, position: 'insideLeft', dy: -10 }} tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="right" orientation="right" label={{ value: '%', angle: 90, position: 'insideRight', dy: 10 }} tick={{ fontSize: 12 }}/>
+                                <YAxis yAxisId="left" label={{ value: 'Hours', angle: -90, position: 'insideLeft', dy: 20, fontSize: 11 }} tick={{ fontSize: 12 }} />
+                                <YAxis yAxisId="right" orientation="right" label={{ value: 'MoM%', angle: 90, position: 'insideRight', dy: 30, fontSize: 11 }} tick={{ fontSize: 12 }}/>
                                 <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
                                 <Legend iconType="rect" />
-                                <Bar yAxisId="left" dataKey="totalHours" name="总用时" fill="#3b82f6" radius={[8, 8, 0, 0]} />
-                                <Line yAxisId="right" type="monotone" dataKey="totalHoursTrend" name="环比 (%)" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: "#10b981" }} />
+                                <Bar yAxisId="left" dataKey="totalHours" name="Total Hours" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+                                <Line yAxisId="right" type="monotone" dataKey="totalHoursTrend" name="MoM%" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: "#10b981" }} />
                             </ComposedChart>
                         </ResponsiveContainer>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardHeader><CardTitle className="text-sm font-medium">Comparison of Monthly Avg Working Hours per person</CardTitle></CardHeader>
-                    <CardContent>
+                    <CardContent className="pt-8">
                          <ResponsiveContainer width="100%" height={300}>
                             <ComposedChart data={trendData.monthlyTrends} margin={{ top: 20, right: 20, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="left" label={{ value: '小时', angle: -90, position: 'insideLeft', dy: -10 }} tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="right" orientation="right" label={{ value: '%', angle: 90, position: 'insideRight', dy: 10 }} tick={{ fontSize: 12 }}/>
+                                <YAxis yAxisId="left" label={{ value: 'Hours', angle: -90, position: 'insideLeft', dy: 20, fontSize: 11 }} tick={{ fontSize: 12 }} />
+                                <YAxis yAxisId="right" orientation="right" label={{ value: 'MoM%', angle: 90, position: 'insideRight', dy: 30, fontSize: 11 }} tick={{ fontSize: 12 }}/>
                                 <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
-                                <Legend iconType="rect" />
-                                <Bar yAxisId="left" dataKey="avgHoursPerUser" name="人均用时" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
-                                <Line yAxisId="right" type="monotone" dataKey="avgHoursTrend" name="环比 (%)" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4, fill: "#f59e0b" }} />
+                                <Legend content={() => (
+                                    <div className="flex justify-center gap-6 mt-2">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#f59e0b' }}></div>
+                                            <span className="text-sm text-gray-600">MoM%</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#0ea5e9' }}></div>
+                                            <span className="text-sm text-gray-600">Avg Hours/Person</span>
+                                        </div>
+                                    </div>
+                                )} />
+                                <Bar yAxisId="left" dataKey="avgHoursPerUser" name="Avg Hours/Person" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
+                                <Line yAxisId="right" type="monotone" dataKey="avgHoursTrend" name="MoM%" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4, fill: "#f59e0b" }} />
                             </ComposedChart>
                         </ResponsiveContainer>
                     </CardContent>
@@ -4237,11 +4599,13 @@ const WorkCategoryComparisonChart = ({ data, workCategoryList, teamData }: { dat
                         // 找到该 category 在 workCategoryList 中的索引以获取正确颜色
                         const categoryIndex = workCategoryList?.findIndex((cat: string) => cat === entry.name) ?? index;
                         const color = CATEGORY_COLORS[categoryIndex % CATEGORY_COLORS.length];
+                        const percent = total > 0 ? ((Number(entry.value) / total) * 100).toFixed(0) : 0;
                         return (
                             <div 
                                 key={index} 
                                 className="flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 rounded px-1 py-0.5 transition-colors"
                                 onClick={() => handleTooltipItemClick(entry.name)}
+                                title={entry.name}
                             >
                                 <div className="flex items-center gap-2">
                                     <div 
@@ -4250,9 +4614,14 @@ const WorkCategoryComparisonChart = ({ data, workCategoryList, teamData }: { dat
                                     />
                                     <span className="text-xs text-slate-600 truncate max-w-[150px]">{entry.name}</span>
                                 </div>
-                                <span className="text-xs font-semibold text-slate-800 flex-shrink-0">
-                                    {Number(entry.value).toFixed(1)}h
-                                </span>
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                    <span className="text-xs font-semibold text-slate-800">
+                                        {Number(entry.value).toFixed(1)}h
+                                    </span>
+                                    <span className="text-xs text-slate-400">
+                                        ({percent}%)
+                                    </span>
+                                </div>
                             </div>
                         );
                     })}
@@ -4307,7 +4676,7 @@ const WorkCategoryComparisonChart = ({ data, workCategoryList, teamData }: { dat
                                 </defs>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.6} vertical={false} />
                                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
-                                <YAxis label={{ value: '小时', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11, fill: '#64748b' } }} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
+                                <YAxis label={{ value: 'Hours', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11, fill: '#64748b' } }} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
                                 <Tooltip 
                                     content={<PremiumCategoryTooltip />} 
                                     cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
@@ -4522,6 +4891,7 @@ const BSCItemsComparisonChart = ({ teamData }: { teamData: any[] }) => {
                                 key={index} 
                                 className="flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-50 rounded px-1 py-0.5 transition-colors"
                                 onClick={() => handleTooltipItemClick(itemName)}
+                                title={itemName}
                             >
                                 <div className="flex items-center gap-2">
                                     <div 
@@ -4588,7 +4958,7 @@ const BSCItemsComparisonChart = ({ teamData }: { teamData: any[] }) => {
                         <BarChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 20 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.6} vertical={false} />
                             <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
-                            <YAxis label={{ value: '小时', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11, fill: '#64748b' } }} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
+                            <YAxis label={{ value: 'Hours', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11, fill: '#64748b' } }} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
                             <Tooltip 
                                 content={<BSCItemsTooltip />} 
                                 cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
@@ -4925,12 +5295,12 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                             <ComposedChart data={trendData.monthlyTrends} margin={{ top: 20, right: 20, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="left" label={{ value: '小时', angle: -90, position: 'insideLeft', dy: -10 }} tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="right" orientation="right" label={{ value: '%', angle: 90, position: 'insideRight', dy: 10 }} tick={{ fontSize: 12 }}/>
+                                <YAxis yAxisId="left" label={{ value: 'Hours', angle: -90, position: 'insideLeft', dy: 20, fontSize: 11 }} tick={{ fontSize: 12 }} />
+                                <YAxis yAxisId="right" orientation="right" label={{ value: 'MoM%', angle: 90, position: 'insideRight', dy: 30, fontSize: 11 }} tick={{ fontSize: 12 }}/>
                                 <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
                                 <Legend iconType="rect" />
-                                <Bar yAxisId="left" dataKey="totalHours" name="总用时" fill="#3b82f6" radius={[8, 8, 0, 0]} />
-                                <Line yAxisId="right" type="monotone" dataKey="totalHoursTrend" name="环比 (%)" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: "#10b981" }} />
+                                <Bar yAxisId="left" dataKey="totalHours" name="Total Hours" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+                                <Line yAxisId="right" type="monotone" dataKey="totalHoursTrend" name="MoM%" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: "#10b981" }} />
                             </ComposedChart>
                         </ResponsiveContainer>
                     </CardContent>
@@ -4942,12 +5312,23 @@ const CorporateFinancePanel = ({ data }: { data: any[] }) => {
                             <ComposedChart data={trendData.monthlyTrends} margin={{ top: 20, right: 20, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="left" label={{ value: '小时', angle: -90, position: 'insideLeft', dy: -10 }} tick={{ fontSize: 12 }} />
-                                <YAxis yAxisId="right" orientation="right" label={{ value: '%', angle: 90, position: 'insideRight', dy: 10 }} tick={{ fontSize: 12 }}/>
+                                <YAxis yAxisId="left" label={{ value: 'Hours', angle: -90, position: 'insideLeft', dy: 20, fontSize: 11 }} tick={{ fontSize: 12 }} />
+                                <YAxis yAxisId="right" orientation="right" label={{ value: 'MoM%', angle: 90, position: 'insideRight', dy: 30, fontSize: 11 }} tick={{ fontSize: 12 }}/>
                                 <Tooltip formatter={(value: number) => Number(value).toFixed(2)} />
-                                <Legend iconType="rect" />
-                                <Bar yAxisId="left" dataKey="avgHoursPerUser" name="人均用时" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
-                                <Line yAxisId="right" type="monotone" dataKey="avgHoursTrend" name="环比 (%)" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4, fill: "#f59e0b" }} />
+                                <Legend content={() => (
+                                    <div className="flex justify-center gap-6 mt-2">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#f59e0b' }}></div>
+                                            <span className="text-sm text-gray-600">MoM%</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#0ea5e9' }}></div>
+                                            <span className="text-sm text-gray-600">Avg Hours/Person</span>
+                                        </div>
+                                    </div>
+                                )} />
+                                <Bar yAxisId="left" dataKey="avgHoursPerUser" name="Avg Hours/Person" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
+                                <Line yAxisId="right" type="monotone" dataKey="avgHoursTrend" name="MoM%" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4, fill: "#f59e0b" }} />
                             </ComposedChart>
                         </ResponsiveContainer>
                     </CardContent>
