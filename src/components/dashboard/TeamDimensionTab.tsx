@@ -2103,13 +2103,16 @@ const VirtualGroupHoursChart = ({ filteredData, onDataUpdate }: { filteredData: 
 
         if (sourcePath && rawCategory && hours > 0) {
             const categoryKey = createNormalizedKey(rawCategory);
-            if (!normalizedCategoriesMap[categoryKey]) normalizedCategoriesMap[categoryKey] = rawCategory;
+            if (!normalizedCategoriesMap[categoryKey]) normalizedCategoriesMap[categoryKey] = normalizeCategoryDisplay(rawCategory);
             const category = normalizedCategoriesMap[categoryKey];
             if (!virtualGroupData[sourcePath]) virtualGroupData[sourcePath] = {};
             virtualGroupData[sourcePath][category] = (virtualGroupData[sourcePath][category] || 0) + hours;
             virtualGroupCategories.add(category);
         }
     });
+
+    // Define group order for sorting
+    const GROUP_ORDER = ['1组', '2组', '3组', '4组', '5组', '6组'];
 
     const virtualGroupChartData = Object.entries(virtualGroupData).map(([sourcePath, categories]) => {
          const totalHours = Object.values(categories).reduce((sum, h) => sum + h, 0);
@@ -2119,7 +2122,14 @@ const VirtualGroupHoursChart = ({ filteredData, onDataUpdate }: { filteredData: 
              entry[`${cat}_percent`] = totalHours > 0 ? (hours / totalHours) * 100 : 0;
          });
          return entry;
-    }).sort((a, b) => b.totalHours - a.totalHours);
+    }).sort((a, b) => {
+        const indexA = GROUP_ORDER.indexOf(a.name);
+        const indexB = GROUP_ORDER.indexOf(b.name);
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+        return a.name.localeCompare(b.name);
+    });
     
     // Sort categories by fixed order
     const virtualGroupCategoryList = Array.from(virtualGroupCategories).sort((a, b) => {
@@ -3881,7 +3891,7 @@ const DraftingReviewingMonthlyTrend = ({ teamData }: { teamData: any[] }) => {
                 )}
                 {lineEntries.length > 0 && (
                     <div className="space-y-2 pt-2 border-t border-slate-100">
-                        <div className="text-xs text-slate-500 font-medium mb-1">环比</div>
+                        <div className="text-xs text-slate-500 font-medium mb-1">MoM%</div>
                         {lineEntries.map((entry: any, index: number) => {
                             const value = Number(entry.value);
                             const isPositive = value >= 0;
@@ -3892,7 +3902,7 @@ const DraftingReviewingMonthlyTrend = ({ teamData }: { teamData: any[] }) => {
                                             className="w-3 h-0.5 rounded"
                                             style={{ backgroundColor: '#10b981' }}
                                         />
-                                        <span className="text-xs text-slate-600">环比</span>
+                                        <span className="text-xs text-slate-600">MoM%</span>
                                     </div>
                                     <span className={`text-xs font-semibold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
                                         {isPositive ? '+' : ''}{value.toFixed(1)}%
@@ -3935,7 +3945,7 @@ const DraftingReviewingMonthlyTrend = ({ teamData }: { teamData: any[] }) => {
                                     className="w-3 h-0.5 rounded"
                                     style={{ backgroundColor: '#10b981' }}
                                 />
-                                <span className="text-xs text-slate-600">环比</span>
+                                <span className="text-xs text-slate-600">MoM%</span>
                             </div>
                         </div>
                         
@@ -3964,7 +3974,7 @@ const DraftingReviewingMonthlyTrend = ({ teamData }: { teamData: any[] }) => {
                                 <YAxis 
                                     yAxisId="right"
                                     orientation="right"
-                                    label={{ value: '环比', angle: 90, position: 'insideRight', offset: 10, style: { fill: '#64748b', fontSize: 12 } }}
+                                    label={{ value: 'MoM%', angle: 90, position: 'insideRight', offset: 10, style: { fill: '#64748b', fontSize: 12 } }}
                                     tick={{ fontSize: 11, fill: '#64748b' }}
                                     axisLine={{ stroke: '#e2e8f0' }}
                                     tickLine={false}
@@ -3988,7 +3998,7 @@ const DraftingReviewingMonthlyTrend = ({ teamData }: { teamData: any[] }) => {
                                     yAxisId="right"
                                     type="monotone"
                                     dataKey="MoM"
-                                    name="环比"
+                                    name="MoM%"
                                     stroke="#10b981"
                                     strokeWidth={2}
                                     dot={{ fill: '#10b981', strokeWidth: 2, r: 4 }}
@@ -4475,11 +4485,11 @@ const WorkCategoryTrendsByDealMatter = ({ teamData, onDataUpdate }: { teamData: 
                         <DealCategoryTrendChart 
                             key={label}
                             dealLabel={label}
-                            data={trendData[label]?.data || []}
-                            workCategories={trendData[label]?.workCategories || []}
-                            colorMap={trendData[label]?.colorMap || {}}
-                            maxBars={trendData[label]?.maxBars || 0}
-                            draftingData={trendData.draftingTrend?.[label]?.data || []}
+                            data={(trendData as any)[label]?.data || []}
+                            workCategories={(trendData as any)[label]?.workCategories || []}
+                            colorMap={(trendData as any)[label]?.colorMap || {}}
+                            maxBars={(trendData as any)[label]?.maxBars || 0}
+                            draftingData={(trendData as any).draftingTrend?.[label]?.data || []}
                         />
                     ))}
                 </div>
@@ -4834,7 +4844,7 @@ const InvestmentLegalCenterPanel = ({ data, onDataUpdate }: { data: any[], onDat
                                 });
                                 groupFilteredData.forEach(row => {
                                     const rawName = row['Deal/Matter Name']?.toString();
-                                    const name = rawName ? rawName.replace(/\\s+/g, ' ').trim() : '';
+                                    const name = rawName ? normalizeCategoryDisplay(rawName) : '';
                                     if (name) {
                                         const key = createNormalizedKey(name);
                                         const hours = Number(row['Hours']) || 0;
@@ -5527,7 +5537,7 @@ const CorporateFinancePanel = ({ data, onDataUpdate }: { data: any[], onDataUpda
         teamData.forEach(row => {
             if (!row || !row['Work Category']) return;
             const rawCat = row['Work Category'].toString();
-            const category = rawCat.trim().replace(/\\s+/g, ' ');
+            const category = normalizeCategoryDisplay(rawCat);
             const normalizedKey = createNormalizedKey(category);
             const hours = Number(row['Hours']) || 0;
             if (hours > 0) {
@@ -5966,7 +5976,7 @@ const CorporateFinancePanel = ({ data, onDataUpdate }: { data: any[], onDataUpda
                         filteredData.forEach(row => {
                             const rawName = row['Deal/Matter Name']?.toString();
                             if (!rawName) return;
-                            const cleanName = rawName.trim().replace(/\\s+/g, ' ');
+                            const cleanName = normalizeCategoryDisplay(rawName);
                             if (!cleanName || normalizeField(cleanName) === 'group matter') return;
                             const normalizedKey = createNormalizedKey(cleanName);
                             const hours = Number(row['Hours']) || 0;
@@ -6059,7 +6069,7 @@ const CorporateFinancePanel = ({ data, onDataUpdate }: { data: any[], onDataUpda
                         filteredData.forEach(row => {
                             const rawCat = row['Work Category']?.toString();
                             if (!rawCat) return;
-                            const category = rawCat.trim().replace(/\\s+/g, ' ');
+                            const category = normalizeCategoryDisplay(rawCat);
                             const normalizedKey = createNormalizedKey(category);
                             const hours = Number(row['Hours']) || 0;
                             if (hours > 0) {
@@ -6175,7 +6185,7 @@ const CorporateFinancePanel = ({ data, onDataUpdate }: { data: any[], onDataUpda
                     okrBscFilteredData.forEach(row => {
                         const rawItem = row['OKR/BSC Item']?.toString();
                         if (!rawItem) return;
-                        const cleanItem = rawItem.trim().replace(/\\s+/g, ' ');
+                        const cleanItem = normalizeCategoryDisplay(rawItem);
                         if (!cleanItem) return;
                         const normalizedKey = createNormalizedKey(cleanItem);
                         const hours = Number(row['Hours']) || 0;
