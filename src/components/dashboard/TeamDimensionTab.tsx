@@ -6390,7 +6390,7 @@ const CorporateFinancePanel = ({ data, onDataUpdate }: { data: any[], onDataUpda
     );
 }
 
-export function TeamDimensionTab({ data, onDataUpdate }: { data: any[], onDataUpdate?: (updatedRecords: any[]) => void }) {
+export function TeamDimensionTab({ data, onDataUpdate, dataSourceType }: { data: any[], onDataUpdate?: (updatedRecords: any[]) => void, dataSourceType?: 'excel' | 'timesheet' | null }) {
   const [activeSubTab, setActiveSubTab] = useState<string>('investment-legal');
   const [isReady, setIsReady] = useState(false);
   
@@ -6405,6 +6405,21 @@ export function TeamDimensionTab({ data, onDataUpdate }: { data: any[], onDataUp
   
   return (
     <div className="space-y-6 py-2 bg-transparent min-h-screen">
+      {/* 工时记录数据来源提示 */}
+      {dataSourceType === 'timesheet' && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-center gap-3">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500 flex-shrink-0">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="16" x2="12" y2="12"/>
+            <line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
+          <div className="text-sm text-blue-800">
+            <span className="font-medium">提示：</span>
+            当前数据来源于工时记录。您可以在此修改数据并导出，修改不会影响原始工时记录。
+          </div>
+        </div>
+      )}
+      
       <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="space-y-6">
         <div className="bg-slate-50/95 backdrop-blur supports-[backdrop-filter]:bg-slate-50/60 border-b border-slate-200/60 -mx-6 px-6 pt-2 pb-0">
           <TabsList className="flex h-auto items-center justify-start gap-2 bg-transparent p-0 w-full">

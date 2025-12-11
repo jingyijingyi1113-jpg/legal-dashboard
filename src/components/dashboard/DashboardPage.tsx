@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { ProjectDimensionTab } from './ProjectDimensionTab';
 import { TeamDimensionTab } from './TeamDimensionTab';
 import { AnomalyDetectionTab } from './AnomalyDetectionTab';
 import { useReactToPrint } from 'react-to-print';
+import { useTimesheet } from '@/contexts/TimesheetContext';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -393,7 +394,11 @@ export function DashboardPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [dataSource, setDataSource] = useState<'excel' | 'timesheet' | 'merged'>('excel');
   const printRef = useRef<HTMLDivElement>(null);
+  
+  // 获取工时记录数据
+  const { getDashboardData, getSubmittedEntries, entries } = useTimesheet();
   
   // Period filter states for TimeDimensionTab
   const [period, setPeriod] = useState<Period>('monthly');
@@ -401,6 +406,34 @@ export function DashboardPage() {
   const [selectedPeriodValue, setSelectedPeriodValue] = useState<string | null>(null);
   const [customStartDate, setCustomStartDate] = useState<Date | undefined>(undefined);
   const [customEndDate, setCustomEndDate] = useState<Date | undefined>(undefined);
+
+  // 从工时记录加载数据
+  const loadFromTimesheet = () => {
+    const timesheetData = getDashboardData();
+    if (timesheetData.length === 0) {
+      alert('暂无已提交的工时记录');
+      return;
+    }
+    setRawData(timesheetData);
+    processTimeData(timesheetData);
+    setDataSource('timesheet');
+  };
+
+  // 监听工时记录变化，自动更新（如果当前使用工时记录数据源）
+  useEffect(() => {
+    if (dataSource === 'timesheet') {
+      const timesheetData = getDashboardData();
+      if (timesheetData.length > 0) {
+        setRawData(timesheetData);
+        processTimeData(timesheetData);
+      }
+    }
+  }, [entries, dataSource]);
+
+  // 获取已提交工时记录数量
+  const submittedCount = useMemo(() => {
+    return getSubmittedEntries().length;
+  }, [entries]);
 
   // 数据更新回调函数 - 用于子组件修改数据后同步更新
   const handleDataUpdate = (updatedRecords: any[]) => {
@@ -972,16 +1005,60 @@ export function DashboardPage() {
         <div className='flex justify-between items-center mb-2 animate-fade-in-down'>
           <div>
             <h1 className="text-4xl font-bold text-neutral-900 tracking-tight" style={{ fontWeight: 700 }}>工时数据看板</h1>
-            <p className="text-neutral-500 mt-2 text-sm font-medium">工时统计与趋势分析</p>
+            <p className="text-neutral-500 mt-2 text-sm font-medium">
+              工时统计与趋势分析
+              {dataSource !== 'excel' && (
+                <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">
+                  {dataSource === 'timesheet' ? '工时记录数据' : '合并数据'}
+                </span>
+              )}
+              {rawData.length > 0 && (
+                <span className="ml-2 text-neutral-400">({rawData.length} 条记录)</span>
+              )}
+            </p>
           </div>
           <div className="flex items-center gap-3">
-            <Button asChild variant="ghost" className="no-print group relative overflow-hidden px-4 py-2 h-9 rounded-lg border border-slate-200/60 bg-white/60 backdrop-blur-sm hover:bg-slate-50/80 hover:border-slate-300/80 transition-all duration-200">
-              <label htmlFor="file-upload" className="cursor-pointer flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 group-hover:text-slate-700 transition-colors"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-                <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-800 transition-colors">导入数据</span>
-              </label>
-            </Button>
-            <Input id="file-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" />
+            {/* 导入数据下拉菜单 - 合并Excel和工时记录 */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  className="no-print group relative overflow-hidden px-4 py-2 h-9 rounded-lg border border-slate-200/60 bg-white/60 backdrop-blur-sm hover:bg-slate-50/80 hover:border-slate-300/80 transition-all duration-200"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 group-hover:text-slate-700 transition-colors mr-1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                  <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-800 transition-colors">导入数据</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="ml-1 text-slate-400 group-hover:text-slate-500 transition-colors"><polyline points="6 9 12 15 18 9"/></svg>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44 p-1 rounded-lg border border-slate-200/80 bg-white/95 backdrop-blur-md shadow-lg">
+                <DropdownMenuItem 
+                  className="cursor-pointer rounded-md px-3 py-2 text-[13px] text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors"
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    document.getElementById('file-upload')?.click();
+                  }}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2 text-emerald-500">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <path d="M12 18v-6"/>
+                    <path d="M9 15l3-3 3 3"/>
+                  </svg>
+                  导入 Excel
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={loadFromTimesheet} className="cursor-pointer rounded-md px-3 py-2 text-[13px] text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2 text-blue-500">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  加载工时记录
+                  {submittedCount > 0 && (
+                    <span className="ml-auto px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-blue-500 text-white">{submittedCount}</span>
+                  )}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Input id="file-upload" type="file" className="hidden" onChange={(e) => { handleFileUpload(e); setDataSource('excel'); }} accept=".xlsx, .xls" />
             <DropdownMenu open={isExportMenuOpen} onOpenChange={setIsExportMenuOpen}>
               <DropdownMenuTrigger asChild>
                 <Button 
@@ -1037,7 +1114,13 @@ export function DashboardPage() {
           <div className="container mx-auto max-w-7xl animate-fade-in-up" ref={printRef}>
             <DepartmentOverviewTab />
             <TabsContent value="team" className="m-0 focus-visible:outline-none">
-              {activeTab === 'team' && <TeamDimensionTab data={rawData} onDataUpdate={handleDataUpdate} />}
+              {activeTab === 'team' && (
+                <TeamDimensionTab 
+                  data={rawData} 
+                  onDataUpdate={handleDataUpdate}
+                  dataSourceType={dataSource}
+                />
+              )}
             </TabsContent>
             <TabsContent value="anomaly" className="m-0 focus-visible:outline-none">
               {activeTab === 'anomaly' && <AnomalyDetectionTab data={rawData} />}

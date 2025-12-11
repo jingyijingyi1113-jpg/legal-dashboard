@@ -273,6 +273,16 @@ const investmentLegalBSCTags: FieldOption[] = [
   { value: 'Others', label: 'Others' },
 ];
 
+// 投资法务中心 - 分组选项（Source Path）
+const investmentLegalGroups: FieldOption[] = [
+  { value: '1组', label: '1组' },
+  { value: '2组', label: '2组' },
+  { value: '3组', label: '3组' },
+  { value: '4组', label: '4组' },
+  { value: '5组', label: '5组' },
+  { value: '6组', label: '6组' },
+];
+
 // ==================== 公司及国际金融事务中心 ====================
 const internationalFinanceCategories: FieldOption[] = [
   {
@@ -330,8 +340,6 @@ const internationalFinanceVirtualGroups: FieldOption[] = [
   { value: 'Listing Rules and Corporate Governance', label: 'Listing Rules and Corporate Governance' },
   { value: 'Group Financing', label: 'Group Financing' },
   { value: 'International Financial', label: 'International Financial' },
-  { value: 'International Regulatory Legal and Compliance', label: 'International Regulatory Legal and Compliance' },
-  { value: 'International Employment', label: 'International Employment' },
   { value: 'Non-CTD (兼岗)', label: 'Non-CTD (兼岗)' },
 ];
 
@@ -451,6 +459,14 @@ export const TEAM_TEMPLATES: TeamTemplate[] = [
     teamName: '投资法务中心',
     fields: [
       {
+        key: 'sourcePath',
+        label: '小组 (Team)',
+        type: 'select',
+        required: true,
+        placeholder: '请选择组别',
+        options: investmentLegalGroups,
+      },
+      {
         key: 'category',
         label: 'Deal/Matter Category (事务类别)',
         type: 'select',
@@ -490,7 +506,7 @@ export const TEAM_TEMPLATES: TeamTemplate[] = [
         label: 'Hours (小时数)',
         type: 'number',
         required: true,
-        placeholder: '请输入小时数，精确到小数点后一位',
+        placeholder: '请输入小时数',
         step: 0.1,
         min: 0,
         max: 24,
@@ -519,45 +535,45 @@ export const TEAM_TEMPLATES: TeamTemplate[] = [
     teamName: '公司及国际金融事务中心',
     fields: [
       {
-        key: 'category',
-        label: '标签分类 (Tag Category)',
-        type: 'select',
-        required: true,
-        placeholder: '请选择标签分类',
-        options: internationalFinanceCategories,
-      },
-      {
-        key: 'task',
-        label: 'BSC/工作任务',
-        type: 'select',
-        required: true,
-        placeholder: '请选择工作任务',
-        options: [],
-        parentField: 'category',
-      },
-      {
         key: 'virtualGroup',
         label: 'Virtual Group',
         type: 'select',
-        required: false,
-        placeholder: '请选择Virtual Group（可选）',
+        required: true,
+        placeholder: '请选择Virtual Group',
         options: internationalFinanceVirtualGroups,
       },
       {
         key: 'internalClient',
         label: 'Internal Client',
         type: 'select',
-        required: false,
-        placeholder: '请选择Internal Client（可选）',
+        required: true,
+        placeholder: '请选择Internal Client（如无需求方请选N/A）',
         options: internationalFinanceInternalClients,
       },
       {
+        key: 'tag',
+        label: 'Tag',
+        type: 'select',
+        required: true,
+        placeholder: '请确认该事务是否为BSC事项',
+        options: internationalFinanceCategories,
+      },
+      {
+        key: 'item',
+        label: 'Item',
+        type: 'select',
+        required: true,
+        placeholder: '请选择对应事项',
+        options: [],
+        parentField: 'tag',
+      },
+      {
         key: 'hours',
-        label: '小时数 (Hours)',
+        label: 'Hours',
         type: 'number',
         required: true,
         placeholder: '请输入小时数',
-        step: 0.5,
+        step: 0.1,
         min: 0,
         max: 24,
       },
@@ -571,10 +587,10 @@ export const TEAM_TEMPLATES: TeamTemplate[] = [
       },
       {
         key: 'description',
-        label: '描述 (Description)',
+        label: 'Narrative (Optional)',
         type: 'text',
         required: false,
-        placeholder: '简要描述工作内容（可选）',
+        placeholder: '简要描述工作内容',
       },
     ],
   },

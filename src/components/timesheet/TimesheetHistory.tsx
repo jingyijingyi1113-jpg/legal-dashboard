@@ -770,7 +770,7 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
           </div>
           <div className="text-3xl font-bold">{stats.workDays}</div>
           <p className="text-xs text-indigo-200 mt-1">
-            截止今日{stats.leaveDays > 0 ? ` - 请假${stats.leaveDays}天` : ''}
+            截止今日工作天数{stats.leaveDays > 0 ? `-请假${stats.leaveDays}天` : ''}
           </p>
         </div>
         

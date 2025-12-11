@@ -9,6 +9,7 @@ import { LoginPage } from './components/auth/LoginPage';
 import { RegisterPage } from './components/auth/RegisterPage';
 import { UserManagementPage } from './components/admin/UserManagementPage';
 import { OrganizationPage } from './components/admin/OrganizationPage';
+import { DataManagementPage } from './components/admin/DataManagementPage';
 
 function AppContent() {
   const { isAuthenticated, loading, user } = useAuth();
@@ -65,6 +66,7 @@ function AppContent() {
         {activeMenu === 'timesheet' && <TimesheetPage />}
         {activeMenu === 'organization' && <OrganizationPage />}
         {activeMenu === 'users' && <UserManagementPage />}
+        {activeMenu === 'dataManagement' && <DataManagementPage />}
       </main>
     </div>
   );

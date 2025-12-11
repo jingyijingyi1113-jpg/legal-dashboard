@@ -439,38 +439,96 @@ export function OrganizationPage() {
       {/* Department Modal */}
       {showDeptModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowDeptModal(false)} />
-          <div className="relative z-10 w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl animate-fade-in-up">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <h2 className="text-lg font-semibold text-slate-800">{editingDept ? '编辑部门' : '添加部门'}</h2>
-              <button onClick={() => setShowDeptModal(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowDeptModal(false)} />
+          <div className="relative z-10 w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up">
+            {/* 头部装饰渐变 */}
+            <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent pointer-events-none" />
+            
+            {/* 头部 */}
+            <div className="relative flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 21h18"/>
+                    <path d="M5 21V7l8-4v18"/>
+                    <path d="M19 21V11l-6-4"/>
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-800">{editingDept ? '编辑部门' : '添加部门'}</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">{editingDept ? '修改部门信息' : '创建新的部门'}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowDeptModal(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all duration-200">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
               </button>
             </div>
-            <form onSubmit={handleSaveDept} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">部门名称</label>
+            
+            {/* 表单 */}
+            <form onSubmit={handleSaveDept} className="p-6 space-y-5">
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-indigo-50 text-indigo-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 21h18"/>
+                      <path d="M5 21V7l8-4v18"/>
+                    </svg>
+                  </span>
+                  部门名称
+                  <span className="text-red-400">*</span>
+                </label>
                 <Input
                   value={deptForm.name}
                   onChange={(e) => setDeptForm({ ...deptForm, name: e.target.value })}
-                  className="w-full h-11 rounded-xl"
+                  placeholder="请输入部门名称"
+                  className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 transition-all duration-200 bg-slate-50/50 hover:bg-white"
                   required
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">描述（可选）</label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-amber-50 text-amber-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="17" y1="10" x2="3" y2="10"/>
+                      <line x1="21" y1="6" x2="3" y2="6"/>
+                      <line x1="21" y1="14" x2="3" y2="14"/>
+                      <line x1="17" y1="18" x2="3" y2="18"/>
+                    </svg>
+                  </span>
+                  描述
+                  <span className="text-slate-400 text-xs font-normal">（可选）</span>
+                </label>
                 <textarea
                   value={deptForm.description}
                   onChange={(e) => setDeptForm({ ...deptForm, description: e.target.value })}
-                  className="w-full h-24 px-4 py-3 rounded-xl border border-slate-200 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                  className="w-full h-28 px-4 py-3 rounded-xl border-2 border-slate-200 resize-none focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 transition-all duration-200 bg-slate-50/50 hover:bg-white text-sm"
                   placeholder="请输入部门描述..."
                 />
               </div>
-              <div className="flex gap-3 pt-2">
-                <Button type="button" onClick={() => setShowDeptModal(false)} variant="ghost" className="flex-1 h-11 rounded-xl border border-slate-200">取消</Button>
-                <Button type="submit" className="flex-1 h-11 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 text-white">保存</Button>
+              
+              {/* 按钮 */}
+              <div className="flex gap-3 pt-3">
+                <Button 
+                  type="button" 
+                  onClick={() => setShowDeptModal(false)} 
+                  variant="ghost" 
+                  className="flex-1 h-11 rounded-xl border-2 border-slate-200 hover:bg-slate-100 text-slate-600 font-medium transition-all duration-200"
+                >
+                  取消
+                </Button>
+                <Button 
+                  type="submit" 
+                  className="flex-1 h-11 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-medium shadow-lg shadow-indigo-500/25 transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                    <polyline points="17 21 17 13 7 13 7 21"/>
+                    <polyline points="7 3 7 8 15 8"/>
+                  </svg>
+                  {editingDept ? '保存更改' : '创建部门'}
+                </Button>
               </div>
             </form>
           </div>
@@ -480,51 +538,126 @@ export function OrganizationPage() {
       {/* Team Modal */}
       {showTeamModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowTeamModal(false)} />
-          <div className="relative z-10 w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl animate-fade-in-up">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <h2 className="text-lg font-semibold text-slate-800">{editingTeam ? '编辑团队' : '添加团队'}</h2>
-              <button onClick={() => setShowTeamModal(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowTeamModal(false)} />
+          <div className="relative z-10 w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up">
+            {/* 头部装饰渐变 */}
+            <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-br from-blue-500/10 via-cyan-500/5 to-transparent pointer-events-none" />
+            
+            {/* 头部 */}
+            <div className="relative flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-800">{editingTeam ? '编辑团队' : '添加团队'}</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">{editingTeam ? '修改团队信息' : '创建新的团队'}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowTeamModal(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all duration-200">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
               </button>
             </div>
-            <form onSubmit={handleSaveTeam} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">团队名称</label>
+            
+            {/* 表单 */}
+            <form onSubmit={handleSaveTeam} className="p-6 space-y-5">
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-blue-50 text-blue-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                      <circle cx="9" cy="7" r="4"/>
+                    </svg>
+                  </span>
+                  团队名称
+                  <span className="text-red-400">*</span>
+                </label>
                 <Input
                   value={teamForm.name}
                   onChange={(e) => setTeamForm({ ...teamForm, name: e.target.value })}
-                  className="w-full h-11 rounded-xl"
+                  placeholder="请输入团队名称"
+                  className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 bg-slate-50/50 hover:bg-white"
                   required
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">所属部门</label>
-                <select
-                  value={teamForm.departmentId}
-                  onChange={(e) => setTeamForm({ ...teamForm, departmentId: e.target.value })}
-                  className="w-full h-11 px-4 rounded-xl border border-slate-200"
-                  required
-                >
-                  {departments.map(dept => (
-                    <option key={dept.id} value={dept.id}>{dept.name}</option>
-                  ))}
-                </select>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-50 text-emerald-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 21h18"/>
+                      <path d="M5 21V7l8-4v18"/>
+                    </svg>
+                  </span>
+                  所属部门
+                  <span className="text-red-400">*</span>
+                </label>
+                <div className="relative">
+                  <select
+                    value={teamForm.departmentId}
+                    onChange={(e) => setTeamForm({ ...teamForm, departmentId: e.target.value })}
+                    className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 bg-slate-50/50 hover:bg-white appearance-none cursor-pointer text-sm"
+                    required
+                  >
+                    {departments.map(dept => (
+                      <option key={dept.id} value={dept.id}>{dept.name}</option>
+                    ))}
+                  </select>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m6 9 6 6 6-6"/>
+                    </svg>
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">描述（可选）</label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-amber-50 text-amber-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="17" y1="10" x2="3" y2="10"/>
+                      <line x1="21" y1="6" x2="3" y2="6"/>
+                      <line x1="21" y1="14" x2="3" y2="14"/>
+                      <line x1="17" y1="18" x2="3" y2="18"/>
+                    </svg>
+                  </span>
+                  描述
+                  <span className="text-slate-400 text-xs font-normal">（可选）</span>
+                </label>
                 <textarea
                   value={teamForm.description}
                   onChange={(e) => setTeamForm({ ...teamForm, description: e.target.value })}
-                  className="w-full h-24 px-4 py-3 rounded-xl border border-slate-200 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                  className="w-full h-28 px-4 py-3 rounded-xl border-2 border-slate-200 resize-none focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 bg-slate-50/50 hover:bg-white text-sm"
                   placeholder="请输入团队描述..."
                 />
               </div>
-              <div className="flex gap-3 pt-2">
-                <Button type="button" onClick={() => setShowTeamModal(false)} variant="ghost" className="flex-1 h-11 rounded-xl border border-slate-200">取消</Button>
-                <Button type="submit" className="flex-1 h-11 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 text-white">保存</Button>
+              
+              {/* 按钮 */}
+              <div className="flex gap-3 pt-3">
+                <Button 
+                  type="button" 
+                  onClick={() => setShowTeamModal(false)} 
+                  variant="ghost" 
+                  className="flex-1 h-11 rounded-xl border-2 border-slate-200 hover:bg-slate-100 text-slate-600 font-medium transition-all duration-200"
+                >
+                  取消
+                </Button>
+                <Button 
+                  type="submit" 
+                  className="flex-1 h-11 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 text-white font-medium shadow-lg shadow-blue-500/25 transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                    <polyline points="17 21 17 13 7 13 7 21"/>
+                    <polyline points="7 3 7 8 15 8"/>
+                  </svg>
+                  {editingTeam ? '保存更改' : '创建团队'}
+                </Button>
               </div>
             </form>
           </div>
@@ -534,21 +667,52 @@ export function OrganizationPage() {
       {/* Delete Department Confirm */}
       {showDeleteDeptConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowDeleteDeptConfirm(null)} />
-          <div className="relative z-10 w-full max-w-sm mx-4 bg-white rounded-2xl shadow-2xl animate-fade-in-up p-6">
-            <div className="text-center">
-              <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowDeleteDeptConfirm(null)} />
+          <div className="relative z-10 w-full max-w-sm mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up">
+            {/* 头部装饰渐变 */}
+            <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-br from-red-500/10 via-rose-500/5 to-transparent pointer-events-none" />
+            
+            <div className="relative p-6 text-center">
+              {/* 图标 */}
+              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg shadow-red-500/25">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10"/>
                   <line x1="12" y1="8" x2="12" y2="12"/>
                   <line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-slate-800 mb-2">确认删除</h3>
-              <p className="text-slate-500 text-sm mb-6">删除后无法恢复，确定要删除该部门吗？</p>
+              
+              {/* 标题和描述 */}
+              <h3 className="text-xl font-semibold text-slate-800 mb-2">确认删除部门</h3>
+              <p className="text-slate-500 text-sm mb-2">删除后无法恢复，确定要删除该部门吗？</p>
+              <p className="text-xs text-slate-400 flex items-center justify-center gap-1 mb-6">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="12" y1="8" x2="12" y2="12"/>
+                  <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                关联的团队也会受到影响
+              </p>
+              
+              {/* 按钮 */}
               <div className="flex gap-3">
-                <Button onClick={() => setShowDeleteDeptConfirm(null)} variant="ghost" className="flex-1 h-10 rounded-xl border border-slate-200">取消</Button>
-                <Button onClick={() => handleDeleteDept(showDeleteDeptConfirm)} className="flex-1 h-10 rounded-xl bg-red-500 hover:bg-red-600 text-white">删除</Button>
+                <Button 
+                  onClick={() => setShowDeleteDeptConfirm(null)} 
+                  variant="ghost" 
+                  className="flex-1 h-11 rounded-xl border-2 border-slate-200 hover:bg-slate-100 text-slate-600 font-medium"
+                >
+                  取消
+                </Button>
+                <Button 
+                  onClick={() => handleDeleteDept(showDeleteDeptConfirm)} 
+                  className="flex-1 h-11 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-medium shadow-lg shadow-red-500/25 flex items-center justify-center gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                  </svg>
+                  确认删除
+                </Button>
               </div>
             </div>
           </div>
@@ -558,21 +722,52 @@ export function OrganizationPage() {
       {/* Delete Team Confirm */}
       {showDeleteTeamConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowDeleteTeamConfirm(null)} />
-          <div className="relative z-10 w-full max-w-sm mx-4 bg-white rounded-2xl shadow-2xl animate-fade-in-up p-6">
-            <div className="text-center">
-              <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowDeleteTeamConfirm(null)} />
+          <div className="relative z-10 w-full max-w-sm mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up">
+            {/* 头部装饰渐变 */}
+            <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-br from-red-500/10 via-rose-500/5 to-transparent pointer-events-none" />
+            
+            <div className="relative p-6 text-center">
+              {/* 图标 */}
+              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg shadow-red-500/25">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10"/>
                   <line x1="12" y1="8" x2="12" y2="12"/>
                   <line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-slate-800 mb-2">确认删除</h3>
-              <p className="text-slate-500 text-sm mb-6">删除后无法恢复，确定要删除该团队吗？</p>
+              
+              {/* 标题和描述 */}
+              <h3 className="text-xl font-semibold text-slate-800 mb-2">确认删除团队</h3>
+              <p className="text-slate-500 text-sm mb-2">删除后无法恢复，确定要删除该团队吗？</p>
+              <p className="text-xs text-slate-400 flex items-center justify-center gap-1 mb-6">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="12" y1="8" x2="12" y2="12"/>
+                  <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                团队成员将失去归属
+              </p>
+              
+              {/* 按钮 */}
               <div className="flex gap-3">
-                <Button onClick={() => setShowDeleteTeamConfirm(null)} variant="ghost" className="flex-1 h-10 rounded-xl border border-slate-200">取消</Button>
-                <Button onClick={() => handleDeleteTeam(showDeleteTeamConfirm)} className="flex-1 h-10 rounded-xl bg-red-500 hover:bg-red-600 text-white">删除</Button>
+                <Button 
+                  onClick={() => setShowDeleteTeamConfirm(null)} 
+                  variant="ghost" 
+                  className="flex-1 h-11 rounded-xl border-2 border-slate-200 hover:bg-slate-100 text-slate-600 font-medium"
+                >
+                  取消
+                </Button>
+                <Button 
+                  onClick={() => handleDeleteTeam(showDeleteTeamConfirm)} 
+                  className="flex-1 h-11 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-medium shadow-lg shadow-red-500/25 flex items-center justify-center gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                  </svg>
+                  确认删除
+                </Button>
               </div>
             </div>
           </div>

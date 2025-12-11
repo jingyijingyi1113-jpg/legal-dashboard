@@ -2,6 +2,22 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 import type { TimesheetEntry, TimesheetFormData, TimesheetStats, LeaveRecord, LeaveFormData } from '@/types/timesheet';
 import { useAuth } from './AuthContext';
 
+// 看板数据格式（与Excel导入格式兼容）
+export interface DashboardDataRow {
+  Month: string;
+  Name: string;
+  '团队': string;
+  Hours: number;
+  'Deal/Matter Category'?: string;
+  'Deal/Matter Name'?: string;
+  'OKR/BSC Tag'?: string;
+  'OKR/BSC Item'?: string;
+  'Work Category'?: string;
+  'Narrative (Optional)'?: string;
+  'Source Path'?: string;
+  [key: string]: string | number | undefined;
+}
+
 interface TimesheetContextType {
   entries: TimesheetEntry[];
   leaveRecords: LeaveRecord[];
@@ -12,6 +28,8 @@ interface TimesheetContextType {
   deleteEntry: (id: string) => Promise<{ success: boolean; message: string }>;
   // 批量提交草稿
   submitEntries: (ids: string[]) => Promise<{ success: boolean; message: string }>;
+  // 批量导入历史数据
+  importEntries: (entries: TimesheetEntry[]) => Promise<{ success: boolean; message: string; count: number }>;
   // 请假记录操作
   addLeaveRecord: (data: LeaveFormData) => Promise<{ success: boolean; message: string }>;
   updateLeaveRecord: (id: string, data: LeaveFormData) => Promise<{ success: boolean; message: string }>;
@@ -25,6 +43,9 @@ interface TimesheetContextType {
   getLeaveDaysByDateRange: (userId: string, startDate: string, endDate: string) => number;
   getStats: () => TimesheetStats;
   getUserStats: (userId: string) => TimesheetStats;
+  // 获取看板数据（已提交的工时记录转换为看板格式）
+  getDashboardData: () => DashboardDataRow[];
+  getSubmittedEntries: () => TimesheetEntry[];
 }
 
 const TimesheetContext = createContext<TimesheetContextType | undefined>(undefined);
@@ -133,6 +154,19 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
     });
     saveEntries(updatedEntries);
     return { success: true, message: `成功提交 ${ids.length} 条工时记录` };
+  };
+
+  // 批量导入历史数据
+  const importEntries = async (newEntries: TimesheetEntry[]): Promise<{ success: boolean; message: string; count: number }> => {
+    if (newEntries.length === 0) {
+      return { success: false, message: '没有可导入的数据', count: 0 };
+    }
+    
+    // 合并新数据到现有数据（新数据在前）
+    const mergedEntries = [...newEntries, ...entries];
+    saveEntries(mergedEntries);
+    
+    return { success: true, message: `成功导入 ${newEntries.length} 条工时记录`, count: newEntries.length };
   };
 
   // 根据用户ID获取记录
@@ -254,6 +288,73 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
     };
   };
 
+  // 获取已提交的工时记录
+  const getSubmittedEntries = (): TimesheetEntry[] => {
+    return entries.filter(e => e.status === 'submitted');
+  };
+
+  // 将工时记录转换为看板数据格式
+  const getDashboardData = (): DashboardDataRow[] => {
+    const submittedEntries = getSubmittedEntries();
+    
+    return submittedEntries.map(entry => {
+      // 将日期转换为 YYYY-MM 格式
+      const dateParts = entry.date.split('-');
+      const month = `${dateParts[0]}-${dateParts[1]}`;
+      
+      // 基础数据
+      const row: DashboardDataRow = {
+        Month: month,
+        Name: entry.userName,
+        '团队': entry.teamName,
+        Hours: entry.hours,
+      };
+      
+      const data = entry.data;
+      const teamName = entry.teamName;
+      
+      // 根据团队名称进行字段映射
+      if (teamName === '投资法务中心') {
+        // 投资法务中心字段映射
+        if (data.category) row['Deal/Matter Category'] = String(data.category);
+        if (data.dealName) row['Deal/Matter Name'] = String(data.dealName);
+        if (data.bscTag) row['OKR/BSC Tag'] = String(data.bscTag);
+        if (data.bscItem) row['OKR/BSC Item'] = String(data.bscItem);
+        if (data.workCategory) row['Work Category'] = String(data.workCategory);
+        if (data.sourcePath) row['Source Path'] = String(data.sourcePath);
+      } else if (teamName === '业务管理及合规检测中心') {
+        // 业务管理及合规检测中心字段映射
+        if (data.category) row['Deal/Matter Category'] = String(data.category);
+        if (data.task) row['Deal/Matter Name'] = String(data.task);
+        if (data.tag) {
+          // 移除前缀下划线
+          const tagValue = String(data.tag).replace(/^_/, '');
+          row['OKR/BSC Tag'] = tagValue;
+        }
+        if (data.keyTask) row['OKR/BSC Item'] = String(data.keyTask);
+        if (data.workType) row['Work Category'] = String(data.workType);
+      } else if (teamName === '公司及国际金融事务中心') {
+        // 公司及国际金融事务中心字段映射
+        if (data.virtualGroup) row['Deal/Matter Category'] = String(data.virtualGroup);
+        if (data.internalClient) row['Deal/Matter Name'] = String(data.internalClient);
+        if (data.tag) {
+          // 移除前缀下划线
+          const tagValue = String(data.tag).replace(/^_/, '');
+          row['OKR/BSC Tag'] = tagValue;
+        }
+        if (data.item) row['OKR/BSC Item'] = String(data.item);
+        if (data.workCategory) row['Work Category'] = String(data.workCategory);
+      }
+      
+      // 描述字段（通用）
+      if (entry.description || data.description) {
+        row['Narrative (Optional)'] = String(entry.description || data.description || '');
+      }
+      
+      return row;
+    });
+  };
+
   return (
     <TimesheetContext.Provider
       value={{
@@ -264,6 +365,7 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
         updateEntry,
         deleteEntry,
         submitEntries,
+        importEntries,
         addLeaveRecord,
         updateLeaveRecord,
         deleteLeaveRecord,
@@ -275,6 +377,8 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
         getLeaveDaysByDateRange,
         getStats,
         getUserStats,
+        getDashboardData,
+        getSubmittedEntries,
       }}
     >
       {children}
