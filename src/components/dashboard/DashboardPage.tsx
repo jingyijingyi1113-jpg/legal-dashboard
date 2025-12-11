@@ -17,7 +17,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+import { cn } from "@/lib/utils";
+
 import { format, parse } from 'date-fns';
+
+type Period = 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'custom';
 
 interface MonthlyData {
     month: string;
@@ -35,6 +39,13 @@ export function DashboardPage() {
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
+  
+  // Period filter states for TimeDimensionTab
+  const [period, setPeriod] = useState<Period>('monthly');
+  const [selectedYear, setSelectedYear] = useState<string | null>(null);
+  const [selectedPeriodValue, setSelectedPeriodValue] = useState<string | null>(null);
+  const [customStartDate, setCustomStartDate] = useState<Date | undefined>(undefined);
+  const [customEndDate, setCustomEndDate] = useState<Date | undefined>(undefined);
 
   // 数据更新回调函数 - 用于子组件修改数据后同步更新
   const handleDataUpdate = (updatedRecords: any[]) => {
@@ -286,30 +297,214 @@ export function DashboardPage() {
     if (finalData.length > 0) {
         const latestMonth = finalData[finalData.length - 1].month;
         const latestDate = parseMonthString(latestMonth);
-        if (latestDate) setSelectedDate(latestDate);
+        if (latestDate) {
+            setSelectedDate(latestDate);
+            setSelectedYear(latestDate.getFullYear().toString());
+            setSelectedPeriodValue(latestDate.getMonth().toString());
+        }
     }
   };
 
+  // 计算可用年份
+  const availableYears = useMemo(() => {
+    if (monthlyData.length === 0) return [];
+    const years = [...new Set(monthlyData.map(d => {
+      const parsed = parseMonthString(d.month);
+      return parsed ? parsed.getFullYear() : null;
+    }).filter(Boolean))] as number[];
+    return years.sort((a, b) => b - a).map(y => y.toString());
+  }, [monthlyData]);
+
+  // 初始化年份
+  useMemo(() => {
+    if (availableYears.length > 0 && !selectedYear) {
+      setSelectedYear(availableYears[0]);
+    }
+  }, [availableYears, selectedYear]);
+
   const displayedData = useMemo(() => {
-    const monthStr = format(selectedDate, 'yyyy/MM');
-    const data = monthlyData.find(d => d.month === monthStr);
-    if (!data) return { totalHours: 0, activeUsers: 0, avgHours: 0, totalHoursTrend: 0, avgHoursTrend: 0 };
+    if (monthlyData.length === 0) return { totalHours: 0, activeUsers: 0, avgHours: 0, totalHoursTrend: 0, avgHoursTrend: 0 };
+    
+    let filteredData: MonthlyData[] = [];
+    
+    if (period === 'custom') {
+      if (customStartDate && customEndDate) {
+        filteredData = monthlyData.filter(d => {
+          const date = parseMonthString(d.month);
+          return date && date >= customStartDate && date <= customEndDate;
+        });
+      }
+    } else if (selectedYear) {
+      const year = parseInt(selectedYear, 10);
+      if (period === 'annually') {
+        filteredData = monthlyData.filter(d => {
+          const date = parseMonthString(d.month);
+          return date && date.getFullYear() === year;
+        });
+      } else if (period === 'monthly' && selectedPeriodValue !== null) {
+        const month = parseInt(selectedPeriodValue, 10);
+        filteredData = monthlyData.filter(d => {
+          const date = parseMonthString(d.month);
+          return date && date.getFullYear() === year && date.getMonth() === month;
+        });
+      } else if (period === 'quarterly' && selectedPeriodValue !== null) {
+        const quarter = parseInt(selectedPeriodValue, 10);
+        const startMonth = quarter * 3;
+        const endMonth = startMonth + 2;
+        filteredData = monthlyData.filter(d => {
+          const date = parseMonthString(d.month);
+          return date && date.getFullYear() === year && date.getMonth() >= startMonth && date.getMonth() <= endMonth;
+        });
+      } else if (period === 'semiannually' && selectedPeriodValue !== null) {
+        const half = parseInt(selectedPeriodValue, 10);
+        const startMonth = half * 6;
+        const endMonth = startMonth + 5;
+        filteredData = monthlyData.filter(d => {
+          const date = parseMonthString(d.month);
+          return date && date.getFullYear() === year && date.getMonth() >= startMonth && date.getMonth() <= endMonth;
+        });
+      } else {
+        // 未选择具体期间时，显示整年数据
+        filteredData = monthlyData.filter(d => {
+          const date = parseMonthString(d.month);
+          return date && date.getFullYear() === year;
+        });
+      }
+    }
+    
+    if (filteredData.length === 0) {
+      return { totalHours: 0, activeUsers: 0, avgHours: 0, totalHoursTrend: 0, avgHoursTrend: 0 };
+    }
+    
+    const totalHours = filteredData.reduce((sum, d) => sum + d.totalHours, 0);
+    const avgHours = filteredData.reduce((sum, d) => sum + d.avgHoursPerUser, 0) / filteredData.length;
+    const lastData = filteredData[filteredData.length - 1];
+    
     return {
-      totalHours: data.totalHours,
-      activeUsers: data.activeUsers,
-      avgHours: data.avgHoursPerUser,
-      totalHoursTrend: data.totalHoursTrend,
-      avgHoursTrend: data.avgHoursTrend
+      totalHours,
+      activeUsers: lastData.activeUsers,
+      avgHours,
+      totalHoursTrend: lastData.totalHoursTrend,
+      avgHoursTrend: lastData.avgHoursTrend
     };
-  }, [selectedDate, monthlyData]);
+  }, [period, selectedYear, selectedPeriodValue, customStartDate, customEndDate, monthlyData]);
+
+  const periodLabels: Record<Period, string> = {
+    monthly: '月度',
+    quarterly: '季度',
+    semiannually: '半年度',
+    annually: '年度',
+    custom: '自定义'
+  };
 
   const TimeDimensionTab = () => (
     <TabsContent value="time-dimension" className="space-y-6">
-        {/* 极简日期筛选器 */}
+        {/* 极简日期筛选器 - 标签式切换 */}
         <div className="flex items-center justify-between animate-fade-in-up">
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+                {/* Period 标签 */}
                 <span className="text-xs font-medium tracking-widest text-neutral-400 uppercase">Period</span>
-                <MonthPicker value={selectedDate} onChange={setSelectedDate} variant="minimal" />
+                
+                {/* 周期类型切换 */}
+                <div className="flex items-center gap-0.5 p-1 bg-neutral-100/80 rounded-full">
+                    {(['monthly', 'quarterly', 'semiannually', 'annually', 'custom'] as Period[]).map((p) => (
+                        <button
+                            key={p}
+                            onClick={() => {
+                                setPeriod(p);
+                                if (p !== 'monthly') setSelectedPeriodValue(null);
+                            }}
+                            className={cn(
+                                "px-4 py-2.5 text-xs font-medium rounded-full transition-colors duration-75",
+                                "cursor-pointer select-none touch-manipulation",
+                                "focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-1",
+                                period === p
+                                    ? "bg-white text-neutral-900 shadow-sm active:bg-neutral-100"
+                                    : "text-neutral-500 hover:text-neutral-700 hover:bg-white/60 active:bg-white/80"
+                            )}
+                        >
+                            {periodLabels[p]}
+                        </button>
+                    ))}
+                </div>
+
+                {/* 分隔线 */}
+                <span className="w-px h-5 bg-neutral-200 hidden sm:block" />
+
+                {/* 年份和期间选择 */}
+                {period !== 'custom' ? (
+                    <div className="flex items-center gap-3">
+                        {/* 年份选择 */}
+                        {availableYears.length > 0 && (
+                            <select
+                                value={selectedYear || ''}
+                                onChange={(e) => setSelectedYear(e.target.value)}
+                                className="px-3 py-2 text-sm font-medium bg-white border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-400"
+                            >
+                                {availableYears.map(year => (
+                                    <option key={year} value={year}>{year}</option>
+                                ))}
+                            </select>
+                        )}
+
+                        {/* 月份选择 */}
+                        {period === 'monthly' && selectedYear && (
+                            <>
+                                <span className="text-neutral-300">·</span>
+                                <select
+                                    value={selectedPeriodValue || ''}
+                                    onChange={(e) => setSelectedPeriodValue(e.target.value)}
+                                    className="px-3 py-2 text-sm font-medium bg-white border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-400"
+                                >
+                                    {Array.from({ length: 12 }, (_, i) => (
+                                        <option key={i} value={i.toString()}>{i + 1}月</option>
+                                    ))}
+                                </select>
+                            </>
+                        )}
+
+                        {/* 季度选择 */}
+                        {period === 'quarterly' && selectedYear && (
+                            <>
+                                <span className="text-neutral-300">·</span>
+                                <select
+                                    value={selectedPeriodValue || ''}
+                                    onChange={(e) => setSelectedPeriodValue(e.target.value)}
+                                    className="px-3 py-2 text-sm font-medium bg-white border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-400"
+                                >
+                                    <option value="">选择季度</option>
+                                    <option value="0">Q1 (1-3月)</option>
+                                    <option value="1">Q2 (4-6月)</option>
+                                    <option value="2">Q3 (7-9月)</option>
+                                    <option value="3">Q4 (10-12月)</option>
+                                </select>
+                            </>
+                        )}
+
+                        {/* 半年度选择 */}
+                        {period === 'semiannually' && selectedYear && (
+                            <>
+                                <span className="text-neutral-300">·</span>
+                                <select
+                                    value={selectedPeriodValue || ''}
+                                    onChange={(e) => setSelectedPeriodValue(e.target.value)}
+                                    className="px-3 py-2 text-sm font-medium bg-white border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-400"
+                                >
+                                    <option value="">选择半年度</option>
+                                    <option value="0">上半年 (1-6月)</option>
+                                    <option value="1">下半年 (7-12月)</option>
+                                </select>
+                            </>
+                        )}
+                    </div>
+                ) : (
+                    /* 自定义日期范围 */
+                    <div className="flex items-center gap-3">
+                        <MonthPicker value={customStartDate} onChange={(d) => setCustomStartDate(d)} variant="minimal" />
+                        <span className="text-neutral-300 text-sm">至</span>
+                        <MonthPicker value={customEndDate} onChange={(d) => setCustomEndDate(d)} variant="minimal" />
+                    </div>
+                )}
             </div>
         </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 animate-fade-in-up">

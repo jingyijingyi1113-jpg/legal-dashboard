@@ -4500,8 +4500,14 @@ const WorkCategoryTrendsByDealMatter = ({ teamData, onDataUpdate }: { teamData: 
 };
 
 const InvestmentLegalCenterPanel = ({ data, onDataUpdate }: { data: any[], onDataUpdate?: (updatedRecords: any[]) => void }) => {
+    // Source Path group filter state
+    const [selectedGroup, setSelectedGroup] = useState<string>('all');
+    
+    // Available groups for filtering
+    const GROUP_OPTIONS = ['all', '1组', '2组', '3组', '4组', '5组', '6组'];
+    
     // Pre-process data once: filter team and parse dates
-    const teamData = useMemo(() => {
+    const allTeamData = useMemo(() => {
         return data
             .filter(row => row && row['团队'] === '投资法务中心')
             .map(row => ({
@@ -4509,6 +4515,16 @@ const InvestmentLegalCenterPanel = ({ data, onDataUpdate }: { data: any[], onDat
                 _parsedDate: row['Month'] ? parseMonthString(row['Month']) : null
             }));
     }, [data]);
+    
+    // Filter by selected group based on Source Path
+    const teamData = useMemo(() => {
+        if (selectedGroup === 'all') return allTeamData;
+        return allTeamData.filter(row => {
+            const rawSourcePath = row['Source Path']?.toString() || '';
+            const sourcePath = rawSourcePath.trim().replace('工时统计-', '').replace(/\s+/g, ' ');
+            return sourcePath.includes(selectedGroup);
+        });
+    }, [allTeamData, selectedGroup]);
 
     // Global Data for Trends (Full History)
     const trendData = useMemo(() => {
@@ -4597,6 +4613,63 @@ const InvestmentLegalCenterPanel = ({ data, onDataUpdate }: { data: any[], onDat
 
     return (
         <div className="space-y-4">
+            {/* Source Path Group Filter - Refined Pill/Tag Style */}
+            <div className="relative">
+                <div className="flex items-center gap-4 p-3 bg-gradient-to-r from-slate-50/80 to-white rounded-xl border border-slate-200/60 shadow-sm">
+                    <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-500/10">
+                            <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                            </svg>
+                        </div>
+                        <span className="text-sm font-semibold text-slate-700 tracking-tight">Virtual Group</span>
+                    </div>
+                    
+                    <div className="h-6 w-px bg-slate-200"></div>
+                    
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        {GROUP_OPTIONS.map(group => (
+                            <button
+                                key={group}
+                                onClick={() => setSelectedGroup(group)}
+                                className={cn(
+                                    "relative px-3.5 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 ease-out",
+                                    selectedGroup === group
+                                        ? "bg-blue-600 text-white shadow-md shadow-blue-500/25 scale-[1.02]"
+                                        : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/80 hover:border-slate-300"
+                                )}
+                            >
+                                {group === 'all' ? '全部' : group}
+                                {selectedGroup === group && group !== 'all' && (
+                                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[10px] font-bold text-white ring-2 ring-white">
+                                        ✓
+                                    </span>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+                    
+                    {selectedGroup !== 'all' && (
+                        <div className="ml-auto flex items-center gap-2">
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 rounded-lg border border-blue-100">
+                                <span className="text-xs font-medium text-blue-700">
+                                    {teamData.length} 条记录
+                                </span>
+                            </div>
+                            <button
+                                onClick={() => setSelectedGroup('all')}
+                                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                                清除
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+            
              <div className="grid gap-4 md:grid-cols-2">
                 <FilterSection data={teamData} title="Total Working Hours">
                     {(_, totalHours, trend) => (
