@@ -3,12 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import * as XLSX from 'xlsx';
 import { getWorkdaysInMonth, parseMonthString, normalizeMonthString, normalizeCategoryDisplay } from '@/lib/date-utils';
 import { MonthPicker } from './MonthPicker';
 import { ProjectDimensionTab } from './ProjectDimensionTab';
 import { TeamDimensionTab } from './TeamDimensionTab';
+import { AnomalyDetectionTab } from './AnomalyDetectionTab';
 import { useReactToPrint } from 'react-to-print';
 import {
   DropdownMenu,
@@ -22,6 +24,359 @@ import { cn } from "@/lib/utils";
 import { format, parse } from 'date-fns';
 
 type Period = 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'custom';
+
+// 极简风格年份选择器
+const MinimalYearSelector = ({
+  selectedYear,
+  onSelect,
+  availableYears
+}: {
+  selectedYear: string | null;
+  onSelect: (year: string) => void;
+  availableYears: string[];
+}) => {
+  const [open, setOpen] = useState(false);
+  
+  const currentYear = new Date().getFullYear();
+  const defaultYears = Array.from({ length: 11 }, (_, i) => (currentYear - 5 + i).toString());
+  const yearsToShow = availableYears.length > 0 ? availableYears : defaultYears;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "group relative inline-flex items-center gap-2 px-0 py-1",
+            "text-neutral-900 transition-all duration-300",
+            "focus:outline-none focus-visible:ring-0",
+            !selectedYear && "text-neutral-400"
+          )}
+        >
+          <span className="text-lg font-semibold tracking-tight text-neutral-800 tabular-nums">
+            {selectedYear || '选择年份'}
+          </span>
+          <span className="absolute -bottom-0.5 left-0 h-[1.5px] w-0 bg-neutral-800 transition-all duration-300 group-hover:w-full" />
+          <svg 
+            className={cn(
+              "w-3 h-3 text-neutral-400 transition-transform duration-200",
+              open && "rotate-180"
+            )}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent 
+        className="w-[200px] p-0 border-0 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden"
+        align="start"
+      >
+        <div className="bg-white">
+          <div className="grid grid-cols-3 gap-1 p-3 max-h-[240px] overflow-y-auto">
+            {yearsToShow.map((year) => {
+              const isSelected = selectedYear === year;
+              const isCurrentYear = new Date().getFullYear().toString() === year;
+              
+              return (
+                <button
+                  key={year}
+                  onClick={() => {
+                    onSelect(year);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "relative py-3 px-2 rounded-xl text-sm font-medium transition-all duration-200",
+                    "hover:bg-neutral-50",
+                    isSelected 
+                      ? "bg-neutral-900 text-white hover:bg-neutral-800" 
+                      : "text-neutral-600 hover:text-neutral-900",
+                    isCurrentYear && !isSelected && "text-neutral-900 font-semibold"
+                  )}
+                >
+                  {year}
+                  {isCurrentYear && !isSelected && (
+                    <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-neutral-400" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+// 极简风格月份选择器
+const MinimalMonthSelector = ({
+  selectedYear,
+  selectedMonth,
+  onSelect,
+  availableYears
+}: {
+  selectedYear: string | null;
+  selectedMonth: string | null;
+  onSelect: (year: string, month: string) => void;
+  availableYears: string[];
+}) => {
+  const [open, setOpen] = useState(false);
+  const [viewYear, setViewYear] = useState(selectedYear ? parseInt(selectedYear) : new Date().getFullYear());
+
+  const months = Array.from({ length: 12 }, (_, i) => i);
+  const monthLabels = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+
+  const handleMonthSelect = (month: number) => {
+    onSelect(viewYear.toString(), month.toString());
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={(isOpen) => {
+      if (isOpen && selectedYear) {
+        setViewYear(parseInt(selectedYear));
+      }
+      setOpen(isOpen);
+    }}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "group relative inline-flex items-center gap-2 px-0 py-1",
+            "text-neutral-900 transition-all duration-300",
+            "focus:outline-none focus-visible:ring-0",
+            !selectedMonth && "text-neutral-400"
+          )}
+        >
+          <span className="text-lg font-semibold tracking-tight text-neutral-800 tabular-nums">
+            {selectedMonth !== null ? monthLabels[parseInt(selectedMonth)] : '选择月份'}
+          </span>
+          <span className="absolute -bottom-0.5 left-0 h-[1.5px] w-0 bg-neutral-800 transition-all duration-300 group-hover:w-full" />
+          <svg 
+            className={cn(
+              "w-3 h-3 text-neutral-400 transition-transform duration-200",
+              open && "rotate-180"
+            )}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent 
+        className="w-[280px] p-0 border-0 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden"
+        align="start"
+      >
+        <div className="bg-white">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
+            <button 
+              onClick={() => setViewYear(prev => prev - 1)}
+              className="w-8 h-8 flex items-center justify-center rounded-full text-neutral-400 hover:text-neutral-800 hover:bg-neutral-50 transition-all duration-200"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <span className="text-lg font-semibold tracking-tight text-neutral-800">{viewYear}</span>
+            <button 
+              onClick={() => setViewYear(prev => prev + 1)}
+              className="w-8 h-8 flex items-center justify-center rounded-full text-neutral-400 hover:text-neutral-800 hover:bg-neutral-50 transition-all duration-200"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-1 p-3">
+            {months.map((month) => {
+              const isSelected = selectedMonth !== null && parseInt(selectedMonth) === month && selectedYear === viewYear.toString();
+              const isCurrentMonth = new Date().getMonth() === month && new Date().getFullYear() === viewYear;
+              
+              return (
+                <button
+                  key={month}
+                  onClick={() => handleMonthSelect(month)}
+                  className={cn(
+                    "relative py-3 px-2 rounded-xl text-sm font-medium transition-all duration-200",
+                    "hover:bg-neutral-50",
+                    isSelected 
+                      ? "bg-neutral-900 text-white hover:bg-neutral-800" 
+                      : "text-neutral-600 hover:text-neutral-900",
+                    isCurrentMonth && !isSelected && "text-neutral-900 font-semibold"
+                  )}
+                >
+                  {monthLabels[month]}
+                  {isCurrentMonth && !isSelected && (
+                    <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-neutral-400" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+// 极简风格季度选择器
+const MinimalQuarterSelector = ({
+  selectedQuarter,
+  onSelect
+}: {
+  selectedQuarter: string | null;
+  onSelect: (quarter: string) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const quarters = [
+    { value: '0', label: '第一季度' },
+    { value: '1', label: '第二季度' },
+    { value: '2', label: '第三季度' },
+    { value: '3', label: '第四季度' },
+  ];
+
+  const selectedLabel = selectedQuarter !== null 
+    ? quarters.find(q => q.value === selectedQuarter)?.label 
+    : '选择季度';
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "group relative inline-flex items-center gap-2 px-0 py-1",
+            "text-neutral-900 transition-all duration-300",
+            "focus:outline-none focus-visible:ring-0",
+            !selectedQuarter && "text-neutral-400"
+          )}
+        >
+          <span className={cn(
+            "text-lg font-semibold tracking-tight tabular-nums",
+            selectedQuarter !== null ? "text-neutral-800" : "text-neutral-400"
+          )}>
+            {selectedLabel}
+          </span>
+          <span className="absolute -bottom-0.5 left-0 h-[1.5px] w-0 bg-neutral-800 transition-all duration-300 group-hover:w-full" />
+          <svg 
+            className={cn(
+              "w-3 h-3 text-neutral-400 transition-transform duration-200",
+              open && "rotate-180"
+            )}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent 
+        className="w-[200px] p-0 border-0 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden"
+        align="start"
+      >
+        <div className="bg-white p-2">
+          {quarters.map((quarter) => {
+            const isSelected = selectedQuarter === quarter.value;
+            return (
+              <button
+                key={quarter.value}
+                onClick={() => {
+                  onSelect(quarter.value);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "w-full py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200 text-left",
+                  "hover:bg-neutral-50",
+                  isSelected 
+                    ? "bg-neutral-900 text-white hover:bg-neutral-800" 
+                    : "text-neutral-600 hover:text-neutral-900"
+                )}
+              >
+                {quarter.label}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+// 极简风格半年度选择器
+const MinimalSemiannualSelector = ({
+  selectedSemiannual,
+  onSelect
+}: {
+  selectedSemiannual: string | null;
+  onSelect: (semiannual: string) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const semiannuals = [
+    { value: '0', label: '上半年' },
+    { value: '1', label: '下半年' },
+  ];
+
+  const selectedLabel = selectedSemiannual !== null 
+    ? semiannuals.find(s => s.value === selectedSemiannual)?.label 
+    : '选择半年度';
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "group relative inline-flex items-center gap-2 px-0 py-1",
+            "text-neutral-900 transition-all duration-300",
+            "focus:outline-none focus-visible:ring-0",
+            !selectedSemiannual && "text-neutral-400"
+          )}
+        >
+          <span className={cn(
+            "text-lg font-semibold tracking-tight tabular-nums",
+            selectedSemiannual !== null ? "text-neutral-800" : "text-neutral-400"
+          )}>
+            {selectedLabel}
+          </span>
+          <span className="absolute -bottom-0.5 left-0 h-[1.5px] w-0 bg-neutral-800 transition-all duration-300 group-hover:w-full" />
+          <svg 
+            className={cn(
+              "w-3 h-3 text-neutral-400 transition-transform duration-200",
+              open && "rotate-180"
+            )}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent 
+        className="w-[160px] p-0 border-0 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden"
+        align="start"
+      >
+        <div className="bg-white p-2">
+          {semiannuals.map((semi) => {
+            const isSelected = selectedSemiannual === semi.value;
+            return (
+              <button
+                key={semi.value}
+                onClick={() => {
+                  onSelect(semi.value);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "w-full py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200 text-left",
+                  "hover:bg-neutral-50",
+                  isSelected 
+                    ? "bg-neutral-900 text-white hover:bg-neutral-800" 
+                    : "text-neutral-600 hover:text-neutral-900"
+                )}
+              >
+                {semi.label}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
 
 interface MonthlyData {
     month: string;
@@ -436,30 +791,26 @@ export function DashboardPage() {
                     <div className="flex items-center gap-3">
                         {/* 年份选择 */}
                         {availableYears.length > 0 && (
-                            <select
-                                value={selectedYear || ''}
-                                onChange={(e) => setSelectedYear(e.target.value)}
-                                className="px-3 py-2 text-sm font-medium bg-white border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-400"
-                            >
-                                {availableYears.map(year => (
-                                    <option key={year} value={year}>{year}</option>
-                                ))}
-                            </select>
+                            <MinimalYearSelector
+                                selectedYear={selectedYear}
+                                onSelect={setSelectedYear}
+                                availableYears={availableYears}
+                            />
                         )}
 
                         {/* 月份选择 */}
                         {period === 'monthly' && selectedYear && (
                             <>
                                 <span className="text-neutral-300">·</span>
-                                <select
-                                    value={selectedPeriodValue || ''}
-                                    onChange={(e) => setSelectedPeriodValue(e.target.value)}
-                                    className="px-3 py-2 text-sm font-medium bg-white border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-400"
-                                >
-                                    {Array.from({ length: 12 }, (_, i) => (
-                                        <option key={i} value={i.toString()}>{i + 1}月</option>
-                                    ))}
-                                </select>
+                                <MinimalMonthSelector
+                                    selectedYear={selectedYear}
+                                    selectedMonth={selectedPeriodValue}
+                                    onSelect={(year, month) => {
+                                        setSelectedYear(year);
+                                        setSelectedPeriodValue(month);
+                                    }}
+                                    availableYears={availableYears}
+                                />
                             </>
                         )}
 
@@ -467,17 +818,10 @@ export function DashboardPage() {
                         {period === 'quarterly' && selectedYear && (
                             <>
                                 <span className="text-neutral-300">·</span>
-                                <select
-                                    value={selectedPeriodValue || ''}
-                                    onChange={(e) => setSelectedPeriodValue(e.target.value)}
-                                    className="px-3 py-2 text-sm font-medium bg-white border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-400"
-                                >
-                                    <option value="">选择季度</option>
-                                    <option value="0">Q1 (1-3月)</option>
-                                    <option value="1">Q2 (4-6月)</option>
-                                    <option value="2">Q3 (7-9月)</option>
-                                    <option value="3">Q4 (10-12月)</option>
-                                </select>
+                                <MinimalQuarterSelector
+                                    selectedQuarter={selectedPeriodValue}
+                                    onSelect={setSelectedPeriodValue}
+                                />
                             </>
                         )}
 
@@ -485,15 +829,10 @@ export function DashboardPage() {
                         {period === 'semiannually' && selectedYear && (
                             <>
                                 <span className="text-neutral-300">·</span>
-                                <select
-                                    value={selectedPeriodValue || ''}
-                                    onChange={(e) => setSelectedPeriodValue(e.target.value)}
-                                    className="px-3 py-2 text-sm font-medium bg-white border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-400"
-                                >
-                                    <option value="">选择半年度</option>
-                                    <option value="0">上半年 (1-6月)</option>
-                                    <option value="1">下半年 (7-12月)</option>
-                                </select>
+                                <MinimalSemiannualSelector
+                                    selectedSemiannual={selectedPeriodValue}
+                                    onSelect={setSelectedPeriodValue}
+                                />
                             </>
                         )}
                     </div>
@@ -686,11 +1025,11 @@ export function DashboardPage() {
                 <span className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full scale-x-0 data-[state=active]:scale-x-100 transition-transform duration-300 origin-left"></span>
               </TabsTrigger>
               <TabsTrigger 
-                value="personal" 
-                disabled
-                className="nav-tab-enhanced relative text-neutral-400 cursor-not-allowed opacity-50 hover:opacity-50 transition-opacity duration-300 text-[17px]"
+                value="anomaly"
+                className="nav-tab-enhanced relative text-neutral-600 hover:text-neutral-900 data-[state=active]:text-blue-600 data-[state=active]:font-semibold transition-colors duration-300 text-[17px]"
               >
-                个人工时预览 (待完善)
+                监测看板
+                <span className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full scale-x-0 data-[state=active]:scale-x-100 transition-transform duration-300 origin-left"></span>
               </TabsTrigger>
             </TabsList>
           </div>
@@ -699,6 +1038,9 @@ export function DashboardPage() {
             <DepartmentOverviewTab />
             <TabsContent value="team" className="m-0 focus-visible:outline-none">
               {activeTab === 'team' && <TeamDimensionTab data={rawData} onDataUpdate={handleDataUpdate} />}
+            </TabsContent>
+            <TabsContent value="anomaly" className="m-0 focus-visible:outline-none">
+              {activeTab === 'anomaly' && <AnomalyDetectionTab data={rawData} />}
             </TabsContent>
           </div>
         </Tabs>
