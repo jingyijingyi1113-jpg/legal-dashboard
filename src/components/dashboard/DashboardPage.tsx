@@ -971,7 +971,7 @@ export function DashboardPage() {
       <div className="relative z-10 space-y-6 p-6">
         <div className='flex justify-between items-center mb-2 animate-fade-in-down'>
           <div>
-            <h1 className="text-4xl font-bold text-neutral-900 tracking-tight">工时数据看板</h1>
+            <h1 className="text-4xl font-bold text-neutral-900 tracking-tight" style={{ fontWeight: 700 }}>工时数据看板</h1>
             <p className="text-neutral-500 mt-2 text-sm font-medium">工时统计与趋势分析</p>
           </div>
           <div className="flex items-center gap-3">

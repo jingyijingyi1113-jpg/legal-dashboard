@@ -195,8 +195,8 @@ const hkPublicHolidays2025 = [
     '2025-12-25', '2025-12-26', // Christmas
 ];
 
-export const getWorkdaysInMonth = (year: number, month: number, region: 'CN' | 'HK'): number => {
-    const holidays = region === 'CN' ? cnPublicHolidays2025 : hkPublicHolidays2025;
+export const getWorkdaysInMonth = (year: number, month: number, region: 'CN' | 'HK' | 'OTHER'): number => {
+    const holidays = region === 'CN' ? cnPublicHolidays2025 : region === 'HK' ? hkPublicHolidays2025 : [];
     const daysInMonth = new Date(year, month, 0).getDate();
     let workdays = 0;
 
@@ -212,6 +212,39 @@ export const getWorkdaysInMonth = (year: number, month: number, region: 'CN' | '
                 workdays++;
             }
         }
+    }
+    return workdays;
+};
+
+/**
+ * Calculate workdays in a date range for a specific region
+ * @param startDate - Start date string (yyyy-MM-dd)
+ * @param endDate - End date string (yyyy-MM-dd)
+ * @param region - Region code ('CN', 'HK', 'OTHER')
+ * @returns Number of workdays in the range
+ */
+export const getWorkdaysInRange = (startDate: string, endDate: string, region: 'CN' | 'HK' | 'OTHER'): number => {
+    const holidays = region === 'CN' ? cnPublicHolidays2025 : region === 'HK' ? hkPublicHolidays2025 : [];
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    if (end < start) return 0;
+    
+    let workdays = 0;
+    const current = new Date(start);
+    
+    while (current <= end) {
+        const dayOfWeek = current.getDay();
+        const dateString = current.toISOString().split('T')[0];
+        
+        // Check if it's a weekday (Monday-Friday)
+        if (dayOfWeek > 0 && dayOfWeek < 6) {
+            // Check if it's not a public holiday
+            if (!holidays.includes(dateString)) {
+                workdays++;
+            }
+        }
+        current.setDate(current.getDate() + 1);
     }
     return workdays;
 };
