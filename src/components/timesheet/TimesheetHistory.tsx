@@ -350,7 +350,8 @@ interface TimesheetHistoryProps {
 
 export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
   const { user } = useAuth();
-  const { entries, leaveRecords } = useTimesheet();
+  const { entries, leaveRecords, deleteEntry } = useTimesheet();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   
   // 筛选条件
   const currentYear = new Date().getFullYear();
@@ -609,6 +610,19 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
   // 复制记录
   const handleCopy = (entry: TimesheetEntry) => {
     onCopyEntry?.(entry);
+  };
+
+  // 删除记录
+  const handleDelete = async (id: string) => {
+    if (!confirm('确定要删除这条已提交的记录吗？此操作不可恢复。')) {
+      return;
+    }
+    setDeletingId(id);
+    try {
+      await deleteEntry(id);
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -877,6 +891,26 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
                           <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                           <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                         </svg>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(entry.id)}
+                        disabled={deletingId === entry.id}
+                        className="h-8 w-8 p-0 text-neutral-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-50"
+                        title="删除记录"
+                      >
+                        {deletingId === entry.id ? (
+                          <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                          </svg>
+                        )}
                       </Button>
                     </div>
                   </div>

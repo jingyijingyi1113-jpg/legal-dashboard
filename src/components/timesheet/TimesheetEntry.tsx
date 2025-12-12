@@ -244,9 +244,11 @@ const fieldIcons: Record<string, React.ReactNode> = {
 
 interface TimesheetEntryProps {
   onCopyEntry?: (entry: TimesheetEntryType) => void;
+  copyData?: TimesheetEntryType | null;
+  onCopyDataConsumed?: () => void;
 }
 
-export function TimesheetEntryForm({ onCopyEntry }: TimesheetEntryProps) {
+export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }: TimesheetEntryProps) {
   const { user } = useAuth();
   const { entries, addEntry, updateEntry, deleteEntry, submitEntries, getStats, leaveRecords, addLeaveRecord, updateLeaveRecord, deleteLeaveRecord } = useTimesheet();
   const [formData, setFormData] = useState<Record<string, string | number>>({});
@@ -254,6 +256,10 @@ export function TimesheetEntryForm({ onCopyEntry }: TimesheetEntryProps) {
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  
+  // 跨月提醒状态
+  const [showCrossMonthReminder, setShowCrossMonthReminder] = useState(false);
+  const [crossMonthReminderShown, setCrossMonthReminderShown] = useState(false);
 
   // 请假表单状态
   const [leaveStartDate, setLeaveStartDate] = useState(new Date().toISOString().split('T')[0]);
@@ -261,12 +267,35 @@ export function TimesheetEntryForm({ onCopyEntry }: TimesheetEntryProps) {
   const [leaveDays, setLeaveDays] = useState<string>('1');
   const [leaveSubmitting, setLeaveSubmitting] = useState(false);
   const [editingLeaveId, setEditingLeaveId] = useState<string | null>(null);
+  
+  // 标记是否刚复制了数据，防止被初始化覆盖
+  const skipNextInitRef = useRef(false);
 
   // 获取当前用户的请假记录
   const userLeaveRecords = useMemo(() => {
     if (!user) return [];
     return leaveRecords.filter(r => r.userId === user.id).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
   }, [leaveRecords, user]);
+
+  // 处理从历史记录复制的数据
+  useEffect(() => {
+    if (copyData) {
+      // 标记跳过下次初始化
+      skipNextInitRef.current = true;
+      // 清除编辑状态
+      setEditingId(null);
+      // 使用今天的日期
+      setDate(new Date().toISOString().split('T')[0]);
+      // 设置表单数据
+      setFormData({ 
+        ...copyData.data, 
+        hours: copyData.hours, 
+        description: copyData.description || '' 
+      });
+      // 通知父组件数据已被消费
+      onCopyDataConsumed?.();
+    }
+  }, [copyData, onCopyDataConsumed]);
 
   // 自动计算请假天数（工作日）
   useEffect(() => {
@@ -294,14 +323,59 @@ export function TimesheetEntryForm({ onCopyEntry }: TimesheetEntryProps) {
     return getTeamTemplateByName(user.team) || DEFAULT_TEMPLATE;
   }, [user?.team]);
 
-  // 初始化表单数据
+  // 初始化表单数据（仅在没有复制数据时执行）
   useEffect(() => {
+    if (skipNextInitRef.current) {
+      skipNextInitRef.current = false;
+      return;
+    }
     const initialData: Record<string, string | number> = {};
     template.fields.forEach(field => {
       initialData[field.key] = '';
     });
     setFormData(initialData);
   }, [template]);
+
+  // 跨月提醒检测：月初1-5号时自动提示
+  useEffect(() => {
+    if (crossMonthReminderShown) return; // 已经提示过就不再提示
+    
+    const today = new Date();
+    const dayOfMonth = today.getDate();
+    
+    // 仅在月初1-5号显示提醒（测试期间扩展到1-15号）
+    if (dayOfMonth >= 1 && dayOfMonth <= 15) {
+      setShowCrossMonthReminder(true);
+    }
+  }, [crossMonthReminderShown]);
+
+  // 处理跨月提醒：选择补录上月
+  const handleRecordLastMonth = () => {
+    const today = new Date();
+    const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const lastDayOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+    // 默认设置为上月最后一个工作日
+    let targetDate = lastDayOfLastMonth;
+    while (targetDate.getDay() === 0 || targetDate.getDay() === 6) {
+      targetDate.setDate(targetDate.getDate() - 1);
+    }
+    setDate(targetDate.toISOString().split('T')[0]);
+    setShowCrossMonthReminder(false);
+    setCrossMonthReminderShown(true);
+  };
+
+  // 处理跨月提醒：选择记录本月
+  const handleRecordThisMonth = () => {
+    setDate(new Date().toISOString().split('T')[0]);
+    setShowCrossMonthReminder(false);
+    setCrossMonthReminderShown(true);
+  };
+
+  // 关闭跨月提醒
+  const dismissCrossMonthReminder = () => {
+    setShowCrossMonthReminder(false);
+    setCrossMonthReminderShown(true);
+  };
 
   // 获取当前用户的草稿记录
   const userDraftEntries = useMemo(() => {
@@ -686,6 +760,64 @@ export function TimesheetEntryForm({ onCopyEntry }: TimesheetEntryProps) {
           <div className="text-2xl font-bold text-neutral-900">{stats.totalEntries}</div>
         </div>
       </div>
+
+      {/* 跨月提醒弹窗 */}
+      {showCrossMonthReminder && (
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-50 via-orange-50 to-yellow-50 border border-amber-200 shadow-lg shadow-amber-100/50 p-5">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-amber-100/50 to-orange-100/30 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2"></div>
+          
+          <div className="relative flex items-start gap-4">
+            <div className="flex-shrink-0 flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-amber-200">
+              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            
+            <div className="flex-1">
+              <h4 className="text-base font-bold text-amber-800 mb-1">跨月工时提醒</h4>
+              <p className="text-sm text-amber-700 mb-4">
+                当前是月初，您是否需要补录上个月的工时记录？
+                <span className="block text-xs text-amber-600 mt-1">
+                  选择"补录上月"将自动切换日期到上月最后一个工作日
+                </span>
+              </p>
+              
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={handleRecordLastMonth}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-sm font-medium shadow-md shadow-amber-200 transition-all duration-200"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 17l-5-5m0 0l5-5m-5 5h12" />
+                  </svg>
+                  是，补录上月
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRecordThisMonth}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium shadow-sm transition-all duration-200"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  否，记录本月
+                </button>
+                <button
+                  type="button"
+                  onClick={dismissCrossMonthReminder}
+                  className="inline-flex items-center gap-1 px-3 py-2 text-sm text-amber-600 hover:text-amber-700 font-medium transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  不再提醒
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* 工时录入表单 */}

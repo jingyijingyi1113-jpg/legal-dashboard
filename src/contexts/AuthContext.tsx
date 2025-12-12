@@ -15,6 +15,59 @@ const DEFAULT_ADMIN: User = {
   updatedAt: new Date().toISOString(),
 };
 
+// 预置用户列表
+const DEFAULT_USERS: User[] = [
+  DEFAULT_ADMIN,
+  {
+    id: 'user-cinndywu',
+    username: 'cinndywu',
+    password: '123456',
+    name: 'cinndywu',
+    email: 'cinndywu@tencent.com',
+    role: 'admin',
+    region: 'CN',
+    team: '业务管理及合规检测中心',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'user-ivyjyding',
+    username: 'ivyjyding',
+    password: '123456',
+    name: 'ivyjyding',
+    email: 'ivyjyding@tencent.com',
+    role: 'admin',
+    region: 'CN',
+    team: '业务管理及合规检测中心',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'user-catherineou',
+    username: 'catherineou',
+    password: '123456',
+    name: 'catherineou',
+    email: 'catherineou@tencent.com',
+    role: 'admin',
+    region: 'CN',
+    team: '投资法务中心',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'user-sallycheung',
+    username: 'sallycheung',
+    password: '123456',
+    name: 'sallycheung',
+    email: 'sallycheung@tencent.com',
+    role: 'admin',
+    region: 'HK',
+    team: '公司及国际金融事务中心',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+];
+
 interface AuthContextType {
   isAuthenticated: boolean;
   user: User | null;
@@ -52,10 +105,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const storedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
         let userList: User[] = storedUsers ? JSON.parse(storedUsers) : [];
         
-        // 确保默认管理员存在
-        const adminExists = userList.some(u => u.username === 'admin');
-        if (!adminExists) {
-          userList = [DEFAULT_ADMIN, ...userList];
+        // 确保所有预置用户都存在
+        let needsUpdate = false;
+        for (const defaultUser of DEFAULT_USERS) {
+          const exists = userList.some(u => u.username === defaultUser.username);
+          if (!exists) {
+            userList.push(defaultUser);
+            needsUpdate = true;
+          }
+        }
+        
+        if (needsUpdate) {
           localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(userList));
         }
         setUsers(userList);

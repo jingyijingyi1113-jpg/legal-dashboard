@@ -2,17 +2,35 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { TimesheetEntryForm } from './TimesheetEntry';
 import { TimesheetHistory } from './TimesheetHistory';
+import { AdminTemplatePreview } from './AdminTemplatePreview';
+import type { TimesheetEntry } from '@/types/timesheet';
 
 type TabType = 'entry' | 'history';
 
 export function TimesheetPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('entry');
+  // 直接存储要复制的数据，而不是通过 ref
+  const [copyData, setCopyData] = useState<TimesheetEntry | null>(null);
 
-  // 从历史记录复制时切换到录入页
-  const handleCopyFromHistory = () => {
+  // 判断是否为系统管理员（用户名为admin且没有团队归属）
+  const isSystemAdmin = user?.username === 'admin' && !user?.team;
+
+  // 从历史记录复制时切换到录入页并传递数据
+  const handleCopyFromHistory = (entry: TimesheetEntry) => {
+    setCopyData(entry);
     setActiveTab('entry');
   };
+
+  // 清除复制数据（由子组件调用）
+  const clearCopyData = () => {
+    setCopyData(null);
+  };
+
+  // 系统管理员显示模版预览页面
+  if (isSystemAdmin) {
+    return <AdminTemplatePreview />;
+  }
 
   return (
     <div className="min-h-screen section-gradient relative overflow-hidden">
@@ -74,7 +92,7 @@ export function TimesheetPage() {
         {/* Tab 内容 */}
         <div className="animate-fade-in-up">
           {activeTab === 'entry' ? (
-            <TimesheetEntryForm />
+            <TimesheetEntryForm copyData={copyData} onCopyDataConsumed={clearCopyData} />
           ) : (
             <TimesheetHistory onCopyEntry={handleCopyFromHistory} />
           )}

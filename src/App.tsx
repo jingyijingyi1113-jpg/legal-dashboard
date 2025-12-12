@@ -7,8 +7,7 @@ import { Sidebar } from './components/layout/Sidebar';
 import { TimesheetPage } from './components/timesheet/TimesheetPage';
 import { LoginPage } from './components/auth/LoginPage';
 import { RegisterPage } from './components/auth/RegisterPage';
-import { UserManagementPage } from './components/admin/UserManagementPage';
-import { OrganizationPage } from './components/admin/OrganizationPage';
+import { PermissionManagementPage } from './components/admin/PermissionManagementPage';
 import { DataManagementPage } from './components/admin/DataManagementPage';
 
 function AppContent() {
@@ -64,8 +63,7 @@ function AppContent() {
         {activeMenu === 'dashboard' && canAccessDashboard && <DashboardPage />}
         {activeMenu === 'dashboard' && !canAccessDashboard && <TimesheetPage />}
         {activeMenu === 'timesheet' && <TimesheetPage />}
-        {activeMenu === 'organization' && <OrganizationPage />}
-        {activeMenu === 'users' && <UserManagementPage />}
+        {activeMenu === 'permissions' && <PermissionManagementPage />}
         {activeMenu === 'dataManagement' && <DataManagementPage />}
       </main>
     </div>

@@ -207,28 +207,11 @@ export function LoginPage({ onSwitchToRegister }: LoginPageProps) {
             <div className="text-center">
               <p className="text-[15px] text-slate-500">
                 还没有账号？
-                <button
-                  onClick={onSwitchToRegister}
-                  className="ml-1.5 text-blue-600 hover:text-blue-700 font-semibold transition-colors hover:underline underline-offset-2"
-                >
-                  立即注册
-                </button>
+                <span className="ml-1.5 text-blue-600 font-semibold">
+                  请联系 ivyjyding
+                </span>
               </p>
             </div>
-          </div>
-        </div>
-
-        {/* Demo account hint */}
-        <div className="mt-8 text-center animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-100/80 backdrop-blur-sm border border-slate-200/50">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M12 16v-4"/>
-              <path d="M12 8h.01"/>
-            </svg>
-            <span className="text-sm text-slate-500 font-medium">
-              演示账号：<span className="text-slate-700">admin</span> / <span className="text-slate-700">admin123</span>
-            </span>
           </div>
         </div>
       </div>
