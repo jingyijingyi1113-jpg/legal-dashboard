@@ -1079,7 +1079,7 @@ function ImportModal({ isOpen, onClose, onConfirm, previewData, fileName }: Impo
 }
 
 export function DataManagementPage() {
-  const { entries, deleteEntry, updateEntry, importEntries } = useTimesheet();
+  const { entries, deleteEntry, deleteEntries, updateEntry, importEntries } = useTimesheet();
   const { teams } = useOrganization();
 
   // 筛选状态
@@ -1189,7 +1189,7 @@ export function DataManagementPage() {
 
   const totalPages = Math.ceil(filteredEntries.length / pageSize);
 
-  // 全选/取消全选
+  // 全选/取消全选当前页
   const handleSelectAll = () => {
     if (selectedIds.size === paginatedEntries.length) {
       setSelectedIds(new Set());
@@ -1197,6 +1197,18 @@ export function DataManagementPage() {
       setSelectedIds(new Set(paginatedEntries.map(e => e.id)));
     }
   };
+
+  // 全选所有筛选后的数据
+  const handleSelectAllFiltered = () => {
+    if (selectedIds.size === filteredEntries.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredEntries.map(e => e.id)));
+    }
+  };
+
+  // 判断是否全选了所有筛选后的数据
+  const isAllFilteredSelected = filteredEntries.length > 0 && selectedIds.size === filteredEntries.length;
 
   // 单选
   const handleSelect = (id: string) => {
@@ -1211,9 +1223,8 @@ export function DataManagementPage() {
 
   // 删除选中的记录
   const handleDeleteSelected = async () => {
-    for (const id of selectedIds) {
-      await deleteEntry(id);
-    }
+    const idsToDelete = Array.from(selectedIds);
+    await deleteEntries(idsToDelete);
     setSelectedIds(new Set());
     setShowDeleteConfirm(false);
   };
@@ -1704,17 +1715,45 @@ export function DataManagementPage() {
                 )}
               </span>
 
+              {/* 全选所有按钮 */}
+              {filteredEntries.length > 0 && (
+                <button
+                  onClick={handleSelectAllFiltered}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors",
+                    isAllFilteredSelected
+                      ? "text-blue-700 bg-blue-100 hover:bg-blue-200"
+                      : "text-slate-600 bg-slate-100 hover:bg-slate-200"
+                  )}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    {isAllFilteredSelected ? (
+                      <>
+                        <path d="M9 11l3 3L22 4"/>
+                        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                      </>
+                    ) : (
+                      <>
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                        <path d="M9 12l2 2 4-4"/>
+                      </>
+                    )}
+                  </svg>
+                  {isAllFilteredSelected ? '取消全选' : '全选所有'}
+                </button>
+              )}
+
               {selectedIds.size > 0 && (
                 <button
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 rounded-lg shadow-lg shadow-red-500/25 transition-all duration-200"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M3 6h18"/>
                     <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
                     <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
                   </svg>
-                  删除选中
+                  删除选中 ({selectedIds.size})
                 </button>
               )}
             </div>

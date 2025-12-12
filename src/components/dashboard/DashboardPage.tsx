@@ -11,8 +11,10 @@ import { MonthPicker } from './MonthPicker';
 import { ProjectDimensionTab } from './ProjectDimensionTab';
 import { TeamDimensionTab } from './TeamDimensionTab';
 import { AnomalyDetectionTab } from './AnomalyDetectionTab';
+import { LoadTimesheetDialog } from './LoadTimesheetDialog';
 import { useReactToPrint } from 'react-to-print';
 import { useTimesheet } from '@/contexts/TimesheetContext';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -400,6 +402,12 @@ export function DashboardPage() {
   // 获取工时记录数据
   const { getDashboardData, getSubmittedEntries, entries } = useTimesheet();
   
+  // 获取当前用户信息
+  const { user } = useAuth();
+  
+  // 加载工时记录弹窗状态
+  const [loadDialogOpen, setLoadDialogOpen] = useState(false);
+  
   // Period filter states for TimeDimensionTab
   const [period, setPeriod] = useState<Period>('monthly');
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
@@ -407,33 +415,105 @@ export function DashboardPage() {
   const [customStartDate, setCustomStartDate] = useState<Date | undefined>(undefined);
   const [customEndDate, setCustomEndDate] = useState<Date | undefined>(undefined);
 
-  // 从工时记录加载数据
-  const loadFromTimesheet = () => {
-    const timesheetData = getDashboardData();
+  // 从工时记录加载数据（带筛选条件）
+  const loadFromTimesheetWithFilters = (filters: {
+    team?: string;
+    group?: string;
+    period: 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'custom';
+    year?: string;
+    periodValue?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }) => {
+    let timesheetData = getDashboardData();
+    
+    // 按团队筛选
+    if (filters.team && filters.team !== 'all') {
+      timesheetData = timesheetData.filter(row => row['团队'] === filters.team);
+    } else if (user?.role === 'manager' && user?.team) {
+      // 管理者只能看自己团队
+      timesheetData = timesheetData.filter(row => row['团队'] === user.team);
+    }
+    
+    // 按小组筛选（仅投资法务中心）
+    if (filters.group) {
+      timesheetData = timesheetData.filter(row => row['Source Path'] === filters.group);
+    }
+    
+    // 按时间筛选
+    if (filters.period !== 'custom' && filters.year) {
+      timesheetData = timesheetData.filter(row => {
+        const month = row.Month;
+        if (!month) return false;
+        const rowYear = month.split('-')[0];
+        if (rowYear !== filters.year) return false;
+        
+        if (filters.period === 'monthly' && filters.periodValue) {
+          const rowMonth = month.split('-')[1];
+          return rowMonth === filters.periodValue;
+        } else if (filters.period === 'quarterly' && filters.periodValue) {
+          const rowMonth = parseInt(month.split('-')[1], 10);
+          const quarter = Math.ceil(rowMonth / 3);
+          return `Q${quarter}` === filters.periodValue;
+        } else if (filters.period === 'semiannually' && filters.periodValue) {
+          const rowMonth = parseInt(month.split('-')[1], 10);
+          const half = rowMonth <= 6 ? 'H1' : 'H2';
+          return half === filters.periodValue;
+        }
+        return true; // annually - 只筛选年份
+      });
+    } else if (filters.period === 'custom' && filters.startDate && filters.endDate) {
+      timesheetData = timesheetData.filter(row => {
+        const month = row.Month;
+        if (!month) return false;
+        const [year, mon] = month.split('-').map(Number);
+        const rowDate = new Date(year, mon - 1);
+        const startMonth = new Date(filters.startDate!.getFullYear(), filters.startDate!.getMonth());
+        const endMonth = new Date(filters.endDate!.getFullYear(), filters.endDate!.getMonth());
+        return rowDate >= startMonth && rowDate <= endMonth;
+      });
+    }
+    
     if (timesheetData.length === 0) {
-      alert('暂无已提交的工时记录');
+      alert('暂无符合条件的工时记录');
       return;
     }
+    
     setRawData(timesheetData);
     processTimeData(timesheetData);
     setDataSource('timesheet');
   };
 
+  // 打开加载弹窗
+  const openLoadDialog = () => {
+    setLoadDialogOpen(true);
+  };
+
   // 监听工时记录变化，自动更新（如果当前使用工时记录数据源）
   useEffect(() => {
     if (dataSource === 'timesheet') {
-      const timesheetData = getDashboardData();
+      let timesheetData = getDashboardData();
+      
+      // 如果是管理者角色，只显示其负责团队的数据
+      if (user?.role === 'manager' && user?.team) {
+        timesheetData = timesheetData.filter(row => row['团队'] === user.team);
+      }
+      
       if (timesheetData.length > 0) {
         setRawData(timesheetData);
         processTimeData(timesheetData);
       }
     }
-  }, [entries, dataSource]);
+  }, [entries, dataSource, user]);
 
-  // 获取已提交工时记录数量
+  // 获取已提交工时记录数量（管理者只看到自己团队的）
   const submittedCount = useMemo(() => {
-    return getSubmittedEntries().length;
-  }, [entries]);
+    const allSubmitted = getSubmittedEntries();
+    if (user?.role === 'manager' && user?.team) {
+      return allSubmitted.filter(e => e.teamName === user.team).length;
+    }
+    return allSubmitted.length;
+  }, [entries, user]);
 
   // 数据更新回调函数 - 用于子组件修改数据后同步更新
   const handleDataUpdate = (updatedRecords: any[]) => {
@@ -785,7 +865,24 @@ export function DashboardPage() {
     custom: '自定义'
   };
 
-  const TimeDimensionTab = () => (
+  const TimeDimensionTab = () => {
+    if (!rawData || rawData.length === 0) {
+      return (
+        <TabsContent value="time-dimension" className="space-y-6">
+          <div className="flex items-center justify-center h-64 text-neutral-500">
+            <div className="text-center">
+              <svg className="w-16 h-16 mx-auto mb-4 text-neutral-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              <p className="text-lg font-medium">请先导入工时数据</p>
+              <p className="text-sm text-neutral-400 mt-1">导入数据后可查看工时统计分析</p>
+            </div>
+          </div>
+        </TabsContent>
+      );
+    }
+
+    return (
     <TabsContent value="time-dimension" className="space-y-6">
         {/* 极简日期筛选器 - 标签式切换 */}
         <div className="flex items-center justify-between animate-fade-in-up">
@@ -964,7 +1061,8 @@ export function DashboardPage() {
             </Card>
           </div>
     </TabsContent>
-  );
+    );
+  };
 
   const DepartmentOverviewTab = () => (
       <TabsContent value="overview" className="space-y-6 focus-visible:outline-none">
@@ -1046,7 +1144,7 @@ export function DashboardPage() {
                   </svg>
                   导入 Excel
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={loadFromTimesheet} className="cursor-pointer rounded-md px-3 py-2 text-[13px] text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors">
+                <DropdownMenuItem onClick={openLoadDialog} className="cursor-pointer rounded-md px-3 py-2 text-[13px] text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2 text-blue-500">
                     <circle cx="12" cy="12" r="10"/>
                     <polyline points="12 6 12 12 16 14"/>
@@ -1081,6 +1179,29 @@ export function DashboardPage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            {/* 清除数据按钮 - 独立放在导出右边 */}
+            {rawData.length > 0 && (
+              <Button 
+                variant="ghost" 
+                onClick={() => {
+                  if (confirm('确定要清除当前看板数据吗？此操作不会影响工时记录中的原始数据。')) {
+                    setRawData([]);
+                    setMonthlyData([]);
+                    setDataSource('excel');
+                  }
+                }}
+                className="no-print group relative overflow-hidden px-4 py-2 h-9 rounded-lg border border-red-200/60 bg-white/60 backdrop-blur-sm hover:bg-red-50/80 hover:border-red-300/80 transition-all duration-200"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500 group-hover:text-red-600 transition-colors mr-1.5">
+                  <path d="M3 6h18"/>
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                  <line x1="10" y1="11" x2="10" y2="17"/>
+                  <line x1="14" y1="11" x2="14" y2="17"/>
+                </svg>
+                <span className="text-[13px] font-medium text-red-600 group-hover:text-red-700 transition-colors">清除数据</span>
+              </Button>
+            )}
           </div>
         </div>
 
@@ -1128,6 +1249,15 @@ export function DashboardPage() {
           </div>
         </Tabs>
       </div>
+      
+      {/* 加载工时记录弹窗 */}
+      <LoadTimesheetDialog
+        open={loadDialogOpen}
+        onOpenChange={setLoadDialogOpen}
+        userTeam={user?.team}
+        userRole={user?.role}
+        onConfirm={loadFromTimesheetWithFilters}
+      />
     </div>
   );
 }

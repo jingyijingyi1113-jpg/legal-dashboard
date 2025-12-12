@@ -9,6 +9,9 @@ interface SidebarProps {
   onMenuChange: (menu: string) => void;
   isCollapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
+  isMobile?: boolean;
+  isMobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
 const menuItems = [
@@ -62,7 +65,7 @@ const menuItems = [
   },
 ];
 
-export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChange }: SidebarProps) {
+export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChange, isMobile, isMobileOpen, onMobileClose }: SidebarProps) {
   const { user, logout } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -72,6 +75,16 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
     user && item.roles.includes(user.role)
   );
 
+  // 移动端：如果侧边栏未打开，不渲染
+  if (isMobile && !isMobileOpen) {
+    return (
+      <ChangePasswordModal 
+        isOpen={showChangePassword} 
+        onClose={() => setShowChangePassword(false)} 
+      />
+    );
+  }
+
   return (
     <>
       <aside 
@@ -79,7 +92,9 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
           "fixed left-0 top-0 z-40 h-screen transition-all duration-300 ease-out",
           "bg-gradient-to-b from-slate-50/95 via-white/90 to-slate-50/95",
           "backdrop-blur-xl border-r border-slate-200/40",
-          isCollapsed ? "w-[72px]" : "w-60"
+          isMobile 
+            ? "w-60" 
+            : (isCollapsed ? "w-[72px]" : "w-60")
         )}
       >
         {/* Subtle ambient glow */}
@@ -91,11 +106,24 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
         {/* Header */}
         <div className={cn(
           "relative flex items-center h-16 border-b border-slate-200/40",
-          isCollapsed ? "justify-center px-3" : "px-5"
+          isCollapsed && !isMobile ? "justify-center px-3" : "px-5"
         )}>
+          {/* 移动端关闭按钮 */}
+          {isMobile && (
+            <button
+              onClick={onMobileClose}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          )}
+
           <div className={cn(
             "flex items-center gap-3 transition-all duration-300",
-            isCollapsed && "justify-center"
+            isCollapsed && !isMobile && "justify-center"
           )}>
             {/* Logo mark */}
             <div className="relative flex-shrink-0">
@@ -115,7 +143,7 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
             {/* Brand text */}
             <div className={cn(
               "overflow-hidden transition-all duration-300",
-              isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
+              isCollapsed && !isMobile ? "w-0 opacity-0" : "w-auto opacity-100"
             )}>
               <span className="text-[20px] font-semibold text-slate-800 tracking-tight whitespace-nowrap">
                 任务记录与分析
@@ -123,47 +151,49 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
             </div>
           </div>
 
-          {/* Collapse toggle */}
-          <button
-            onClick={() => onCollapsedChange(!isCollapsed)}
-            className={cn(
-              "absolute right-0 translate-x-1/2 flex items-center justify-center",
-              "w-6 h-6 rounded-full bg-white border border-slate-200/60",
-              "text-slate-400 hover:text-slate-600 hover:border-slate-300",
-              "shadow-sm hover:shadow transition-all duration-200",
-              "focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            )}
-            style={{ opacity: 1 }}
-          >
-            <svg 
-              xmlns="http://www.w3.org/2000/svg" 
-              width="12" 
-              height="12" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="2" 
-              strokeLinecap="round" 
-              strokeLinejoin="round"
+          {/* Collapse toggle - 仅桌面端显示 */}
+          {!isMobile && (
+            <button
+              onClick={() => onCollapsedChange(!isCollapsed)}
               className={cn(
-                "transition-transform duration-300",
-                isCollapsed ? "rotate-180" : ""
+                "absolute right-0 translate-x-1/2 flex items-center justify-center",
+                "w-6 h-6 rounded-full bg-white border border-slate-200/60",
+                "text-slate-400 hover:text-slate-600 hover:border-slate-300",
+                "shadow-sm hover:shadow transition-all duration-200",
+                "focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               )}
+              style={{ opacity: 1 }}
             >
-              <polyline points="15 18 9 12 15 6"/>
-            </svg>
-          </button>
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                width="12" 
+                height="12" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+                className={cn(
+                  "transition-transform duration-300",
+                  isCollapsed ? "rotate-180" : ""
+                )}
+              >
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Navigation */}
         <nav className={cn(
           "relative flex flex-col gap-1 py-4",
-          isCollapsed ? "px-3" : "px-3"
+          isCollapsed && !isMobile ? "px-3" : "px-3"
         )}>
           {/* Section label */}
           <div className={cn(
             "mb-2 overflow-hidden transition-all duration-300",
-            isCollapsed ? "h-0 opacity-0" : "h-auto opacity-100 px-3"
+            isCollapsed && !isMobile ? "h-0 opacity-0" : "h-auto opacity-100 px-3"
           )}>
             <span className="text-[10px] font-medium tracking-widest text-slate-400 uppercase">
               功能
@@ -179,7 +209,7 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
                 className={cn(
                   "group relative flex items-center gap-3 rounded-xl transition-all duration-200",
                   "focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30",
-                  isCollapsed ? "justify-center px-0 py-3" : "px-3 py-2.5",
+                  isCollapsed && !isMobile ? "justify-center px-0 py-3" : "px-3 py-2.5",
                   isActive
                     ? "bg-white text-slate-900 shadow-sm shadow-slate-200/50"
                     : "text-slate-500 hover:text-slate-700 hover:bg-white/60"
@@ -196,7 +226,7 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
                 {/* Icon container */}
                 <span className={cn(
                   "relative flex items-center justify-center flex-shrink-0 transition-all duration-200",
-                  isCollapsed ? "w-9 h-9" : "w-8 h-8",
+                  isCollapsed && !isMobile ? "w-9 h-9" : "w-8 h-8",
                   isActive 
                     ? "text-blue-600" 
                     : "text-slate-400 group-hover:text-slate-600"
@@ -213,13 +243,13 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
                 {/* Label */}
                 <span className={cn(
                   "text-[13px] font-medium whitespace-nowrap overflow-hidden transition-all duration-300",
-                  isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
+                  isCollapsed && !isMobile ? "w-0 opacity-0" : "w-auto opacity-100"
                 )}>
                   {item.label}
                 </span>
 
-                {/* Tooltip for collapsed state */}
-                {isCollapsed && (
+                {/* Tooltip for collapsed state - 仅桌面端显示 */}
+                {isCollapsed && !isMobile && (
                   <div className={cn(
                     "absolute left-full ml-3 px-3 py-1.5 rounded-lg",
                     "bg-slate-800 text-white text-xs font-medium whitespace-nowrap",
@@ -240,7 +270,7 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
         {/* Divider with gradient */}
         <div className={cn(
           "mx-4 h-px bg-gradient-to-r from-transparent via-slate-200/60 to-transparent",
-          isCollapsed && "mx-3"
+          isCollapsed && !isMobile && "mx-3"
         )} />
 
         {/* Footer - User Info */}
@@ -254,7 +284,7 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
               className={cn(
                 "w-full flex items-center gap-3 rounded-xl p-2 transition-all duration-200",
                 "hover:bg-white/60",
-                isCollapsed && "justify-center"
+                isCollapsed && !isMobile && "justify-center"
               )}
             >
               {/* Avatar */}
@@ -269,7 +299,7 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
               {/* User info */}
               <div className={cn(
                 "flex-1 min-w-0 overflow-hidden transition-all duration-300 text-left",
-                isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
+                isCollapsed && !isMobile ? "w-0 opacity-0" : "w-auto opacity-100"
               )}>
                 <p className="text-[13px] font-medium text-slate-700 truncate">{user?.name || '用户'}</p>
                 <p className="text-[11px] text-slate-400 truncate">{user?.team || '未分配团队'}</p>
@@ -278,7 +308,7 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
               {/* Expand icon */}
               <div className={cn(
                 "flex-shrink-0 text-slate-300 transition-transform duration-200",
-                isCollapsed && "hidden",
+                isCollapsed && !isMobile && "hidden",
                 showUserMenu && "rotate-180"
               )}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -288,7 +318,7 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
             </button>
 
             {/* User dropdown menu */}
-            {showUserMenu && !isCollapsed && (
+            {showUserMenu && (isCollapsed ? isMobile : true) && (
               <div className="absolute bottom-full left-0 right-0 mb-2 bg-white rounded-xl shadow-lg border border-slate-200/60 overflow-hidden animate-fade-in-up">
                 {/* User info header */}
                 <div className="px-4 py-3 border-b border-slate-100">

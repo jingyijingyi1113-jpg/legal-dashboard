@@ -3274,7 +3274,7 @@ const FilterSection = ({
         <Card className={`${className} border-slate-200/60 shadow-sm hover:shadow-md transition-all duration-200`}>
             <CardHeader className="pb-4">
                 <div className="flex flex-col space-y-3">
-                    <div className="flex justify-end">
+                    <div className="flex justify-start">
                         <PeriodFilter 
                             period={period} setPeriod={handlePeriodChange}
                             selectedYear={selectedYear} setSelectedYear={setSelectedYear}
@@ -5931,82 +5931,84 @@ const CorporateFinancePanel = ({ data, onDataUpdate }: { data: any[], onDataUpda
                                             Click on slices or legend to view details
                                         </div>
                                         <div className="flex items-center gap-4">
-                                            <ResponsiveContainer width="55%" height={220}>
-                                                <PieChart>
-                                                    <defs>
-                                                        {VG_COLORS.map((color, index) => (
-                                                            <linearGradient key={`gradient-vg-${index}`} id={`pieGradientVG${index}`} x1="0" y1="0" x2="1" y2="1">
-                                                                <stop offset="0%" stopColor={color} stopOpacity={0.95} />
-                                                                <stop offset="100%" stopColor={color} stopOpacity={0.7} />
-                                                            </linearGradient>
-                                                        ))}
-                                                        <filter id="pieShadowVG" x="-20%" y="-20%" width="140%" height="140%">
-                                                            <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.15" />
-                                                        </filter>
-                                                    </defs>
-                                                    <Pie 
-                                                        data={virtualGroupPieData} 
-                                                        cx="50%" 
-                                                        cy="50%" 
-                                                        labelLine={false}
-                                                        innerRadius={40}
-                                                        outerRadius={80}
-                                                        paddingAngle={3}
-                                                        dataKey="value" 
-                                                        onClick={handlePieClick} 
-                                                        cursor="pointer"
-                                                        animationBegin={0}
-                                                        animationDuration={800}
-                                                        animationEasing="ease-out"
-                                                    >
-                                                        {virtualGroupPieData.map((_entry, index) => (
-                                                            <Cell 
-                                                                key={`cell-${index}`} 
-                                                                fill={`url(#pieGradientVG${index % VG_COLORS.length})`}
-                                                                stroke="#fff"
-                                                                strokeWidth={2}
-                                                                filter="url(#pieShadowVG)"
-                                                            />
-                                                        ))}
-                                                    </Pie>
-                                                    <Tooltip 
-                                                        formatter={(value:number, _name, entry) => [
-                                                            `${value.toFixed(1)}h (${(entry.payload as any).percentage.toFixed(1)}%)`, 
-                                                            (entry.payload as any).name
-                                                        ]}
-                                                        contentStyle={{
-                                                            backgroundColor: 'rgba(255,255,255,0.98)',
-                                                            border: 'none',
-                                                            borderRadius: '10px',
-                                                            boxShadow: '0 10px 40px rgba(0,0,0,0.12)',
-                                                            padding: '10px 14px'
-                                                        }}
-                                                        labelStyle={{ fontWeight: 600, color: '#1e293b' }}
-                                                    />
-                                                </PieChart>
-                                            </ResponsiveContainer>
+                                            <div className="w-[45%] min-w-[180px] pl-4">
+                                                <ResponsiveContainer width="100%" height={220}>
+                                                    <PieChart>
+                                                        <defs>
+                                                            {VG_COLORS.map((color, index) => (
+                                                                <linearGradient key={`gradient-vg-${index}`} id={`pieGradientVG${index}`} x1="0" y1="0" x2="1" y2="1">
+                                                                    <stop offset="0%" stopColor={color} stopOpacity={0.95} />
+                                                                    <stop offset="100%" stopColor={color} stopOpacity={0.7} />
+                                                                </linearGradient>
+                                                            ))}
+                                                            <filter id="pieShadowVG" x="-20%" y="-20%" width="140%" height="140%">
+                                                                <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.15" />
+                                                            </filter>
+                                                        </defs>
+                                                        <Pie 
+                                                            data={virtualGroupPieData} 
+                                                            cx="50%" 
+                                                            cy="50%" 
+                                                            labelLine={false}
+                                                            innerRadius={40}
+                                                            outerRadius={80}
+                                                            paddingAngle={3}
+                                                            dataKey="value" 
+                                                            onClick={handlePieClick} 
+                                                            cursor="pointer"
+                                                            animationBegin={0}
+                                                            animationDuration={800}
+                                                            animationEasing="ease-out"
+                                                        >
+                                                            {virtualGroupPieData.map((_entry, index) => (
+                                                                <Cell 
+                                                                    key={`cell-${index}`} 
+                                                                    fill={`url(#pieGradientVG${index % VG_COLORS.length})`}
+                                                                    stroke="#fff"
+                                                                    strokeWidth={2}
+                                                                    filter="url(#pieShadowVG)"
+                                                                />
+                                                            ))}
+                                                        </Pie>
+                                                        <Tooltip 
+                                                            formatter={(value:number, _name, entry) => [
+                                                                `${value.toFixed(1)}h (${(entry.payload as any).percentage.toFixed(1)}%)`, 
+                                                                (entry.payload as any).name
+                                                            ]}
+                                                            contentStyle={{
+                                                                backgroundColor: 'rgba(255,255,255,0.98)',
+                                                                border: 'none',
+                                                                borderRadius: '10px',
+                                                                boxShadow: '0 10px 40px rgba(0,0,0,0.12)',
+                                                                padding: '10px 14px'
+                                                            }}
+                                                            labelStyle={{ fontWeight: 600, color: '#1e293b' }}
+                                                        />
+                                                    </PieChart>
+                                                </ResponsiveContainer>
+                                            </div>
                                             {/* Custom Legend */}
-                                            <div className="flex-1 space-y-2">
+                                            <div className="flex-1 space-y-1 overflow-hidden">
                                                 {virtualGroupPieData.map((entry, index) => (
                                                     <div 
                                                         key={entry.name}
-                                                        className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-all group border border-transparent hover:border-slate-200"
+                                                        className="flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-all group"
                                                         onClick={() => handleLegendClick({ value: entry.name })}
                                                     >
                                                         <div 
-                                                            className="w-3.5 h-3.5 rounded-md flex-shrink-0 group-hover:scale-110 transition-transform shadow-sm"
+                                                            className="w-2.5 h-2.5 rounded flex-shrink-0 group-hover:scale-110 transition-transform"
                                                             style={{ backgroundColor: VG_COLORS[index % VG_COLORS.length] }}
                                                         />
                                                         <div className="flex-1 min-w-0">
-                                                            <div className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
+                                                            <div className="text-[10px] font-medium text-slate-700 dark:text-slate-200 truncate">
                                                                 {entry.name}
                                                             </div>
                                                         </div>
                                                         <div className="text-right flex-shrink-0">
-                                                            <div className="text-xs font-bold" style={{ color: VG_COLORS[index % VG_COLORS.length] }}>
+                                                            <div className="text-[10px] font-semibold" style={{ color: VG_COLORS[index % VG_COLORS.length] }}>
                                                                 {entry.value.toFixed(0)}h
                                                             </div>
-                                                            <div className="text-[10px] text-slate-500">
+                                                            <div className="text-[9px] text-slate-500">
                                                                 {entry.percentage.toFixed(1)}%
                                                             </div>
                                                         </div>
@@ -6402,6 +6404,21 @@ export function TeamDimensionTab({ data, onDataUpdate, dataSourceType }: { data:
     }, 0);
     return () => clearTimeout(timer);
   }, []);
+
+  // 无数据时的展示
+  if (!data || data.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64 text-neutral-500">
+        <div className="text-center">
+          <svg className="w-16 h-16 mx-auto mb-4 text-neutral-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          <p className="text-lg font-medium">请先导入工时数据</p>
+          <p className="text-sm text-neutral-400 mt-1">导入数据后可查看分团队工时分析</p>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div className="space-y-6 py-2 bg-transparent min-h-screen">

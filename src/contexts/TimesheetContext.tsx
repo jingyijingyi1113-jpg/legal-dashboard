@@ -26,6 +26,8 @@ interface TimesheetContextType {
   addEntry: (data: TimesheetFormData) => Promise<{ success: boolean; message: string }>;
   updateEntry: (id: string, data: TimesheetFormData) => Promise<{ success: boolean; message: string }>;
   deleteEntry: (id: string) => Promise<{ success: boolean; message: string }>;
+  // 批量删除
+  deleteEntries: (ids: string[]) => Promise<{ success: boolean; message: string; count: number }>;
   // 批量提交草稿
   submitEntries: (ids: string[]) => Promise<{ success: boolean; message: string }>;
   // 批量导入历史数据
@@ -142,6 +144,15 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
   const deleteEntry = async (id: string): Promise<{ success: boolean; message: string }> => {
     saveEntries(entries.filter(e => e.id !== id));
     return { success: true, message: '工时记录删除成功' };
+  };
+
+  // 批量删除工时记录
+  const deleteEntries = async (ids: string[]): Promise<{ success: boolean; message: string; count: number }> => {
+    const idsSet = new Set(ids);
+    const newEntries = entries.filter(e => !idsSet.has(e.id));
+    const deletedCount = entries.length - newEntries.length;
+    saveEntries(newEntries);
+    return { success: true, message: `成功删除 ${deletedCount} 条记录`, count: deletedCount };
   };
 
   // 批量提交草稿
@@ -364,6 +375,7 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
         addEntry,
         updateEntry,
         deleteEntry,
+        deleteEntries,
         submitEntries,
         importEntries,
         addLeaveRecord,

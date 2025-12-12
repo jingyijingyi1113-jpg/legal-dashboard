@@ -91,7 +91,7 @@ function CustomSelect({ value, onChange, options, placeholder, disabled, require
             {icon}
           </span>
         )}
-        <span className={`flex-1 truncate text-sm ${selectedOption ? 'text-slate-800 font-medium' : 'text-slate-400'}`}>
+        <span className={`flex-1 truncate ${selectedOption ? 'text-sm text-slate-800 font-medium' : 'text-xs text-slate-400'}`}>
           {selectedOption ? selectedOption.label : placeholder}
         </span>
         <svg 
@@ -661,7 +661,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                 value={value}
                 onChange={(e) => handleFieldChange(field.key, e.target.value)}
                 required={field.required}
-                className="w-full h-12 pl-12 pr-16 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 hover:border-blue-300 hover:shadow-md hover:shadow-blue-100/50 transition-all duration-200"
+                className="w-full h-12 pl-12 pr-16 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-800 placeholder:text-xs placeholder:text-slate-400 focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 hover:border-blue-300 hover:shadow-md hover:shadow-blue-100/50 transition-all duration-200"
               />
               <div className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-400 select-none">
                 小时
@@ -694,7 +694,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                 onChange={(e) => handleFieldChange(field.key, e.target.value)}
                 required={field.required}
                 rows={3}
-                className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 hover:border-blue-300 hover:shadow-md hover:shadow-blue-100/50 transition-all duration-200 resize-none"
+                className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-800 placeholder:text-xs placeholder:text-slate-400 focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 hover:border-blue-300 hover:shadow-md hover:shadow-blue-100/50 transition-all duration-200 resize-none"
               />
             </div>
           </div>

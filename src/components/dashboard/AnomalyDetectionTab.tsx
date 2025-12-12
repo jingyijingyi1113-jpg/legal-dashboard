@@ -1,14 +1,35 @@
 import { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { 
   ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer, Area, ReferenceLine 
 } from 'recharts';
-import { parseMonthString, normalizeMonthString } from '@/lib/date-utils';
+import { parseMonthString, normalizeMonthString, getWorkdaysInMonth } from '@/lib/date-utils';
 import { cn } from "@/lib/utils";
+import { useAuth } from '@/contexts/AuthContext';
+import { useTimesheet } from '@/contexts/TimesheetContext';
 
 interface AnomalyDetectionTabProps {
   data: any[];
+}
+
+// 时间周期类型
+type SubmissionPeriod = 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'custom';
+
+// 人员工时提交状态
+interface UserSubmissionStatus {
+  userId: string;
+  userName: string;
+  team: string;
+  group?: string; // 仅投资法务中心
+  submittedHours: number;
+  historicalAvgHours: number;
+  historicalStdDev: number;
+  status: 'normal' | 'warning' | 'anomaly' | 'missing';
+  statusLabel: string;
+  deviation: number; // 偏离度百分比
 }
 
 interface MonthlyForecastData {
@@ -86,6 +107,22 @@ const exponentialSmoothing = (values: number[], alpha: number = 0.3): number => 
 
 export function AnomalyDetectionTab({ data }: AnomalyDetectionTabProps) {
   const [forecastMonths, setForecastMonths] = useState<number>(1); // 预测月数：1-12
+  
+  // 人员工时提交情况状态
+  const [submissionTeam, setSubmissionTeam] = useState<string>('业务管理及合规检测中心');
+  const [submissionPeriod, setSubmissionPeriod] = useState<SubmissionPeriod>('monthly');
+  const [submissionYear, setSubmissionYear] = useState<string>(new Date().getFullYear().toString());
+  const [submissionPeriodValue, setSubmissionPeriodValue] = useState<string>((new Date().getMonth()).toString());
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
+  // 自定义模式的年月选择
+  const [customStartYear, setCustomStartYear] = useState<string>(new Date().getFullYear().toString());
+  const [customStartMonth, setCustomStartMonth] = useState<string>((new Date().getMonth()).toString());
+  const [customEndYear, setCustomEndYear] = useState<string>(new Date().getFullYear().toString());
+  const [customEndMonth, setCustomEndMonth] = useState<string>((new Date().getMonth()).toString());
+  // 获取用户列表和工时数据
+  const { users } = useAuth();
+  const { entries, leaveRecords } = useTimesheet();
 
   // 处理月度数据并预测
   const forecastData = useMemo(() => {
@@ -236,6 +273,238 @@ export function AnomalyDetectionTab({ data }: AnomalyDetectionTabProps) {
         return { ...item, momChange: change, momPercent: percent };
       });
   }, [forecastData.chartData]);
+
+  // 三个团队列表
+  const teamList = ['业务管理及合规检测中心', '投资法务中心', '公司及国际金融事务中心'];
+  
+  // 获取需要检查的用户列表（排除没有团队归属的admin和exporter）
+  const checkableUsers = useMemo(() => {
+    return users.filter(u => {
+      // 必须有团队归属
+      if (!u.team) return false;
+      // 排除没有团队归属的admin（系统管理员）
+      if (u.role === 'admin' && !u.team) return false;
+      // 排除数据导出者
+      if (u.role === 'exporter') return false;
+      // 包含有团队归属的管理员、管理者和普通用户
+      return ['admin', 'manager', 'user'].includes(u.role);
+    });
+  }, [users]);
+
+  // 计算选定时间范围
+  const getDateRange = useMemo(() => {
+    const year = parseInt(submissionYear);
+    let startDate: Date;
+    let endDate: Date;
+    
+    if (submissionPeriod === 'monthly') {
+      const month = parseInt(submissionPeriodValue);
+      startDate = new Date(year, month, 1);
+      endDate = new Date(year, month + 1, 0);
+    } else if (submissionPeriod === 'quarterly') {
+      const quarter = parseInt(submissionPeriodValue);
+      startDate = new Date(year, quarter * 3, 1);
+      endDate = new Date(year, (quarter + 1) * 3, 0);
+    } else if (submissionPeriod === 'semiannually') {
+      const half = parseInt(submissionPeriodValue);
+      startDate = new Date(year, half * 6, 1);
+      endDate = new Date(year, (half + 1) * 6, 0);
+    } else if (submissionPeriod === 'annually') {
+      startDate = new Date(year, 0, 1);
+      endDate = new Date(year, 11, 31);
+    } else {
+      // custom - 使用年月选择器
+      const startY = parseInt(customStartYear);
+      const startM = parseInt(customStartMonth);
+      const endY = parseInt(customEndYear);
+      const endM = parseInt(customEndMonth);
+      startDate = new Date(startY, startM, 1);
+      endDate = new Date(endY, endM + 1, 0);
+    }
+    
+    return {
+      start: startDate.toISOString().split('T')[0],
+      end: endDate.toISOString().split('T')[0],
+      startDate,
+      endDate,
+    };
+  }, [submissionYear, submissionPeriod, submissionPeriodValue, customStartYear, customStartMonth, customEndYear, customEndMonth]);
+
+  // 匹配用户的辅助函数（支持通过 userId 或 userName 匹配）
+  const matchUserEntry = (entry: { userId: string; userName: string }, user: { id: string; name?: string; username: string }) => {
+    // 优先通过 userId 匹配
+    if (entry.userId === user.id) return true;
+    
+    // 通过 userName 匹配（用于导入的数据）
+    const entryUserName = entry.userName?.toLowerCase();
+    const userDisplayName = user.name?.toLowerCase();
+    const userLoginName = user.username?.toLowerCase();
+    
+    if (entryUserName) {
+      // 匹配用户显示名称
+      if (userDisplayName && entryUserName === userDisplayName) return true;
+      // 匹配用户登录名
+      if (userLoginName && entryUserName === userLoginName) return true;
+      // 导入数据的 userId 格式为 "imported-user-{name}"
+      if (userDisplayName && entry.userId === `imported-user-${user.name}`) return true;
+      if (userLoginName && entry.userId === `imported-user-${user.username}`) return true;
+    }
+    return false;
+  };
+
+  // 计算人员工时提交情况
+  const userSubmissionData = useMemo((): UserSubmissionStatus[] => {
+    const { start, end, startDate, endDate } = getDateRange;
+    
+    // 筛选当前团队的用户
+    const teamUsers = checkableUsers.filter(u => u.team === submissionTeam);
+    
+    // 获取已提交的工时记录
+    const submittedEntries = entries.filter(e => e.status === 'submitted');
+    
+    // 计算每个用户的工时情况
+    return teamUsers.map(user => {
+      // 当前周期提交的工时（使用新的匹配逻辑）
+      const currentPeriodEntries = submittedEntries.filter(e => 
+        matchUserEntry(e, user) && 
+        e.date >= start && 
+        e.date <= end
+      );
+      const submittedHours = currentPeriodEntries.reduce((sum, e) => sum + e.hours, 0);
+      
+      // 获取用户的请假天数
+      const userLeaveRecords = leaveRecords.filter(r => 
+        r.userId === user.id &&
+        r.startDate <= end &&
+        r.endDate >= start
+      );
+      const leaveDays = userLeaveRecords.reduce((sum, r) => sum + r.days, 0);
+      
+      // 计算历史平均工时（排除当前周期）
+      const historicalEntries = submittedEntries.filter(e => 
+        matchUserEntry(e, user) && 
+        e.date < start
+      );
+      
+      // 按月分组计算历史月均
+      const monthlyHours: { [key: string]: number } = {};
+      historicalEntries.forEach(e => {
+        const month = e.date.substring(0, 7);
+        monthlyHours[month] = (monthlyHours[month] || 0) + e.hours;
+      });
+      
+      const monthlyValues = Object.values(monthlyHours);
+      const historicalAvgHours = monthlyValues.length > 0 
+        ? monthlyValues.reduce((sum, v) => sum + v, 0) / monthlyValues.length 
+        : 0;
+      const historicalStdDev = monthlyValues.length > 1 
+        ? calculateStdDev(monthlyValues, historicalAvgHours) 
+        : 0;
+      
+      // 计算当前周期应有的工作日数
+      let workdays = 0;
+      const region = user.region || 'CN';
+      const currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth() + 1;
+        workdays += getWorkdaysInMonth(year, month, region);
+        currentDate.setMonth(currentDate.getMonth() + 1);
+      }
+      
+      // 扣除请假天数后的预期工时（每天8小时）
+      const expectedWorkdays = Math.max(0, workdays - leaveDays);
+      const expectedHours = expectedWorkdays * 8;
+      
+      // 计算偏离度
+      let deviation = 0;
+      let status: 'normal' | 'warning' | 'anomaly' | 'missing' = 'normal';
+      let statusLabel = '正常';
+      
+      if (submittedHours === 0) {
+        status = 'missing';
+        statusLabel = '未提交';
+        deviation = -100;
+      } else if (historicalAvgHours > 0) {
+        // 与历史平均对比
+        deviation = ((submittedHours - historicalAvgHours) / historicalAvgHours) * 100;
+        
+        // 使用标准差判断异常
+        if (historicalStdDev > 0) {
+          const zScore = Math.abs(submittedHours - historicalAvgHours) / historicalStdDev;
+          if (zScore > 2) {
+            status = 'anomaly';
+            statusLabel = deviation > 0 ? '异常偏高' : '异常偏低';
+          } else if (zScore > 1) {
+            status = 'warning';
+            statusLabel = deviation > 0 ? '略高' : '略低';
+          }
+        } else {
+          // 没有足够历史数据时，使用简单百分比判断
+          if (Math.abs(deviation) > 50) {
+            status = 'anomaly';
+            statusLabel = deviation > 0 ? '异常偏高' : '异常偏低';
+          } else if (Math.abs(deviation) > 25) {
+            status = 'warning';
+            statusLabel = deviation > 0 ? '略高' : '略低';
+          }
+        }
+      } else if (expectedHours > 0) {
+        // 没有历史数据时，与预期工时对比
+        deviation = ((submittedHours - expectedHours) / expectedHours) * 100;
+        if (Math.abs(deviation) > 50) {
+          status = 'anomaly';
+          statusLabel = deviation > 0 ? '异常偏高' : '异常偏低';
+        } else if (Math.abs(deviation) > 25) {
+          status = 'warning';
+          statusLabel = deviation > 0 ? '略高' : '略低';
+        }
+      }
+      
+      // 获取组信息（仅投资法务中心）
+      let group: string | undefined;
+      if (submissionTeam === '投资法务中心') {
+        // 从工时记录中获取Source Path作为组信息
+        const userEntry = currentPeriodEntries.find(e => e.data?.sourcePath);
+        group = userEntry?.data?.sourcePath as string | undefined;
+      }
+      
+      return {
+        userId: user.id,
+        userName: user.name || user.username,
+        team: user.team || '',
+        group,
+        submittedHours,
+        historicalAvgHours,
+        historicalStdDev,
+        status,
+        statusLabel,
+        deviation,
+      };
+    }).sort((a, b) => {
+      // 排序：未提交 > 异常 > 警告 > 正常
+      const statusOrder = { missing: 0, anomaly: 1, warning: 2, normal: 3 };
+      return statusOrder[a.status] - statusOrder[b.status];
+    });
+  }, [checkableUsers, submissionTeam, entries, leaveRecords, getDateRange]);
+
+  // 统计汇总
+  const submissionStats = useMemo(() => {
+    const total = userSubmissionData.length;
+    const missing = userSubmissionData.filter(u => u.status === 'missing').length;
+    const anomaly = userSubmissionData.filter(u => u.status === 'anomaly').length;
+    const warning = userSubmissionData.filter(u => u.status === 'warning').length;
+    const normal = userSubmissionData.filter(u => u.status === 'normal').length;
+    const totalHours = userSubmissionData.reduce((sum, u) => sum + u.submittedHours, 0);
+    
+    return { total, missing, anomaly, warning, normal, totalHours };
+  }, [userSubmissionData]);
+
+  // 可用年份列表
+  const availableYears = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    return Array.from({ length: 5 }, (_, i) => (currentYear - 2 + i).toString());
+  }, []);
 
   if (!data || data.length === 0) {
     return (
@@ -783,6 +1052,443 @@ export function AnomalyDetectionTab({ data }: AnomalyDetectionTabProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* 人员工时提交情况 */}
+      <div className="space-y-6">
+        {/* 维度标题 */}
+        <div className="flex items-center gap-3 animate-fade-in-up">
+          <div className="w-1 h-8 bg-gradient-to-b from-violet-500 to-purple-600 rounded-full"></div>
+          <div>
+            <h2 className="text-xl font-bold text-neutral-900">人员工时提交情况</h2>
+            <p className="text-sm text-neutral-500 mt-0.5">监测个人工时提交状态与异常情况</p>
+          </div>
+        </div>
+
+        {/* 团队Tab切换 */}
+        <Tabs value={submissionTeam} onValueChange={setSubmissionTeam} className="animate-fade-in-up">
+          <div className="flex flex-col gap-4">
+            <TabsList className="flex h-auto items-center justify-start gap-1 bg-neutral-100/80 p-1 rounded-full w-fit">
+              {teamList.map((team) => (
+                <TabsTrigger
+                  key={team}
+                  value={team}
+                  className={cn(
+                    "px-4 py-2 text-xs font-medium rounded-full transition-colors duration-75",
+                    "data-[state=active]:bg-white data-[state=active]:text-neutral-900 data-[state=active]:shadow-sm",
+                    "text-neutral-500 hover:text-neutral-700"
+                  )}
+                >
+                  {team.replace('中心', '')}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+
+            {/* 时间筛选器 - 左对齐 */}
+            <div className="flex items-center gap-6">
+              {/* PERIOD 标签和周期选项 */}
+              <div className="flex items-center gap-4">
+                <span className="text-xs font-medium text-neutral-400 tracking-wider">PERIOD</span>
+                <div className="flex items-center bg-neutral-100/80 rounded-full p-1">
+                  {(['monthly', 'quarterly', 'semiannually', 'annually', 'custom'] as SubmissionPeriod[]).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => {
+                        setSubmissionPeriod(p);
+                        if (p === 'annually') setSubmissionPeriodValue('0');
+                        else if (p === 'semiannually') setSubmissionPeriodValue('0');
+                        else if (p === 'quarterly') setSubmissionPeriodValue(Math.floor(new Date().getMonth() / 3).toString());
+                        else if (p === 'monthly') setSubmissionPeriodValue(new Date().getMonth().toString());
+                      }}
+                      className={cn(
+                        "px-4 py-2 text-sm font-medium rounded-full transition-all duration-150",
+                        submissionPeriod === p
+                          ? "bg-white text-neutral-900 shadow-sm"
+                          : "text-neutral-500 hover:text-neutral-700"
+                      )}
+                    >
+                      {p === 'monthly' ? '月度' : p === 'quarterly' ? '季度' : p === 'semiannually' ? '半年度' : p === 'annually' ? '年度' : '自定义'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 年份和月份/季度/半年度选择 - 非自定义模式 */}
+              {submissionPeriod !== 'custom' && (
+                <div className="flex items-center gap-2">
+                  {/* 年份选择 */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="flex items-center gap-1.5 text-xl font-semibold text-neutral-800 hover:text-neutral-600 transition-colors">
+                        {submissionYear}
+                        <svg className="w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-32 p-2 bg-white shadow-lg border border-neutral-200" align="start">
+                      <div className="space-y-1">
+                        {availableYears.map((year) => (
+                          <button
+                            key={year}
+                            onClick={() => setSubmissionYear(year)}
+                            className={cn(
+                              "w-full px-3 py-2 text-sm rounded-lg text-left transition-colors",
+                              submissionYear === year
+                                ? "bg-neutral-900 text-white"
+                                : "text-neutral-600 hover:bg-neutral-100"
+                            )}
+                          >
+                            {year}
+                          </button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
+                  <span className="text-neutral-300 mx-1">·</span>
+
+                  {/* 月份选择 */}
+                  {submissionPeriod === 'monthly' && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button className="flex items-center gap-1.5 text-xl font-semibold text-neutral-800 hover:text-neutral-600 transition-colors">
+                          {parseInt(submissionPeriodValue) + 1}月
+                          <svg className="w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-48 p-2 bg-white shadow-lg border border-neutral-200" align="start">
+                        <div className="grid grid-cols-3 gap-1">
+                          {Array.from({ length: 12 }, (_, i) => (
+                            <button
+                              key={i}
+                              onClick={() => setSubmissionPeriodValue(i.toString())}
+                              className={cn(
+                                "px-2 py-2 text-sm rounded-lg text-center transition-colors",
+                                submissionPeriodValue === i.toString()
+                                  ? "bg-neutral-900 text-white"
+                                  : "text-neutral-600 hover:bg-neutral-100"
+                              )}
+                            >
+                              {i + 1}月
+                            </button>
+                          ))}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+
+                  {/* 季度选择 */}
+                  {submissionPeriod === 'quarterly' && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button className="flex items-center gap-1.5 text-xl font-semibold text-neutral-800 hover:text-neutral-600 transition-colors">
+                          Q{parseInt(submissionPeriodValue) + 1}
+                          <svg className="w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-32 p-2 bg-white shadow-lg border border-neutral-200" align="start">
+                        <div className="space-y-1">
+                          {['Q1', 'Q2', 'Q3', 'Q4'].map((q, i) => (
+                            <button
+                              key={q}
+                              onClick={() => setSubmissionPeriodValue(i.toString())}
+                              className={cn(
+                                "w-full px-3 py-2 text-sm rounded-lg text-left transition-colors",
+                                submissionPeriodValue === i.toString()
+                                  ? "bg-neutral-900 text-white"
+                                  : "text-neutral-600 hover:bg-neutral-100"
+                              )}
+                            >
+                              {q}
+                            </button>
+                          ))}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+
+                  {/* 半年度选择 */}
+                  {submissionPeriod === 'semiannually' && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button className="flex items-center gap-1.5 text-xl font-semibold text-neutral-800 hover:text-neutral-600 transition-colors">
+                          {submissionPeriodValue === '0' ? '上半年' : '下半年'}
+                          <svg className="w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-32 p-2 bg-white shadow-lg border border-neutral-200" align="start">
+                        <div className="space-y-1">
+                          {['上半年', '下半年'].map((h, i) => (
+                            <button
+                              key={h}
+                              onClick={() => setSubmissionPeriodValue(i.toString())}
+                              className={cn(
+                                "w-full px-3 py-2 text-sm rounded-lg text-left transition-colors",
+                                submissionPeriodValue === i.toString()
+                                  ? "bg-neutral-900 text-white"
+                                  : "text-neutral-600 hover:bg-neutral-100"
+                              )}
+                            >
+                              {h}
+                            </button>
+                          ))}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </div>
+              )}
+
+              {/* 自定义日期范围 - 使用年月下拉选择器 */}
+              {submissionPeriod === 'custom' && (
+                <div className="flex items-center gap-3">
+                  {/* 开始年份 */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="flex items-center gap-1 text-lg font-medium text-neutral-700 hover:text-neutral-900 transition-colors">
+                        {customStartYear || '----'}
+                        <svg className="w-3.5 h-3.5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-32 p-2 bg-white shadow-lg border border-neutral-200" align="start">
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {availableYears.map((year) => (
+                          <button
+                            key={year}
+                            onClick={() => setCustomStartYear(year)}
+                            className={cn(
+                              "w-full px-3 py-2 text-sm rounded-lg text-left transition-colors",
+                              customStartYear === year
+                                ? "bg-neutral-900 text-white"
+                                : "text-neutral-600 hover:bg-neutral-100"
+                            )}
+                          >
+                            {year}
+                          </button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* 开始月份 */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="flex items-center gap-1 text-lg font-medium text-neutral-700 hover:text-neutral-900 transition-colors">
+                        {customStartMonth ? `${parseInt(customStartMonth) + 1}月` : '--'}
+                        <svg className="w-3.5 h-3.5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-48 p-2 bg-white shadow-lg border border-neutral-200" align="start">
+                      <div className="grid grid-cols-3 gap-1">
+                        {Array.from({ length: 12 }, (_, i) => (
+                          <button
+                            key={i}
+                            onClick={() => setCustomStartMonth(i.toString())}
+                            className={cn(
+                              "px-2 py-2 text-sm rounded-lg text-center transition-colors",
+                              customStartMonth === i.toString()
+                                ? "bg-neutral-900 text-white"
+                                : "text-neutral-600 hover:bg-neutral-100"
+                            )}
+                          >
+                            {i + 1}月
+                          </button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
+                  <span className="text-neutral-400 text-sm mx-1">至</span>
+
+                  {/* 结束年份 */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="flex items-center gap-1 text-lg font-medium text-neutral-700 hover:text-neutral-900 transition-colors">
+                        {customEndYear || '----'}
+                        <svg className="w-3.5 h-3.5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-32 p-2 bg-white shadow-lg border border-neutral-200" align="start">
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {availableYears.map((year) => (
+                          <button
+                            key={year}
+                            onClick={() => setCustomEndYear(year)}
+                            className={cn(
+                              "w-full px-3 py-2 text-sm rounded-lg text-left transition-colors",
+                              customEndYear === year
+                                ? "bg-neutral-900 text-white"
+                                : "text-neutral-600 hover:bg-neutral-100"
+                            )}
+                          >
+                            {year}
+                          </button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* 结束月份 */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="flex items-center gap-1 text-lg font-medium text-neutral-700 hover:text-neutral-900 transition-colors">
+                        {customEndMonth ? `${parseInt(customEndMonth) + 1}月` : '--'}
+                        <svg className="w-3.5 h-3.5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-48 p-2 bg-white shadow-lg border border-neutral-200" align="start">
+                      <div className="grid grid-cols-3 gap-1">
+                        {Array.from({ length: 12 }, (_, i) => (
+                          <button
+                            key={i}
+                            onClick={() => setCustomEndMonth(i.toString())}
+                            className={cn(
+                              "px-2 py-2 text-sm rounded-lg text-center transition-colors",
+                              customEndMonth === i.toString()
+                                ? "bg-neutral-900 text-white"
+                                : "text-neutral-600 hover:bg-neutral-100"
+                            )}
+                          >
+                            {i + 1}月
+                          </button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 统计概览卡片 */}
+          <div className="grid gap-4 md:grid-cols-5 mt-6">
+            <Card className="card-premium bg-gradient-to-br from-slate-50 to-neutral-50 border-slate-200">
+              <CardContent className="pt-4 pb-3">
+                <div className="text-2xl font-bold text-neutral-900">{submissionStats.total}</div>
+                <p className="text-xs text-neutral-500 mt-1 font-medium">总人数</p>
+              </CardContent>
+            </Card>
+            <Card className="card-premium bg-gradient-to-br from-rose-50 to-red-50 border-rose-200">
+              <CardContent className="pt-4 pb-3">
+                <div className="text-2xl font-bold text-rose-600">{submissionStats.missing}</div>
+                <p className="text-xs text-rose-500 mt-1 font-medium">未提交</p>
+              </CardContent>
+            </Card>
+            <Card className="card-premium bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200">
+              <CardContent className="pt-4 pb-3">
+                <div className="text-2xl font-bold text-amber-600">{submissionStats.anomaly}</div>
+                <p className="text-xs text-amber-500 mt-1 font-medium">异常</p>
+              </CardContent>
+            </Card>
+            <Card className="card-premium bg-gradient-to-br from-yellow-50 to-amber-50 border-yellow-200">
+              <CardContent className="pt-4 pb-3">
+                <div className="text-2xl font-bold text-yellow-600">{submissionStats.warning}</div>
+                <p className="text-xs text-yellow-500 mt-1 font-medium">警告</p>
+              </CardContent>
+            </Card>
+            <Card className="card-premium bg-gradient-to-br from-emerald-50 to-green-50 border-emerald-200">
+              <CardContent className="pt-4 pb-3">
+                <div className="text-2xl font-bold text-emerald-600">{submissionStats.normal}</div>
+                <p className="text-xs text-emerald-500 mt-1 font-medium">正常</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* 人员列表 */}
+          {teamList.map((team) => (
+            <TabsContent key={team} value={team} className="mt-6">
+              <Card className="card-premium">
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base font-semibold text-neutral-900">
+                      {team} - 人员工时提交明细
+                    </CardTitle>
+                    <div className="text-sm text-neutral-500">
+                      共 <span className="font-semibold text-neutral-700">{userSubmissionData.length}</span> 人 · 
+                      总工时 <span className="font-semibold text-neutral-700">{submissionStats.totalHours.toFixed(1)}</span> 小时
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {userSubmissionData.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-neutral-400">
+                      <svg className="w-12 h-12 mb-3 text-neutral-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                      <p className="text-sm font-medium">该团队暂无需检查的人员</p>
+                      <p className="text-xs mt-1">请确认用户列表中已配置团队归属</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-neutral-200">
+                            <th className="text-left py-3 px-4 font-semibold text-neutral-600">姓名</th>
+                            {team === '投资法务中心' && (
+                              <th className="text-left py-3 px-4 font-semibold text-neutral-600">组</th>
+                            )}
+                            <th className="text-right py-3 px-4 font-semibold text-neutral-600">当期已提交工时</th>
+                            <th className="text-right py-3 px-4 font-semibold text-neutral-600">历史月均</th>
+                            <th className="text-right py-3 px-4 font-semibold text-neutral-600">偏离度</th>
+                            <th className="text-center py-3 px-4 font-semibold text-neutral-600">状态</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {userSubmissionData.map((user) => (
+                            <tr key={user.userId} className="border-b border-neutral-100 hover:bg-neutral-50 transition-colors">
+                              <td className="py-3 px-4 font-medium text-neutral-800">{user.userName}</td>
+                              {team === '投资法务中心' && (
+                                <td className="py-3 px-4 text-neutral-600">{user.group || '-'}</td>
+                              )}
+                              <td className="py-3 px-4 text-right font-mono text-neutral-700">
+                                {user.submittedHours.toFixed(1)} h
+                              </td>
+                              <td className="py-3 px-4 text-right font-mono text-neutral-500">
+                                {user.historicalAvgHours > 0 ? `${user.historicalAvgHours.toFixed(1)} h` : '-'}
+                              </td>
+                              <td className={cn(
+                                "py-3 px-4 text-right font-mono",
+                                user.deviation > 0 ? "text-emerald-600" : user.deviation < 0 ? "text-rose-600" : "text-neutral-500"
+                              )}>
+                                {user.status === 'missing' ? '-' : `${user.deviation >= 0 ? '+' : ''}${user.deviation.toFixed(1)}%`}
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <span className={cn(
+                                  "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium",
+                                  user.status === 'normal' && "bg-emerald-100 text-emerald-700",
+                                  user.status === 'warning' && "bg-yellow-100 text-yellow-700",
+                                  user.status === 'anomaly' && "bg-amber-100 text-amber-700",
+                                  user.status === 'missing' && "bg-rose-100 text-rose-700"
+                                )}>
+                                  {user.statusLabel}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          ))}
+        </Tabs>
+      </div>
     </div>
   );
 }

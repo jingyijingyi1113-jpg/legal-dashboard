@@ -48,7 +48,7 @@ const DEFAULT_USERS: User[] = [
     password: '123456',
     name: 'catherineou',
     email: 'catherineou@tencent.com',
-    role: 'admin',
+    role: 'manager',
     region: 'CN',
     team: '投资法务中心',
     createdAt: new Date().toISOString(),
@@ -60,9 +60,21 @@ const DEFAULT_USERS: User[] = [
     password: '123456',
     name: 'sallycheung',
     email: 'sallycheung@tencent.com',
-    role: 'admin',
+    role: 'manager',
     region: 'HK',
     team: '公司及国际金融事务中心',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'user-chrissyyu',
+    username: 'chrissyyu',
+    password: '123456',
+    name: 'chrissyyu',
+    email: 'chrissyyu@tencent.com',
+    role: 'user',
+    region: 'CN',
+    team: '业务管理及合规检测中心',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
@@ -105,13 +117,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const storedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
         let userList: User[] = storedUsers ? JSON.parse(storedUsers) : [];
         
-        // 确保所有预置用户都存在
+        // 确保所有预置用户都存在，并同步更新角色
         let needsUpdate = false;
         for (const defaultUser of DEFAULT_USERS) {
-          const exists = userList.some(u => u.username === defaultUser.username);
-          if (!exists) {
+          const existingIndex = userList.findIndex(u => u.username === defaultUser.username);
+          if (existingIndex === -1) {
+            // 用户不存在，添加
             userList.push(defaultUser);
             needsUpdate = true;
+          } else {
+            // 用户存在，同步角色和团队信息
+            const existingUser = userList[existingIndex];
+            if (existingUser.role !== defaultUser.role || existingUser.team !== defaultUser.team) {
+              userList[existingIndex] = {
+                ...existingUser,
+                role: defaultUser.role,
+                team: defaultUser.team,
+                updatedAt: new Date().toISOString(),
+              };
+              needsUpdate = true;
+            }
           }
         }
         
@@ -124,10 +149,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const storedUser = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
         if (storedUser) {
           const parsedUser = JSON.parse(storedUser);
-          // 验证用户是否仍存在于用户列表中
+          // 验证用户是否仍存在于用户列表中，并获取最新信息
           const userExists = userList.find(u => u.id === parsedUser.id);
           if (userExists) {
             setUser(userExists);
+            // 同步更新 localStorage 中的当前用户信息
+            if (userExists.role !== parsedUser.role || userExists.team !== parsedUser.team) {
+              localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(userExists));
+            }
           } else {
             localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
           }
