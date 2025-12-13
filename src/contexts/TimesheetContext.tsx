@@ -1,6 +1,10 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import type { TimesheetEntry, TimesheetFormData, TimesheetStats, LeaveRecord, LeaveFormData } from '@/types/timesheet';
 import { useAuth } from './AuthContext';
+import { timesheetApi } from '@/api';
+
+// API 模式开关 - 设置为 true 使用后端 API，false 使用 localStorage
+const USE_API = true;
 
 // 看板数据格式（与Excel导入格式兼容）
 export interface DashboardDataRow {
@@ -22,6 +26,7 @@ interface TimesheetContextType {
   entries: TimesheetEntry[];
   leaveRecords: LeaveRecord[];
   loading: boolean;
+  useApi: boolean;
   // CRUD操作
   addEntry: (data: TimesheetFormData) => Promise<{ success: boolean; message: string }>;
   updateEntry: (id: string, data: TimesheetFormData) => Promise<{ success: boolean; message: string }>;
@@ -48,6 +53,8 @@ interface TimesheetContextType {
   // 获取看板数据（已提交的工时记录转换为看板格式）
   getDashboardData: () => DashboardDataRow[];
   getSubmittedEntries: () => TimesheetEntry[];
+  // 刷新数据
+  refreshEntries: () => Promise<void>;
 }
 
 const TimesheetContext = createContext<TimesheetContextType | undefined>(undefined);
@@ -61,26 +68,90 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
   const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 初始化：从 localStorage 加载数据
-  useEffect(() => {
-    const initTimesheet = () => {
-      try {
-        const storedEntries = localStorage.getItem(STORAGE_KEY);
-        const entryList: TimesheetEntry[] = storedEntries ? JSON.parse(storedEntries) : [];
-        setEntries(entryList);
+  // 从 API 加载数据
+  const loadFromApi = async () => {
+    try {
+      // 管理员获取所有用户数据，普通用户只获取自己的数据
+      const isAdmin = user?.role === 'admin' || user?.role === 'manager';
+      const response = isAdmin 
+        ? await timesheetApi.getTeamEntries({})  // 管理员获取所有团队数据
+        : await timesheetApi.getEntries();       // 普通用户获取自己的数据
+      
+      if (response.success && response.data) {
+        // 转换 API 数据格式为本地格式
+        const apiEntries: TimesheetEntry[] = response.data.map((entry: any) => ({
+          id: entry.id,
+          userId: String(entry.user_id),
+          userName: entry.real_name || entry.username,
+          teamId: entry.data?.teamId || entry.team || '',
+          teamName: entry.data?.teamName || entry.center || '',
+          date: entry.date,
+          hours: entry.hours,
+          data: entry.data || {},
+          description: entry.data?.description || '',
+          createdAt: entry.created_at,
+          updatedAt: entry.updated_at,
+          status: entry.status as 'draft' | 'submitted',
+        }));
+        setEntries(apiEntries);
+        return true;
+      }
+    } catch (error) {
+      console.log('API 加载失败，回退到本地存储');
+    }
+    return false;
+  };
 
-        const storedLeaveRecords = localStorage.getItem(LEAVE_STORAGE_KEY);
-        const leaveList: LeaveRecord[] = storedLeaveRecords ? JSON.parse(storedLeaveRecords) : [];
-        setLeaveRecords(leaveList);
+  // 从 localStorage 加载数据
+  const loadFromLocalStorage = () => {
+    try {
+      const storedEntries = localStorage.getItem(STORAGE_KEY);
+      const entryList: TimesheetEntry[] = storedEntries ? JSON.parse(storedEntries) : [];
+      setEntries(entryList);
+
+      const storedLeaveRecords = localStorage.getItem(LEAVE_STORAGE_KEY);
+      const leaveList: LeaveRecord[] = storedLeaveRecords ? JSON.parse(storedLeaveRecords) : [];
+      setLeaveRecords(leaveList);
+    } catch (error) {
+      console.error('Failed to load from localStorage:', error);
+    }
+  };
+
+  // 刷新数据
+  const refreshEntries = async () => {
+    if (USE_API && user) {
+      const success = await loadFromApi();
+      if (!success) {
+        loadFromLocalStorage();
+      }
+    } else {
+      loadFromLocalStorage();
+    }
+  };
+
+  // 初始化：从 API 或 localStorage 加载数据
+  useEffect(() => {
+    const initTimesheet = async () => {
+      setLoading(true);
+      try {
+        if (USE_API && user) {
+          const success = await loadFromApi();
+          if (!success) {
+            loadFromLocalStorage();
+          }
+        } else {
+          loadFromLocalStorage();
+        }
       } catch (error) {
         console.error('Failed to initialize timesheet:', error);
+        loadFromLocalStorage();
       } finally {
         setLoading(false);
       }
     };
 
     initTimesheet();
-  }, []);
+  }, [user]);
 
   // 保存到 localStorage
   const saveEntries = (newEntries: TimesheetEntry[]) => {
@@ -100,8 +171,9 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
       return { success: false, message: '请先登录' };
     }
 
+    const entryId = `entry-${Date.now()}`;
     const newEntry: TimesheetEntry = {
-      id: `entry-${Date.now()}`,
+      id: entryId,
       userId: user.id,
       userName: user.name,
       teamId: user.team || '',
@@ -115,6 +187,32 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
       status: 'draft',
     };
 
+    // 尝试 API 保存
+    if (USE_API) {
+      try {
+        const response = await timesheetApi.createEntry({
+          id: entryId,
+          date: data.date,
+          hours: data.hours,
+          status: 'draft',
+          data: {
+            ...data.data,
+            teamId: user.team || '',
+            teamName: user.team || '',
+            description: data.description,
+          },
+        });
+        if (response.success) {
+          // 刷新数据
+          await refreshEntries();
+          return { success: true, message: '草稿保存成功' };
+        }
+      } catch (error: any) {
+        console.log('API 保存失败，使用本地存储:', error.message);
+      }
+    }
+
+    // 本地保存
     saveEntries([newEntry, ...entries]);
     return { success: true, message: '草稿保存成功' };
   };
@@ -126,6 +224,27 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
       return { success: false, message: '记录不存在' };
     }
 
+    // 尝试 API 更新
+    if (USE_API) {
+      try {
+        const response = await timesheetApi.updateEntry(id, {
+          date: data.date,
+          hours: data.hours,
+          data: {
+            ...data.data,
+            description: data.description,
+          },
+        });
+        if (response.success) {
+          await refreshEntries();
+          return { success: true, message: '工时记录更新成功' };
+        }
+      } catch (error: any) {
+        console.log('API 更新失败，使用本地存储:', error.message);
+      }
+    }
+
+    // 本地更新
     const updatedEntries = [...entries];
     updatedEntries[entryIndex] = {
       ...updatedEntries[entryIndex],
@@ -142,12 +261,44 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
 
   // 删除工时记录
   const deleteEntry = async (id: string): Promise<{ success: boolean; message: string }> => {
+    // 尝试 API 删除
+    if (USE_API) {
+      try {
+        const response = await timesheetApi.deleteEntry(id);
+        if (response.success) {
+          await refreshEntries();
+          return { success: true, message: '工时记录删除成功' };
+        }
+      } catch (error: any) {
+        console.log('API 删除失败，使用本地存储:', error.message);
+      }
+    }
+
+    // 本地删除
     saveEntries(entries.filter(e => e.id !== id));
     return { success: true, message: '工时记录删除成功' };
   };
 
   // 批量删除工时记录
   const deleteEntries = async (ids: string[]): Promise<{ success: boolean; message: string; count: number }> => {
+    // 尝试 API 批量删除
+    if (USE_API) {
+      try {
+        let deletedCount = 0;
+        for (const id of ids) {
+          const response = await timesheetApi.deleteEntry(id);
+          if (response.success) {
+            deletedCount++;
+          }
+        }
+        await refreshEntries();
+        return { success: true, message: `成功删除 ${deletedCount} 条记录`, count: deletedCount };
+      } catch (error: any) {
+        console.log('API 批量删除失败，使用本地存储:', error.message);
+      }
+    }
+
+    // 本地删除
     const idsSet = new Set(ids);
     const newEntries = entries.filter(e => !idsSet.has(e.id));
     const deletedCount = entries.length - newEntries.length;
@@ -157,6 +308,20 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
 
   // 批量提交草稿
   const submitEntries = async (ids: string[]): Promise<{ success: boolean; message: string }> => {
+    // 尝试 API 批量提交
+    if (USE_API) {
+      try {
+        const response = await timesheetApi.batchSubmit(ids);
+        if (response.success) {
+          await refreshEntries();
+          return { success: true, message: response.message || `成功提交 ${ids.length} 条工时记录` };
+        }
+      } catch (error: any) {
+        console.log('API 批量提交失败，使用本地存储:', error.message);
+      }
+    }
+
+    // 本地提交
     const updatedEntries = entries.map(e => {
       if (ids.includes(e.id) && e.status === 'draft') {
         return { ...e, status: 'submitted' as const, updatedAt: new Date().toISOString() };
@@ -172,7 +337,36 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
     if (newEntries.length === 0) {
       return { success: false, message: '没有可导入的数据', count: 0 };
     }
+
+    // 尝试 API 批量导入
+    if (USE_API) {
+      try {
+        let importedCount = 0;
+        for (const entry of newEntries) {
+          const response = await timesheetApi.createEntry({
+            id: entry.id,
+            date: entry.date,
+            hours: entry.hours,
+            status: entry.status,
+            data: {
+              ...entry.data,
+              teamId: entry.teamId,
+              teamName: entry.teamName,
+              description: entry.description,
+            },
+          });
+          if (response.success) {
+            importedCount++;
+          }
+        }
+        await refreshEntries();
+        return { success: true, message: `成功导入 ${importedCount} 条工时记录`, count: importedCount };
+      } catch (error: any) {
+        console.log('API 批量导入失败，使用本地存储:', error.message);
+      }
+    }
     
+    // 本地导入
     // 合并新数据到现有数据（新数据在前）
     const mergedEntries = [...newEntries, ...entries];
     saveEntries(mergedEntries);
@@ -372,6 +566,7 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
         entries,
         leaveRecords,
         loading,
+        useApi: USE_API,
         addEntry,
         updateEntry,
         deleteEntry,
@@ -391,6 +586,7 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
         getUserStats,
         getDashboardData,
         getSubmittedEntries,
+        refreshEntries,
       }}
     >
       {children}

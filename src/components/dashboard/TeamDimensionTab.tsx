@@ -6392,7 +6392,7 @@ const CorporateFinancePanel = ({ data, onDataUpdate }: { data: any[], onDataUpda
     );
 }
 
-export function TeamDimensionTab({ data, onDataUpdate, dataSourceType }: { data: any[], onDataUpdate?: (updatedRecords: any[]) => void, dataSourceType?: 'excel' | 'timesheet' | null }) {
+export function TeamDimensionTab({ data, onDataUpdate, dataSourceType }: { data: any[], onDataUpdate?: (updatedRecords: any[]) => void, dataSourceType?: 'excel' | 'timesheet' | 'merged' | null }) {
   const [activeSubTab, setActiveSubTab] = useState<string>('investment-legal');
   const [isReady, setIsReady] = useState(false);
   

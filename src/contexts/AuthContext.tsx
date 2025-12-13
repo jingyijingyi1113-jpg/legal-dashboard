@@ -1,5 +1,9 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import type { User, UserRole, UserRegion, LoginFormData, RegisterFormData, ChangePasswordFormData } from '@/types/user';
+import { authApi } from '@/api';
+
+// API 模式开关 - 设置为 true 使用后端 API，false 使用 localStorage
+const USE_API = true;
 
 // 默认管理员账户
 const DEFAULT_ADMIN: User = {
@@ -85,6 +89,7 @@ interface AuthContextType {
   user: User | null;
   users: User[];
   loading: boolean;
+  useApi: boolean;
   login: (data: LoginFormData) => Promise<{ success: boolean; message: string }>;
   register: (data: RegisterFormData) => Promise<{ success: boolean; message: string }>;
   logout: () => void;
@@ -102,6 +107,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const STORAGE_KEYS = {
   USERS: 'task_platform_users',
   CURRENT_USER: 'task_platform_current_user',
+  AUTH_TOKEN: 'auth_token',
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -109,10 +115,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 初始化：从 localStorage 加载用户数据
+  // 初始化：从 localStorage 加载用户数据，或从 API 获取
   useEffect(() => {
-    const initAuth = () => {
+    const initAuth = async () => {
       try {
+        // 检查是否有 token，尝试从 API 获取用户信息
+        const token = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
+        if (USE_API && token) {
+          try {
+            const response = await authApi.getCurrentUser();
+            if (response.success && response.data) {
+              const apiUser = response.data;
+              // 转换 API 用户格式为本地格式
+              const localUser: User = {
+                id: String(apiUser.id),
+                username: apiUser.username,
+                name: apiUser.realName,
+                email: apiUser.email || '',
+                role: apiUser.role as UserRole,
+                team: apiUser.team,
+                department: apiUser.center,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              };
+              setUser(localUser);
+              localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(localUser));
+              setLoading(false);
+              return;
+            }
+          } catch (error) {
+            console.log('API 认证失败，回退到本地模式');
+            localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+          }
+        }
+
+        // 回退到 localStorage 模式
         // 加载用户列表
         const storedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
         let userList: User[] = storedUsers ? JSON.parse(storedUsers) : [];
@@ -169,6 +206,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     initAuth();
+
+    // 监听登出事件
+    const handleLogout = () => {
+      setUser(null);
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+      localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+    };
+    window.addEventListener('auth:logout', handleLogout);
+    return () => window.removeEventListener('auth:logout', handleLogout);
   }, []);
 
   // 保存用户列表到 localStorage
@@ -179,6 +225,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // 登录
   const login = async (data: LoginFormData): Promise<{ success: boolean; message: string }> => {
+    // 尝试 API 登录
+    if (USE_API) {
+      try {
+        const response = await authApi.login(data.username, data.password);
+        if (response.success && response.data) {
+          const { token, user: apiUser } = response.data;
+          
+          // 保存 token
+          localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, token);
+          
+          // 转换用户格式
+          const localUser: User = {
+            id: String(apiUser.id),
+            username: apiUser.username,
+            name: apiUser.realName,
+            email: apiUser.email || '',
+            role: apiUser.role as UserRole,
+            team: apiUser.team,
+            department: apiUser.center,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          
+          setUser(localUser);
+          localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(localUser));
+          return { success: true, message: '登录成功' };
+        }
+        return { success: false, message: response.message || '登录失败' };
+      } catch (error: any) {
+        console.log('API 登录失败，尝试本地登录:', error.message);
+        // API 失败，回退到本地登录
+      }
+    }
+
+    // 本地登录
     const foundUser = users.find(
       u => u.username === data.username && u.password === data.password
     );
@@ -194,6 +275,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // 注册
   const register = async (data: RegisterFormData): Promise<{ success: boolean; message: string }> => {
+    // 尝试 API 注册
+    if (USE_API) {
+      try {
+        const response = await authApi.register({
+          username: data.username,
+          password: data.password,
+          realName: data.name,
+          email: data.email,
+          team: data.team || '业务管理及合规检测中心',
+          center: '合规交易部',
+        });
+        if (response.success) {
+          return { success: true, message: '注册成功，请登录' };
+        }
+        return { success: false, message: response.message || '注册失败' };
+      } catch (error: any) {
+        console.log('API 注册失败，尝试本地注册:', error.message);
+        // API 失败，回退到本地注册
+      }
+    }
+
+    // 本地注册
     // 检查用户名是否已存在
     if (users.some(u => u.username === data.username)) {
       return { success: false, message: '用户名已存在' };
@@ -227,6 +330,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
   };
 
   // 修改密码
@@ -235,12 +339,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, message: '请先登录' };
     }
 
-    if (user.password !== data.currentPassword) {
-      return { success: false, message: '当前密码错误' };
-    }
-
     if (data.newPassword !== data.confirmPassword) {
       return { success: false, message: '两次输入的新密码不一致' };
+    }
+
+    // 尝试 API 修改密码
+    if (USE_API) {
+      try {
+        const response = await authApi.changePassword(data.currentPassword, data.newPassword);
+        if (response.success) {
+          return { success: true, message: '密码修改成功' };
+        }
+        return { success: false, message: response.message || '密码修改失败' };
+      } catch (error: any) {
+        console.log('API 修改密码失败，尝试本地修改:', error.message);
+      }
+    }
+
+    // 本地修改密码
+    if (user.password !== data.currentPassword) {
+      return { success: false, message: '当前密码错误' };
     }
 
     const updatedUsers = users.map(u => 
@@ -439,6 +557,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         users,
         loading,
+        useApi: USE_API,
         login,
         register,
         logout,

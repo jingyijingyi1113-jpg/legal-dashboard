@@ -38,7 +38,7 @@ export const RegionColors: Record<UserRegion, string> = {
 export interface User {
   id: string;
   username: string;
-  password: string; // 实际项目中应该是哈希值
+  password?: string; // 可选，从 API 获取时不包含密码
   name: string;
   email: string;
   role: UserRole;
