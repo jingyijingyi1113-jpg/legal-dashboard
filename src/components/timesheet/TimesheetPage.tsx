@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { TimesheetEntryForm } from './TimesheetEntry';
 import { TimesheetHistory } from './TimesheetHistory';
@@ -12,6 +12,28 @@ export function TimesheetPage() {
   const [activeTab, setActiveTab] = useState<TabType>('entry');
   // 直接存储要复制的数据，而不是通过 ref
   const [copyData, setCopyData] = useState<TimesheetEntry | null>(null);
+  
+  // 回到顶部按钮状态
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  
+  // 监听滚动事件
+  useEffect(() => {
+    const handleScroll = () => {
+      // 当滚动超过300px时显示按钮
+      setShowScrollTop(window.scrollY > 300);
+    };
+    
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+  
+  // 回到顶部函数
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  };
 
   // 判断是否为系统管理员（用户名为admin且没有团队归属）
   const isSystemAdmin = user?.username === 'admin' && !user?.team;
@@ -98,6 +120,24 @@ export function TimesheetPage() {
           )}
         </div>
       </div>
+      
+      {/* 回到顶部按钮 */}
+      {showScrollTop && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-8 right-8 z-50 p-3 bg-white border border-slate-200 rounded-full shadow-lg hover:shadow-xl hover:bg-slate-50 transition-all duration-300 group"
+          aria-label="回到顶部"
+        >
+          <svg 
+            className="w-5 h-5 text-slate-600 group-hover:text-slate-800 transition-colors" 
+            fill="none" 
+            viewBox="0 0 24 24" 
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }
