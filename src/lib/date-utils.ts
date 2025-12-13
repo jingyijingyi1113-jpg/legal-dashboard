@@ -171,13 +171,21 @@ export const createNormalizedKey = (value: string | null | undefined): string =>
 };
 
 const cnPublicHolidays2025 = [
-    '2025-01-01', // New Year's Day
-    '2025-01-28', '2025-01-29', '2025-01-30', '2025-01-31', '2025-02-01', '2025-02-02', '2025-02-03', // Spring Festival
-    '2025-04-05', // Qingming Festival
-    '2025-05-01', '2025-05-02', '2025-05-03', // Labour Day
-    '2025-05-31', // Dragon Boat Festival
-    '2025-09-06', // Mid-Autumn Festival
-    '2025-10-01', '2025-10-02', '2025-10-03', '2025-10-04', '2025-10-05', '2025-10-06', '2025-10-07', // National Day
+    '2025-01-01', // New Year's Day 元旦
+    '2025-01-26', '2025-01-27', '2025-01-28', '2025-01-29', '2025-01-30', '2025-01-31', '2025-02-01', '2025-02-02', '2025-02-03', '2025-02-04', // Spring Festival 春节 1/26-2/4
+    '2025-04-04', '2025-04-05', '2025-04-06', // Qingming Festival 清明节 4/4-4/6
+    '2025-05-01', '2025-05-02', '2025-05-03', '2025-05-04', '2025-05-05', // Labour Day 劳动节 5/1-5/5
+    '2025-05-31', '2025-06-01', '2025-06-02', // Dragon Boat Festival 端午节 5/31-6/2
+    '2025-10-01', '2025-10-02', '2025-10-03', '2025-10-04', '2025-10-05', '2025-10-06', '2025-10-07', '2025-10-08', // National Day + Mid-Autumn 国庆节+中秋节 10/1-10/8
+];
+
+// 2025年调休上班日（周末补班）
+const cnWorkdaysOnWeekend2025 = [
+    '2025-01-25', // 春节调休 周六
+    '2025-02-08', // 春节调休 周六
+    '2025-04-27', // 清明节调休 周日
+    '2025-09-28', // 国庆节调休 周日
+    '2025-10-11', // 国庆节调休 周六
 ];
 
 const hkPublicHolidays2025 = [
@@ -189,24 +197,35 @@ const hkPublicHolidays2025 = [
     '2025-05-05', // The day following the Birthday of the Buddha
     '2025-05-31', // Tuen Ng Festival
     '2025-07-01', // HKSAR Establishment Day
-    '2025-09-08', // The day following the Chinese Mid-Autumn Festival
     '2025-10-01', // National Day
-    '2025-10-23', // Chung Yeung Festival
+    '2025-10-07', // The day following the Chinese Mid-Autumn Festival 中秋节翌日 (中秋节10/6周一)
+    '2025-10-29', // Chung Yeung Festival 重阳节
     '2025-12-25', '2025-12-26', // Christmas
 ];
 
+// 格式化日期为 yyyy-MM-dd（避免时区问题）
+const formatDateString = (year: number, month: number, day: number): string => {
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
+
 export const getWorkdaysInMonth = (year: number, month: number, region: 'CN' | 'HK' | 'OTHER'): number => {
     const holidays = region === 'CN' ? cnPublicHolidays2025 : region === 'HK' ? hkPublicHolidays2025 : [];
+    const weekendWorkdays = region === 'CN' ? cnWorkdaysOnWeekend2025 : [];
     const daysInMonth = new Date(year, month, 0).getDate();
     let workdays = 0;
 
     for (let day = 1; day <= daysInMonth; day++) {
         const currentDate = new Date(year, month - 1, day);
         const dayOfWeek = currentDate.getDay();
-        const dateString = currentDate.toISOString().split('T')[0];
+        const dateString = formatDateString(year, month, day);
 
-        // Check if it's a weekday (Monday-Friday)
-        if (dayOfWeek > 0 && dayOfWeek < 6) {
+        // Check if it's a weekend but a workday due to make-up work (调休上班)
+        if (dayOfWeek === 0 || dayOfWeek === 6) {
+            if (weekendWorkdays.includes(dateString)) {
+                workdays++;
+            }
+        } else {
+            // It's a weekday (Monday-Friday)
             // Check if it's not a public holiday
             if (!holidays.includes(dateString)) {
                 workdays++;
@@ -225,6 +244,7 @@ export const getWorkdaysInMonth = (year: number, month: number, region: 'CN' | '
  */
 export const getWorkdaysInRange = (startDate: string, endDate: string, region: 'CN' | 'HK' | 'OTHER'): number => {
     const holidays = region === 'CN' ? cnPublicHolidays2025 : region === 'HK' ? hkPublicHolidays2025 : [];
+    const weekendWorkdays = region === 'CN' ? cnWorkdaysOnWeekend2025 : [];
     const start = new Date(startDate);
     const end = new Date(endDate);
     
@@ -235,10 +255,18 @@ export const getWorkdaysInRange = (startDate: string, endDate: string, region: '
     
     while (current <= end) {
         const dayOfWeek = current.getDay();
-        const dateString = current.toISOString().split('T')[0];
+        const year = current.getFullYear();
+        const month = current.getMonth() + 1;
+        const day = current.getDate();
+        const dateString = formatDateString(year, month, day);
         
-        // Check if it's a weekday (Monday-Friday)
-        if (dayOfWeek > 0 && dayOfWeek < 6) {
+        // Check if it's a weekend but a workday due to make-up work (调休上班)
+        if (dayOfWeek === 0 || dayOfWeek === 6) {
+            if (weekendWorkdays.includes(dateString)) {
+                workdays++;
+            }
+        } else {
+            // It's a weekday (Monday-Friday)
             // Check if it's not a public holiday
             if (!holidays.includes(dateString)) {
                 workdays++;
