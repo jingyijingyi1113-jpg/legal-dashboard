@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTimesheet } from '@/contexts/TimesheetContext';
 import { getTeamTemplateByName, getChildOptions, DEFAULT_TEMPLATE } from '@/config/teamTemplates';
 import type { TemplateField, FieldOption, TimesheetEntry as TimesheetEntryType, LeaveRecord } from '@/types/timesheet';
+import { AIAssistant } from './AIAssistant';
 
 // 自定义下拉选择组件
 interface CustomSelectProps {
@@ -432,6 +433,13 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
     setSubmitting(true);
     try {
       const hours = parseFloat(formData.hours as string) || 0;
+      
+      // 验证小时数必须大于0
+      if (hours <= 0) {
+        alert('小时数必须大于0');
+        setSubmitting(false);
+        return;
+      }
       
       if (editingId) {
         const result = await updateEntry(editingId, {
@@ -1247,6 +1255,15 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
           </div>
         </div>
       </div>
+
+      {/* AI 助手 */}
+      <AIAssistant 
+        fields={template.fields}
+        teamName={user?.team || ''}
+        onFillForm={(data) => {
+          setFormData(prev => ({ ...prev, ...data }));
+        }} 
+      />
     </div>
   );
 }

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+html { background: #ffffff; }
+body {
+  width: 720pt; height: 405pt; margin: 0; padding: 0;
+  font-family: Arial, sans-serif;
+  display: flex;
+  background: #FFFFFF;
+}
+.header {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 60pt; background: #1C2833;
+  display: flex; align-items: center; padding-left: 40pt;
+}
+.header h1 { color: #FFFFFF; font-size: 28pt; margin: 0; }
+.content {
+  margin-top: 75pt; padding: 15pt 40pt;
+  width: 100%;
+}
+.section-title { color: #2C3E50; font-size: 16pt; margin: 0 0 12pt 0; font-weight: bold; }
+.modules {
+  display: flex; gap: 15pt; margin-bottom: 15pt;
+}
+.module {
+  flex: 1; background: #F8F9FA; padding: 12pt;
+  border-radius: 6pt; border-top: 4pt solid #F39C12;
+}
+.module h4 { color: #F39C12; font-size: 13pt; margin: 0 0 8pt 0; }
+.module ul { margin: 0; padding-left: 15pt; }
+.module li { color: #2C3E50; font-size: 10pt; margin-bottom: 4pt; }
+.roles {
+  display: flex; gap: 15pt;
+}
+.role {
+  flex: 1; padding: 10pt; border-radius: 6pt; text-align: center;
+}
+.role.admin { background: #FADBD8; border: 2pt solid #E74C3C; }
+.role.manager { background: #D4EFDF; border: 2pt solid #27AE60; }
+.role.user { background: #D6EAF8; border: 2pt solid #3498DB; }
+.role h4 { font-size: 12pt; margin: 0 0 6pt 0; }
+.role p { font-size: 9pt; margin: 0; color: #2C3E50; }
+.role.admin h4 { color: #E74C3C; }
+.role.manager h4 { color: #27AE60; }
+.role.user h4 { color: #3498DB; }
+</style>
+</head>
+<body>
+<div class="header"><h1>核心功能模块</h1></div>
+<div class="content">
+  <h3 class="section-title">功能架构</h3>
+  <div class="modules">
+    <div class="module">
+      <h4>工时填报</h4>
+      <ul>
+        <li>日历视图选择日期</li>
+        <li>项目/事项分类选择</li>
+        <li>工时小时数填写</li>
+        <li>备注说明添加</li>
+      </ul>
+    </div>
+    <div class="module">
+      <h4>数据统计</h4>
+      <ul>
+        <li>个人工时汇总</li>
+        <li>项目工时分析</li>
+        <li>部门工时排名</li>
+        <li>趋势图表展示</li>
+      </ul>
+    </div>
+    <div class="module">
+      <h4>报表导出</h4>
+      <ul>
+        <li>月度工时报表</li>
+        <li>项目工时明细</li>
+        <li>Excel 格式导出</li>
+        <li>自定义筛选条件</li>
+      </ul>
+    </div>
+    <div class="module">
+      <h4>系统管理</h4>
+      <ul>
+        <li>用户账号管理</li>
+        <li>项目类型配置</li>
+        <li>权限角色设置</li>
+        <li>数据备份恢复</li>
+      </ul>
+    </div>
+  </div>
+  <h3 class="section-title">用户角色</h3>
+  <div class="roles">
+    <div class="role admin">
+      <h4>管理员</h4>
+      <p>系统配置、用户管理、全部数据查看</p>
+    </div>
+    <div class="role manager">
+      <h4>管理者</h4>
+      <p>团队工时查看、报表导出、数据统计</p>
+    </div>
+    <div class="role user">
+      <h4>普通用户</h4>
+      <p>个人工时填报、查看个人统计</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

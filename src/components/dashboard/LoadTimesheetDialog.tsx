@@ -140,7 +140,7 @@ export function LoadTimesheetDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" style={{ left: 0, right: 0, top: 0, bottom: 0, marginLeft: 0 }}>
       {/* 遮罩 */}
       <div 
         className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"

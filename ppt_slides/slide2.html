@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+html { background: #ffffff; }
+body {
+  width: 720pt; height: 405pt; margin: 0; padding: 0;
+  font-family: Arial, sans-serif;
+  display: flex;
+  background: #FFFFFF;
+}
+.header {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 60pt; background: #1C2833;
+  display: flex; align-items: center; padding-left: 40pt;
+}
+.header h1 { color: #FFFFFF; font-size: 28pt; margin: 0; }
+.content {
+  margin-top: 80pt; padding: 30pt 40pt;
+  width: 100%;
+}
+.problem-box {
+  background: #FADBD8; border-left: 6pt solid #E74C3C;
+  padding: 20pt; margin-bottom: 20pt;
+}
+.problem-box h3 { color: #E74C3C; font-size: 18pt; margin: 0 0 10pt 0; }
+.problem-box p { color: #2C3E50; font-size: 14pt; margin: 0; }
+.problems {
+  display: flex; gap: 20pt;
+}
+.problem-item {
+  flex: 1; background: #F4F6F6; padding: 15pt;
+  border-radius: 6pt;
+}
+.problem-item h4 { color: #E74C3C; font-size: 14pt; margin: 0 0 8pt 0; }
+.problem-item p { color: #2C3E50; font-size: 12pt; margin: 0; }
+</style>
+</head>
+<body>
+<div class="header"><h1>项目背景</h1></div>
+<div class="content">
+  <div class="problem-box">
+    <h3>传统工时管理痛点</h3>
+    <p>法务部门在工时记录和管理方面面临诸多挑战</p>
+  </div>
+  <div class="problems">
+    <div class="problem-item">
+      <h4>Excel 手工记录</h4>
+      <p>数据分散、易出错、难以统计分析</p>
+    </div>
+    <div class="problem-item">
+      <h4>缺乏实时监控</h4>
+      <p>无法及时了解项目工时消耗情况</p>
+    </div>
+    <div class="problem-item">
+      <h4>报表生成困难</h4>
+      <p>月度/季度报表需要大量人工整理</p>
+    </div>
+    <div class="problem-item">
+      <h4>权限管理缺失</h4>
+      <p>数据安全和访问控制难以保障</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

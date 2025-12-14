@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+html { background: #ffffff; }
+body {
+  width: 720pt; height: 405pt; margin: 0; padding: 0;
+  font-family: Arial, sans-serif;
+  display: flex;
+  background: #FFFFFF;
+}
+.header {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 50pt; background: #1C2833;
+  display: flex; align-items: center; padding-left: 40pt;
+}
+.header h1 { color: #FFFFFF; font-size: 24pt; margin: 0; }
+.content {
+  margin-top: 60pt; padding: 15pt 40pt;
+  width: 100%;
+}
+.solution-box {
+  background: #D5F5E3; border-left: 5pt solid #27AE60;
+  padding: 10pt; margin-bottom: 12pt;
+}
+.solution-box h3 { color: #27AE60; font-size: 15pt; margin: 0 0 5pt 0; }
+.solution-box p { color: #2C3E50; font-size: 11pt; margin: 0; }
+.features {
+  display: flex; flex-wrap: wrap; gap: 10pt;
+}
+.feature {
+  width: calc(50% - 8pt); background: #EBF5FB;
+  padding: 10pt; border-radius: 5pt;
+  border-left: 3pt solid #3498DB;
+}
+.feature h4 { color: #2980B9; font-size: 12pt; margin: 0 0 4pt 0; }
+.feature p { color: #2C3E50; font-size: 10pt; margin: 0; }
+</style>
+</head>
+<body>
+<div class="header"><h1>解决方案概述</h1></div>
+<div class="content">
+  <div class="solution-box">
+    <h3>一站式工时管理平台</h3>
+    <p>基于 Web 的现代化工时管理系统，实现工时记录、审批、统计、报表全流程数字化</p>
+  </div>
+  <div class="features">
+    <div class="feature">
+      <h4>在线工时填报</h4>
+      <p>支持按日/周填报，自动计算工作日</p>
+    </div>
+    <div class="feature">
+      <h4>多维度统计</h4>
+      <p>按人员/项目/部门多维度数据分析</p>
+    </div>
+    <div class="feature">
+      <h4>智能报表导出</h4>
+      <p>一键生成 Excel 报表，支持自定义</p>
+    </div>
+    <div class="feature">
+      <h4>角色权限管理</h4>
+      <p>管理员/管理者/普通用户三级权限</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

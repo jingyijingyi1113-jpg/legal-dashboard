@@ -399,6 +399,28 @@ export function DashboardPage() {
   const [dataSource, setDataSource] = useState<'excel' | 'timesheet' | 'merged'>('excel');
   const printRef = useRef<HTMLDivElement>(null);
   
+  // 回到顶部按钮状态
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  
+  // 监听滚动事件
+  useEffect(() => {
+    const handleScroll = () => {
+      // 当滚动超过300px时显示按钮
+      setShowScrollTop(window.scrollY > 300);
+    };
+    
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+  
+  // 回到顶部函数
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  };
+  
   // 获取工时记录数据
   const { getDashboardData, getSubmittedEntries, entries } = useTimesheet();
   
@@ -976,19 +998,8 @@ export function DashboardPage() {
                 )}
             </div>
         </div>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 animate-fade-in-up">
+      <div className="grid gap-4 md:grid-cols-1 animate-fade-in-up">
             <Card className="card-premium">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                <CardTitle className="text-sm font-semibold text-neutral-600">部门总用时</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-neutral-900">{displayedData.totalHours.toFixed(2)}</div>
-                <p className={`text-xs font-medium mt-2 ${displayedData.totalHoursTrend >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    环比: {displayedData.totalHoursTrend >= 0 ? '+' : ''}{displayedData.totalHoursTrend.toFixed(2)}%
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="card-premium md:col-span-1 lg:col-span-3">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-semibold text-neutral-600">部门整体情况</CardTitle>
               </CardHeader>
@@ -996,10 +1007,16 @@ export function DashboardPage() {
                   <div className="flex flex-col items-center p-3">
                       <div className="text-2xl font-bold text-neutral-900">{displayedData.totalHours.toFixed(2)}</div>
                       <p className="text-xs text-neutral-500 mt-1 font-medium">总用时</p>
+                      <p className={`text-xs font-medium mt-1 ${displayedData.totalHoursTrend >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          环比: {displayedData.totalHoursTrend >= 0 ? '+' : ''}{displayedData.totalHoursTrend.toFixed(2)}%
+                      </p>
                   </div>
                   <div className="flex flex-col items-center p-3">
                       <div className="text-2xl font-bold text-neutral-900">{displayedData.avgHours.toFixed(2)}</div>
                       <p className="text-xs text-neutral-500 mt-1 font-medium">人均用时</p>
+                      <p className={`text-xs font-medium mt-1 ${displayedData.avgHoursTrend >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          环比: {displayedData.avgHoursTrend >= 0 ? '+' : ''}{displayedData.avgHoursTrend.toFixed(2)}%
+                      </p>
                   </div>
               </CardContent>
             </Card>
@@ -1258,6 +1275,24 @@ export function DashboardPage() {
         userRole={user?.role}
         onConfirm={loadFromTimesheetWithFilters}
       />
+      
+      {/* 回到顶部按钮 */}
+      {showScrollTop && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-8 right-8 z-50 p-3 bg-white border border-slate-200 rounded-full shadow-lg hover:shadow-xl hover:bg-slate-50 transition-all duration-300 group"
+          aria-label="回到顶部"
+        >
+          <svg 
+            className="w-5 h-5 text-slate-600 group-hover:text-slate-800 transition-colors" 
+            fill="none" 
+            viewBox="0 0 24 24" 
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }

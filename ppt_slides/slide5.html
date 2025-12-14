@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+html { background: #ffffff; }
+body {
+  width: 720pt; height: 405pt; margin: 0; padding: 0;
+  font-family: Arial, sans-serif;
+  display: flex;
+  background: #FFFFFF;
+}
+.header {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 60pt; background: #1C2833;
+  display: flex; align-items: center; padding-left: 40pt;
+}
+.header h1 { color: #FFFFFF; font-size: 28pt; margin: 0; }
+.content {
+  margin-top: 75pt; padding: 15pt 40pt;
+  width: 100%;
+}
+.benefits {
+  display: flex; gap: 20pt;
+}
+.benefit {
+  flex: 1; text-align: center; padding: 20pt 15pt;
+  background: #F4F6F6; border-radius: 8pt;
+}
+.benefit-icon {
+  width: 50pt; height: 50pt; margin: 0 auto 12pt;
+  background: #3498DB; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.benefit-icon p { color: #FFFFFF; font-size: 24pt; margin: 0; font-weight: bold; }
+.benefit h4 { color: #2C3E50; font-size: 14pt; margin: 0 0 8pt 0; }
+.benefit p.desc { color: #7F8C8D; font-size: 11pt; margin: 0; }
+.benefit.b1 .benefit-icon { background: #E74C3C; }
+.benefit.b2 .benefit-icon { background: #27AE60; }
+.benefit.b3 .benefit-icon { background: #F39C12; }
+.benefit.b4 .benefit-icon { background: #9B59B6; }
+.stats {
+  display: flex; gap: 20pt; margin-top: 25pt;
+}
+.stat {
+  flex: 1; text-align: center; padding: 15pt;
+  background: #1C2833; border-radius: 6pt;
+}
+.stat h2 { color: #F39C12; font-size: 28pt; margin: 0; }
+.stat p { color: #FFFFFF; font-size: 12pt; margin: 5pt 0 0 0; }
+</style>
+</head>
+<body>
+<div class="header"><h1>系统价值</h1></div>
+<div class="content">
+  <div class="benefits">
+    <div class="benefit b1">
+      <div class="benefit-icon"><p>1</p></div>
+      <h4>效率提升</h4>
+      <p class="desc">告别 Excel，工时填报效率提升 80%</p>
+    </div>
+    <div class="benefit b2">
+      <div class="benefit-icon"><p>2</p></div>
+      <h4>数据准确</h4>
+      <p class="desc">自动计算汇总，消除人工统计错误</p>
+    </div>
+    <div class="benefit b3">
+      <div class="benefit-icon"><p>3</p></div>
+      <h4>实时可视</h4>
+      <p class="desc">随时查看工时数据，辅助决策分析</p>
+    </div>
+    <div class="benefit b4">
+      <div class="benefit-icon"><p>4</p></div>
+      <h4>安全可控</h4>
+      <p class="desc">权限分级管理，数据安全有保障</p>
+    </div>
+  </div>
+  <div class="stats">
+    <div class="stat">
+      <h2>80%</h2>
+      <p>填报效率提升</p>
+    </div>
+    <div class="stat">
+      <h2>100%</h2>
+      <p>数据准确率</p>
+    </div>
+    <div class="stat">
+      <h2>90%</h2>
+      <p>报表生成时间节省</p>
+    </div>
+    <div class="stat">
+      <h2>24/7</h2>
+      <p>随时随地访问</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

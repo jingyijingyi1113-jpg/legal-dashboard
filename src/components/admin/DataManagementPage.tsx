@@ -831,11 +831,17 @@ interface ImportPreviewData {
 
 function ImportModal({ isOpen, onClose, onConfirm, previewData, fileName }: ImportModalProps) {
   const [importing, setImporting] = useState(false);
+  const [showOnlyInvalid, setShowOnlyInvalid] = useState(false);
   
   if (!isOpen) return null;
 
   const validCount = previewData.filter(d => d.isValid).length;
   const invalidCount = previewData.length - validCount;
+  
+  // 根据筛选条件显示数据
+  const displayData = showOnlyInvalid 
+    ? previewData.filter(d => !d.isValid)
+    : previewData;
 
   const handleImport = async () => {
     setImporting(true);
@@ -951,22 +957,41 @@ function ImportModal({ isOpen, onClose, onConfirm, previewData, fileName }: Impo
 
         {/* 统计信息 */}
         <div className="px-6 py-4 bg-slate-50/50 border-b border-slate-100">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-500">总记录数:</span>
-              <span className="text-sm font-semibold text-slate-700">{previewData.length}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              <span className="text-sm text-slate-500">有效:</span>
-              <span className="text-sm font-semibold text-emerald-600">{validCount}</span>
-            </div>
-            {invalidCount > 0 && (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-6">
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                <span className="text-sm text-slate-500">无效:</span>
-                <span className="text-sm font-semibold text-amber-600">{invalidCount}</span>
+                <span className="text-sm text-slate-500">总记录数:</span>
+                <span className="text-sm font-semibold text-slate-700">{previewData.length}</span>
               </div>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span className="text-sm text-slate-500">有效:</span>
+                <span className="text-sm font-semibold text-emerald-600">{validCount}</span>
+              </div>
+              {invalidCount > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                  <span className="text-sm text-slate-500">无效:</span>
+                  <span className="text-sm font-semibold text-amber-600">{invalidCount}</span>
+                </div>
+              )}
+            </div>
+            {/* 筛选按钮 */}
+            {invalidCount > 0 && (
+              <button
+                onClick={() => setShowOnlyInvalid(!showOnlyInvalid)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors",
+                  showOnlyInvalid
+                    ? "text-amber-700 bg-amber-100 hover:bg-amber-200"
+                    : "text-slate-600 bg-slate-100 hover:bg-slate-200"
+                )}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+                </svg>
+                {showOnlyInvalid ? '显示全部' : '只看无效数据'}
+              </button>
             )}
           </div>
         </div>
@@ -982,11 +1007,11 @@ function ImportModal({ isOpen, onClose, onConfirm, previewData, fileName }: Impo
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">团队</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">小时数</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">分类</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Tag</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">错误原因</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {previewData.slice(0, 50).map((row, index) => (
+              {displayData.slice(0, 100).map((row, index) => (
                 <tr key={index} className={cn(
                   "hover:bg-slate-50/50",
                   !row.isValid && "bg-amber-50/50"
@@ -999,7 +1024,7 @@ function ImportModal({ isOpen, onClose, onConfirm, previewData, fileName }: Impo
                         </svg>
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-amber-600" title={row.errorMessage}>
+                      <span className="inline-flex items-center gap-1 text-amber-600">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <circle cx="12" cy="12" r="10"/>
                           <line x1="12" y1="8" x2="12" y2="12"/>
@@ -1008,8 +1033,8 @@ function ImportModal({ isOpen, onClose, onConfirm, previewData, fileName }: Impo
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-slate-600">{row.month || '-'}</td>
-                  <td className="px-4 py-2.5 text-slate-700 font-medium">{row.name || '-'}</td>
+                  <td className={cn("px-4 py-2.5", !row.month && !row.isValid ? "text-red-500 font-medium" : "text-slate-600")}>{row.month || '-'}</td>
+                  <td className={cn("px-4 py-2.5 font-medium", !row.name && !row.isValid ? "text-red-500" : "text-slate-700")}>{row.name || '-'}</td>
                   <td className="px-4 py-2.5">
                     {row.team ? (
                       <span className={cn(
@@ -1019,18 +1044,26 @@ function ImportModal({ isOpen, onClose, onConfirm, previewData, fileName }: Impo
                       )}>
                         {row.team}
                       </span>
-                    ) : '-'}
+                    ) : <span className={!row.isValid ? "text-red-500 font-medium" : "text-slate-600"}>-</span>}
                   </td>
-                  <td className="px-4 py-2.5 text-slate-600">{row.hours || 0}h</td>
+                  <td className={cn("px-4 py-2.5", row.hours <= 0 && !row.isValid ? "text-red-500 font-medium" : "text-slate-600")}>{row.hours || 0}h</td>
                   <td className="px-4 py-2.5 text-slate-600 max-w-[150px] truncate" title={row.category}>{row.category || '-'}</td>
-                  <td className="px-4 py-2.5 text-slate-600">{row.tag || '-'}</td>
+                  <td className="px-4 py-2.5">
+                    {row.isValid ? (
+                      <span className="text-emerald-600 text-xs">-</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-600 border border-red-100">
+                        {row.errorMessage}
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {previewData.length > 50 && (
+          {displayData.length > 100 && (
             <div className="px-4 py-3 text-center text-sm text-slate-500 bg-slate-50">
-              仅显示前 50 条记录，共 {previewData.length} 条
+              仅显示前 100 条记录，共 {displayData.length} 条
             </div>
           )}
         </div>
@@ -1079,7 +1112,7 @@ function ImportModal({ isOpen, onClose, onConfirm, previewData, fileName }: Impo
 }
 
 export function DataManagementPage() {
-  const { entries, deleteEntry, deleteEntries, updateEntry, importEntries } = useTimesheet();
+  const { entries, deleteEntries, updateEntry, importEntries } = useTimesheet();
   const { teams } = useOrganization();
 
   // 筛选状态
