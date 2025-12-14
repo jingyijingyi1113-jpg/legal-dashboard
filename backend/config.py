@@ -20,7 +20,11 @@ DEBUG = not IS_PRODUCTION
 # CORS 配置 - 生产环境添加服务器地址
 CORS_ORIGINS = [
     'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:5175',
     'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174',
+    'http://127.0.0.1:5175',
     'http://localhost:8081',
     'http://127.0.0.1:8081',
     'http://9.135.78.109:8081',

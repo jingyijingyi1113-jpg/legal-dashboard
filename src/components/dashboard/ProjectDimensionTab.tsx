@@ -1,5 +1,5 @@
 
-import { useMemo, useState, useEffect, useTransition, useCallback } from 'react';
+import { useMemo, useState, useEffect, useTransition, useCallback, useRef } from 'react';
 import {
   Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis,
   YAxis
@@ -502,6 +502,7 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
   const [customStartDate, setCustomStartDate] = useState<Date | undefined>(undefined);
   const [customEndDate, setCustomEndDate] = useState<Date | undefined>(undefined);
   const [isPending, startTransition] = useTransition();
+  const initializedRef = useRef(false);
 
   // 使用 useTransition 包装周期切换，让 UI 更快响应
   const handlePeriodChange = useCallback((newPeriod: Period) => {
@@ -541,13 +542,10 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
     return { availableYears: sortedYears.map(y => y.toString()), periodOptions: options };
   }, [teamData]);
 
-  // 初始化：设置默认年份和最新月份
+  // 初始化：设置默认年份和最新月份（只执行一次）
   useEffect(() => {
-    if (availableYears.length > 0 && !selectedYear) {
-      setSelectedYear(availableYears[0]);
-    }
-    // 默认选中最新月份（仅在月度模式下）
-    if (period === 'monthly' && !selectedPeriodValue && teamData.length > 0) {
+    if (initializedRef.current) return;
+    if (availableYears.length > 0 && teamData.length > 0) {
       const latestMonth = teamData.reduce((latest, row) => {
         const d = parseMonthString(row['Month']);
         return d && d > latest ? d : latest;
@@ -555,9 +553,10 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
       if (latestMonth.getTime() > 0) {
         setSelectedYear(latestMonth.getFullYear().toString());
         setSelectedPeriodValue(latestMonth.getMonth().toString());
+        initializedRef.current = true;
       }
     }
-  }, [availableYears, teamData, selectedYear]);
+  }, [availableYears, teamData]);
 
   // 切换周期时重置期间值
   useEffect(() => {
@@ -965,7 +964,6 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
                   tick={(props: any) => {
                     const { x, y, payload } = props;
                     const item = processedData.top10Data.find((d: any) => d.name === payload.value);
-                    const actualRank = item ? 11 - item.rank : 0;
                     const category = item?.category;
                     // Use category colors for text
                     let textColor = '#475569';
@@ -975,7 +973,7 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
                     const displayName = payload.value.length > 10 ? payload.value.substring(0, 10) + '...' : payload.value;
                     return (
                       <g transform={`translate(${x},${y})`}>
-                        <text x={-8} y={0} dy={4} textAnchor="end" fill={textColor} fontSize={11} fontWeight={actualRank <= 3 ? 700 : 500}>
+                        <text x={-8} y={0} dy={4} textAnchor="end" fill={textColor} fontSize={11} fontWeight={700}>
                           {displayName}
                         </text>
                       </g>
@@ -1066,6 +1064,7 @@ const CorporateFinanceCenterAnalysis = ({ data }: { data: any[] }) => {
   const [customStartDate, setCustomStartDate] = useState<Date | undefined>(undefined);
   const [customEndDate, setCustomEndDate] = useState<Date | undefined>(undefined);
   const [isPending, startTransition] = useTransition();
+  const initializedRef = useRef(false);
 
   // 使用 useTransition 包装周期切换，让 UI 更快响应
   const handlePeriodChange = useCallback((newPeriod: Period) => {
@@ -1105,13 +1104,10 @@ const CorporateFinanceCenterAnalysis = ({ data }: { data: any[] }) => {
     return { availableYears: sortedYears.map(y => y.toString()), periodOptions: options };
   }, [teamFilteredData]);
 
-  // 初始化：设置默认年份和最新月份
+  // 初始化：设置默认年份和最新月份（只执行一次）
   useEffect(() => {
-    if (availableYears.length > 0 && !selectedYear) {
-      setSelectedYear(availableYears[0]);
-    }
-    // 默认选中最新月份（仅在月度模式下）
-    if (period === 'monthly' && !selectedPeriodValue && teamFilteredData.length > 0) {
+    if (initializedRef.current) return;
+    if (availableYears.length > 0 && teamFilteredData.length > 0) {
       const latestMonth = teamFilteredData.reduce((latest, row) => {
         const d = parseMonthString(row['Month']);
         return d && d > latest ? d : latest;
@@ -1119,9 +1115,10 @@ const CorporateFinanceCenterAnalysis = ({ data }: { data: any[] }) => {
       if (latestMonth.getTime() > 0) {
         setSelectedYear(latestMonth.getFullYear().toString());
         setSelectedPeriodValue(latestMonth.getMonth().toString());
+        initializedRef.current = true;
       }
     }
-  }, [availableYears, teamFilteredData, selectedYear]);
+  }, [availableYears, teamFilteredData]);
 
   // 切换周期时重置期间值
   useEffect(() => {
@@ -1521,6 +1518,8 @@ const CorporateFinanceCenterAnalysis = ({ data }: { data: any[] }) => {
 };
 
 export const ProjectDimensionTab = ({ data }: { data: any[] }) => {
+  const [activeTeamTab, setActiveTeamTab] = useState('investment-legal');
+  
   // 无数据时的展示
   if (!data || data.length === 0) {
     return (
@@ -1537,7 +1536,7 @@ export const ProjectDimensionTab = ({ data }: { data: any[] }) => {
   }
 
   return (
-    <Tabs defaultValue="investment-legal">
+    <Tabs value={activeTeamTab} onValueChange={setActiveTeamTab}>
       <TabsList className="grid w-full grid-cols-2">
         <TabsTrigger value="investment-legal">投资法务中心</TabsTrigger>
         <TabsTrigger value="corporate-finance">公司及国际金融事务中心</TabsTrigger>

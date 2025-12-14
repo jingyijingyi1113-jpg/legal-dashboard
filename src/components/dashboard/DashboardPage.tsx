@@ -395,6 +395,7 @@ export function DashboardPage() {
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [activeTab, setActiveTab] = useState<string>('overview');
+  const [overviewSubTab, setOverviewSubTab] = useState<string>('time-dimension');
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [dataSource, setDataSource] = useState<'excel' | 'timesheet' | 'merged'>('excel');
   const printRef = useRef<HTMLDivElement>(null);
@@ -1081,9 +1082,9 @@ export function DashboardPage() {
     );
   };
 
-  const DepartmentOverviewTab = () => (
+  const DepartmentOverviewTab = useMemo(() => (
       <TabsContent value="overview" className="space-y-6 focus-visible:outline-none">
-        <Tabs defaultValue="time-dimension" className="space-y-6">
+        <Tabs value={overviewSubTab} onValueChange={setOverviewSubTab} className="space-y-6">
           <div className="bg-slate-50/95 backdrop-blur supports-[backdrop-filter]:bg-slate-50/60 border-b border-slate-200/60 -mx-6 px-6 pt-2 pb-0">
             <TabsList className="flex h-auto items-center justify-start gap-2 bg-transparent p-0 w-full">
                 <TabsTrigger 
@@ -1100,13 +1101,15 @@ export function DashboardPage() {
                 </TabsTrigger>
             </TabsList>
           </div>
-            <TimeDimensionTab />
+            <TabsContent value="time-dimension" className="mt-6 focus-visible:outline-none">
+              <TimeDimensionTab />
+            </TabsContent>
             <TabsContent value="project-dimension" className="mt-6 focus-visible:outline-none">
                 <ProjectDimensionTab data={rawData} />
             </TabsContent>
         </Tabs>
       </TabsContent>
-  );
+  ), [overviewSubTab, rawData]);
 
   return (
     <div className="min-h-screen section-gradient relative overflow-hidden">
@@ -1250,7 +1253,7 @@ export function DashboardPage() {
           </div>
 
           <div className="container mx-auto max-w-7xl animate-fade-in-up" ref={printRef}>
-            <DepartmentOverviewTab />
+            {DepartmentOverviewTab}
             <TabsContent value="team" className="m-0 focus-visible:outline-none">
               {activeTab === 'team' && (
                 <TeamDimensionTab 

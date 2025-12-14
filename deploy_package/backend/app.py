@@ -6,6 +6,7 @@ from models import init_db
 from routes.auth import auth_bp
 from routes.timesheet import timesheet_bp
 from routes.template import template_bp
+from routes.hunyuan import hunyuan_bp
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
@@ -18,6 +19,7 @@ CORS(app, origins=CORS_ORIGINS, supports_credentials=True)
 app.register_blueprint(auth_bp, url_prefix='/api/auth')
 app.register_blueprint(timesheet_bp, url_prefix='/api/timesheet')
 app.register_blueprint(template_bp, url_prefix='/api')
+app.register_blueprint(hunyuan_bp, url_prefix='/api/hunyuan')
 
 # 健康检查
 @app.route('/api/health', methods=['GET'])
@@ -47,5 +49,7 @@ if __name__ == '__main__':
     print(f"  POST /api/timesheet/entries - 创建工时记录")
     print(f"  GET  /api/timesheet/stats - 获取统计数据")
     print(f"  GET  /api/my-template - 获取我的模板")
+    print(f"  POST /api/hunyuan/parse - AI解析工时描述")
+    print(f"  GET  /api/hunyuan/config - 获取混元API配置状态")
     
     app.run(host=HOST, port=PORT, debug=DEBUG)

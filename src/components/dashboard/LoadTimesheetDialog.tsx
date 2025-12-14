@@ -181,7 +181,7 @@ export function LoadTimesheetDialog({
                   </button>
                 </PopoverTrigger>
                 <PopoverContent 
-                  className="w-[calc(100vw-4rem)] max-w-[calc(24rem-3rem)] p-2 rounded-xl border-slate-200 shadow-xl bg-white" 
+                  className="z-[10000] w-[calc(100vw-4rem)] max-w-[calc(24rem-3rem)] p-2 rounded-xl border-slate-200 shadow-xl bg-white" 
                   align="start" 
                   sideOffset={4}
                 >
@@ -292,7 +292,7 @@ export function LoadTimesheetDialog({
                       </svg>
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-48 p-2 rounded-xl border-slate-200 bg-white shadow-xl" align="start" sideOffset={4}>
+                  <PopoverContent className="z-[10000] w-48 p-2 rounded-xl border-slate-200 bg-white shadow-xl" align="start" sideOffset={4}>
                     <div className="grid grid-cols-3 gap-1">
                       {availableYears.map((year) => (
                         <button
@@ -335,7 +335,7 @@ export function LoadTimesheetDialog({
                     </PopoverTrigger>
                     <PopoverContent 
                       className={cn(
-                        "p-2 rounded-xl border-slate-200 bg-white shadow-xl",
+                        "z-[10000] p-2 rounded-xl border-slate-200 bg-white shadow-xl",
                         period === 'monthly' ? "w-56" : "w-44"
                       )} 
                       align="start" 
