@@ -122,7 +122,7 @@ export function AnomalyDetectionTab({ data }: AnomalyDetectionTabProps) {
   const [customEndMonth, setCustomEndMonth] = useState<string>((new Date().getMonth()).toString());
   // 获取用户列表和工时数据
   const { users } = useAuth();
-  const { entries, leaveRecords } = useTimesheet();
+  const { leaveRecords } = useTimesheet();
 
   // 处理月度数据并预测
   const forecastData = useMemo(() => {
@@ -330,80 +330,113 @@ export function AnomalyDetectionTab({ data }: AnomalyDetectionTabProps) {
     };
   }, [submissionYear, submissionPeriod, submissionPeriodValue, customStartYear, customStartMonth, customEndYear, customEndMonth]);
 
-  // 匹配用户的辅助函数（支持通过 userId 或 userName 匹配）
-  const matchUserEntry = (entry: { userId: string; userName: string }, user: { id: string; name?: string; username: string }) => {
-    // 优先通过 userId 匹配
-    if (entry.userId === user.id) return true;
+  // 从上传数据中提取用户工时信息（基于 data prop）
+  const dataBasedUserHours = useMemo(() => {
+    // 按用户名和月份汇总工时
+    const userMonthlyHours: { [userName: string]: { monthlyHours: { [month: string]: number }; team?: string; group?: string } } = {};
     
-    // 通过 userName 匹配（用于导入的数据）
-    const entryUserName = entry.userName?.toLowerCase();
-    const userDisplayName = user.name?.toLowerCase();
-    const userLoginName = user.username?.toLowerCase();
+    if (!data || data.length === 0) return userMonthlyHours;
     
-    if (entryUserName) {
-      // 匹配用户显示名称
-      if (userDisplayName && entryUserName === userDisplayName) return true;
-      // 匹配用户登录名
-      if (userLoginName && entryUserName === userLoginName) return true;
-      // 导入数据的 userId 格式为 "imported-user-{name}"
-      if (userDisplayName && entry.userId === `imported-user-${user.name}`) return true;
-      if (userLoginName && entry.userId === `imported-user-${user.username}`) return true;
-    }
-    return false;
-  };
+    data.forEach(row => {
+      const userName = row.Name?.toString()?.toLowerCase() || '';
+      const month = row.Month?.toString() || '';
+      const hours = parseFloat(row.Hours) || 0;
+      const team = row['团队']?.toString() || '';
+      const sourcePath = row['Source Path']?.toString() || '';
+      
+      if (!userName || !month) return;
+      
+      if (!userMonthlyHours[userName]) {
+        userMonthlyHours[userName] = { monthlyHours: {}, team };
+      }
+      
+      // 提取小组信息
+      if (sourcePath && sourcePath.includes('工时统计-')) {
+        userMonthlyHours[userName].group = sourcePath.replace('工时统计-', '').trim();
+      }
+      
+      userMonthlyHours[userName].monthlyHours[month] = (userMonthlyHours[userName].monthlyHours[month] || 0) + hours;
+    });
+    
+    return userMonthlyHours;
+  }, [data]);
 
-  // 计算人员工时提交情况
+  // 计算人员工时提交情况（基于上传的数据）
   const userSubmissionData = useMemo((): UserSubmissionStatus[] => {
     const { start, end, startDate, endDate } = getDateRange;
     
-    // 筛选当前团队的用户
-    const teamUsers = checkableUsers.filter(u => u.team === submissionTeam);
+    // 从上传数据中获取当前团队的用户列表
+    const dataUsers = Object.entries(dataBasedUserHours)
+      .filter(([_, info]) => info.team === submissionTeam)
+      .map(([userName, info]) => ({
+        userName,
+        team: info.team || '',
+        group: info.group,
+      }));
     
-    // 获取已提交的工时记录
-    const submittedEntries = entries.filter(e => e.status === 'submitted');
+    // 如果上传数据中没有该团队的用户，则使用系统用户列表
+    const teamUsers = dataUsers.length > 0 
+      ? dataUsers 
+      : checkableUsers.filter(u => u.team === submissionTeam).map(u => ({
+          userName: (u.name || u.username).toLowerCase(),
+          team: u.team || '',
+          group: undefined,
+          userId: u.id,
+          region: u.region,
+        }));
     
     // 计算每个用户的工时情况
     return teamUsers.map(user => {
-      // 当前周期提交的工时（使用新的匹配逻辑）
-      const currentPeriodEntries = submittedEntries.filter(e => 
-        matchUserEntry(e, user) && 
-        e.date >= start && 
-        e.date <= end
-      );
-      const submittedHours = currentPeriodEntries.reduce((sum, e) => sum + e.hours, 0);
+      const userNameLower = user.userName.toLowerCase();
+      const userHoursData = dataBasedUserHours[userNameLower] || { monthlyHours: {} };
       
-      // 获取用户的请假天数
-      const userLeaveRecords = leaveRecords.filter(r => 
-        r.userId === user.id &&
-        r.startDate <= end &&
-        r.endDate >= start
-      );
-      const leaveDays = userLeaveRecords.reduce((sum, r) => sum + r.days, 0);
+      // 获取所有月份的工时数据
+      const allMonths = Object.keys(userHoursData.monthlyHours);
       
-      // 计算历史平均工时（排除当前周期）
-      const historicalEntries = submittedEntries.filter(e => 
-        matchUserEntry(e, user) && 
-        e.date < start
-      );
+      // 当前周期的月份范围
+      const currentPeriodMonths: string[] = [];
+      const tempDate = new Date(startDate);
+      while (tempDate <= endDate) {
+        const monthStr = `${tempDate.getFullYear()}-${String(tempDate.getMonth() + 1).padStart(2, '0')}`;
+        currentPeriodMonths.push(monthStr);
+        tempDate.setMonth(tempDate.getMonth() + 1);
+      }
       
-      // 按月分组计算历史月均
-      const monthlyHours: { [key: string]: number } = {};
-      historicalEntries.forEach(e => {
-        const month = e.date.substring(0, 7);
-        monthlyHours[month] = (monthlyHours[month] || 0) + e.hours;
+      // 当前周期提交的工时
+      const submittedHours = currentPeriodMonths.reduce((sum, month) => {
+        return sum + (userHoursData.monthlyHours[month] || 0);
+      }, 0);
+      
+      // 历史月份（排除当前周期）
+      const historicalMonths = allMonths.filter(month => {
+        const [year, mon] = month.split('-').map(Number);
+        const monthDate = new Date(year, mon - 1, 1);
+        return monthDate < startDate;
       });
       
-      const monthlyValues = Object.values(monthlyHours);
-      const historicalAvgHours = monthlyValues.length > 0 
-        ? monthlyValues.reduce((sum, v) => sum + v, 0) / monthlyValues.length 
+      // 计算历史月均
+      const historicalValues = historicalMonths.map(month => userHoursData.monthlyHours[month] || 0);
+      const historicalAvgHours = historicalValues.length > 0 
+        ? historicalValues.reduce((sum, v) => sum + v, 0) / historicalValues.length 
         : 0;
-      const historicalStdDev = monthlyValues.length > 1 
-        ? calculateStdDev(monthlyValues, historicalAvgHours) 
+      const historicalStdDev = historicalValues.length > 1 
+        ? calculateStdDev(historicalValues, historicalAvgHours) 
         : 0;
+      
+      // 获取用户的请假天数（从系统用户匹配）
+      const systemUser = checkableUsers.find(u => 
+        (u.name || u.username).toLowerCase() === userNameLower
+      );
+      const userLeaveRecords = systemUser ? leaveRecords.filter(r => 
+        r.userId === systemUser.id &&
+        r.startDate <= end &&
+        r.endDate >= start
+      ) : [];
+      const leaveDays = userLeaveRecords.reduce((sum, r) => sum + r.days, 0);
       
       // 计算当前周期应有的工作日数
       let workdays = 0;
-      const region = user.region || 'CN';
+      const region = systemUser?.region || 'CN';
       const currentDate = new Date(startDate);
       while (currentDate <= endDate) {
         const year = currentDate.getFullYear();
@@ -461,19 +494,11 @@ export function AnomalyDetectionTab({ data }: AnomalyDetectionTabProps) {
         }
       }
       
-      // 获取组信息（仅投资法务中心）
-      let group: string | undefined;
-      if (submissionTeam === '投资法务中心') {
-        // 从工时记录中获取Source Path作为组信息
-        const userEntry = currentPeriodEntries.find(e => e.data?.sourcePath);
-        group = userEntry?.data?.sourcePath as string | undefined;
-      }
-      
       return {
-        userId: user.id,
-        userName: user.name || user.username,
-        team: user.team || '',
-        group,
+        userId: systemUser?.id || `data-user-${userNameLower}`,
+        userName: user.userName,
+        team: user.team,
+        group: user.group || userHoursData.group,
         submittedHours,
         historicalAvgHours,
         historicalStdDev,
@@ -486,7 +511,7 @@ export function AnomalyDetectionTab({ data }: AnomalyDetectionTabProps) {
       const statusOrder = { missing: 0, anomaly: 1, warning: 2, normal: 3 };
       return statusOrder[a.status] - statusOrder[b.status];
     });
-  }, [checkableUsers, submissionTeam, entries, leaveRecords, getDateRange]);
+  }, [data, dataBasedUserHours, checkableUsers, submissionTeam, leaveRecords, getDateRange]);
 
   // 统计汇总
   const submissionStats = useMemo(() => {
@@ -506,6 +531,27 @@ export function AnomalyDetectionTab({ data }: AnomalyDetectionTabProps) {
     return Array.from({ length: 5 }, (_, i) => (currentYear - 2 + i).toString());
   }, []);
 
+  // 计算年度预测汇总 - 必须在条件返回之前调用
+  const yearlyStats = useMemo(() => {
+    const yearlyForecast = forecastData.yearlyForecast;
+    if (!yearlyForecast || yearlyForecast.length === 0) return null;
+    
+    const selectedForecasts = yearlyForecast.slice(0, forecastMonths);
+    const totalForecast = selectedForecasts.reduce((sum, f) => sum + f.forecast, 0);
+    const avgForecast = totalForecast / selectedForecasts.length;
+    const totalUpperBound = selectedForecasts.reduce((sum, f) => sum + f.upperBound, 0);
+    const totalLowerBound = selectedForecasts.reduce((sum, f) => sum + f.lowerBound, 0);
+    
+    return {
+      totalForecast,
+      avgForecast,
+      totalUpperBound,
+      totalLowerBound,
+      monthCount: selectedForecasts.length,
+    };
+  }, [forecastData.yearlyForecast, forecastMonths]);
+
+  // 条件返回 - 所有 hooks 已在此之前调用
   if (!data || data.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-neutral-500">
@@ -532,25 +578,6 @@ export function AnomalyDetectionTab({ data }: AnomalyDetectionTabProps) {
   }
 
   const { prediction, stats, yearlyForecast } = forecastData;
-
-  // 计算年度预测汇总
-  const yearlyStats = useMemo(() => {
-    if (!yearlyForecast || yearlyForecast.length === 0) return null;
-    
-    const selectedForecasts = yearlyForecast.slice(0, forecastMonths);
-    const totalForecast = selectedForecasts.reduce((sum, f) => sum + f.forecast, 0);
-    const avgForecast = totalForecast / selectedForecasts.length;
-    const totalUpperBound = selectedForecasts.reduce((sum, f) => sum + f.upperBound, 0);
-    const totalLowerBound = selectedForecasts.reduce((sum, f) => sum + f.lowerBound, 0);
-    
-    return {
-      totalForecast,
-      avgForecast,
-      totalUpperBound,
-      totalLowerBound,
-      monthCount: selectedForecasts.length,
-    };
-  }, [yearlyForecast, forecastMonths]);
 
   return (
     <div className="space-y-8">
@@ -614,13 +641,13 @@ export function AnomalyDetectionTab({ data }: AnomalyDetectionTabProps) {
           <CardContent>
             <div className="text-3xl font-bold text-blue-900">
               {forecastMonths === 1 
-                ? prediction?.value.toFixed(0) 
-                : yearlyStats?.totalForecast.toFixed(0)}
+                ? (prediction?.value?.toFixed(0) ?? '-')
+                : (yearlyStats?.totalForecast?.toFixed(0) ?? '-')}
             </div>
             <p className="text-xs text-blue-600 mt-1 font-medium">
               {forecastMonths === 1 
-                ? prediction?.month 
-                : `${yearlyForecast[0]?.month} - ${yearlyForecast[forecastMonths - 1]?.month}`}
+                ? (prediction?.month ?? '-')
+                : `${yearlyForecast[0]?.month ?? '-'} - ${yearlyForecast[forecastMonths - 1]?.month ?? '-'}`}
             </p>
           </CardContent>
         </Card>
@@ -635,13 +662,13 @@ export function AnomalyDetectionTab({ data }: AnomalyDetectionTabProps) {
           <CardContent>
             <div className="text-2xl font-bold text-emerald-900">
               {forecastMonths === 1 
-                ? `${prediction?.lowerBound.toFixed(0)} - ${prediction?.upperBound.toFixed(0)}`
-                : `${yearlyStats?.totalLowerBound.toFixed(0)} - ${yearlyStats?.totalUpperBound.toFixed(0)}`}
+                ? `${prediction?.lowerBound?.toFixed(0) ?? '-'} - ${prediction?.upperBound?.toFixed(0) ?? '-'}`
+                : `${yearlyStats?.totalLowerBound?.toFixed(0) ?? '-'} - ${yearlyStats?.totalUpperBound?.toFixed(0) ?? '-'}`}
             </div>
             <p className="text-xs text-emerald-600 mt-1 font-medium">
               区间宽度: {forecastMonths === 1 
-                ? (prediction ? (prediction.upperBound - prediction.lowerBound).toFixed(0) : 0)
-                : (yearlyStats ? (yearlyStats.totalUpperBound - yearlyStats.totalLowerBound).toFixed(0) : 0)} 小时
+                ? (prediction ? (prediction.upperBound - prediction.lowerBound).toFixed(0) : '-')
+                : (yearlyStats ? (yearlyStats.totalUpperBound - yearlyStats.totalLowerBound).toFixed(0) : '-')} 小时
             </p>
           </CardContent>
         </Card>
@@ -654,9 +681,9 @@ export function AnomalyDetectionTab({ data }: AnomalyDetectionTabProps) {
             </svg>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-amber-900">{stats?.mean.toFixed(0)}</div>
+            <div className="text-3xl font-bold text-amber-900">{stats?.mean?.toFixed(0) ?? '-'}</div>
             <p className="text-xs text-amber-600 mt-1 font-medium">
-              标准差: ±{stats?.stdDev.toFixed(0)}
+              标准差: ±{stats?.stdDev?.toFixed(0) ?? '-'}
             </p>
           </CardContent>
         </Card>
@@ -784,12 +811,14 @@ export function AnomalyDetectionTab({ data }: AnomalyDetectionTabProps) {
               />
               
               {/* 历史均值参考线 */}
-              <ReferenceLine 
-                y={stats?.mean} 
-                stroke="#94a3b8" 
-                strokeDasharray="5 5" 
-                label={{ value: `均值: ${stats?.mean.toFixed(0)}`, position: 'right', fill: '#64748b', fontSize: 11 }}
-              />
+              {stats?.mean != null && (
+                <ReferenceLine 
+                  y={stats.mean} 
+                  stroke="#94a3b8" 
+                  strokeDasharray="5 5" 
+                  label={{ value: `均值: ${stats.mean.toFixed(0)}`, position: 'right', fill: '#64748b', fontSize: 11 }}
+                />
+              )}
               
               {/* 实际工时柱状图 */}
               <Bar 
@@ -888,113 +917,117 @@ export function AnomalyDetectionTab({ data }: AnomalyDetectionTabProps) {
       )}
 
       {/* 预测方法详情 */}
-      <div className="grid gap-4 md:grid-cols-3 animate-fade-in-up">
-        <Card className="card-premium">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-neutral-700 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-              线性回归预测
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-neutral-900">{prediction.linearForecast.toFixed(0)}</div>
-            <p className="text-xs text-neutral-500 mt-2">
-              基于历史趋势的线性外推，权重 40%
-            </p>
-            <div className="mt-3 pt-3 border-t border-neutral-100">
-              <div className="flex justify-between text-xs">
-                <span className="text-neutral-500">斜率</span>
-                <span className="font-medium text-neutral-700">{stats?.slope.toFixed(2)}/月</span>
+      {prediction && (
+        <div className="grid gap-4 md:grid-cols-3 animate-fade-in-up">
+          <Card className="card-premium">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold text-neutral-700 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                线性回归预测
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-neutral-900">{prediction.linearForecast.toFixed(0)}</div>
+              <p className="text-xs text-neutral-500 mt-2">
+                基于历史趋势的线性外推，权重 40%
+              </p>
+              <div className="mt-3 pt-3 border-t border-neutral-100">
+                <div className="flex justify-between text-xs">
+                  <span className="text-neutral-500">斜率</span>
+                  <span className="font-medium text-neutral-700">{stats?.slope?.toFixed(2) ?? '-'}/月</span>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card className="card-premium">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-neutral-700 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              移动平均预测
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-neutral-900">{prediction.maForecast.toFixed(0)}</div>
-            <p className="text-xs text-neutral-500 mt-2">
-              近3个月移动平均，权重 35%
-            </p>
-            <div className="mt-3 pt-3 border-t border-neutral-100">
-              <div className="flex justify-between text-xs">
-                <span className="text-neutral-500">窗口大小</span>
-                <span className="font-medium text-neutral-700">3 个月</span>
+          <Card className="card-premium">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold text-neutral-700 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                移动平均预测
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-neutral-900">{prediction.maForecast.toFixed(0)}</div>
+              <p className="text-xs text-neutral-500 mt-2">
+                近3个月移动平均，权重 35%
+              </p>
+              <div className="mt-3 pt-3 border-t border-neutral-100">
+                <div className="flex justify-between text-xs">
+                  <span className="text-neutral-500">窗口大小</span>
+                  <span className="font-medium text-neutral-700">3 个月</span>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card className="card-premium">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-neutral-700 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-              指数平滑预测
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-neutral-900">{prediction.esForecast.toFixed(0)}</div>
-            <p className="text-xs text-neutral-500 mt-2">
-              加权历史数据，权重 25%
-            </p>
-            <div className="mt-3 pt-3 border-t border-neutral-100">
-              <div className="flex justify-between text-xs">
-                <span className="text-neutral-500">平滑系数 α</span>
-                <span className="font-medium text-neutral-700">0.3</span>
+          <Card className="card-premium">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold text-neutral-700 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                指数平滑预测
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-neutral-900">{prediction.esForecast.toFixed(0)}</div>
+              <p className="text-xs text-neutral-500 mt-2">
+                加权历史数据，权重 25%
+              </p>
+              <div className="mt-3 pt-3 border-t border-neutral-100">
+                <div className="flex justify-between text-xs">
+                  <span className="text-neutral-500">平滑系数 α</span>
+                  <span className="font-medium text-neutral-700">0.3</span>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* 预测维度底部汇总卡片 */}
-      <Card className="card-premium animate-fade-in-up bg-gradient-to-r from-slate-50 to-blue-50/30 border-slate-200">
-        <CardContent className="py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-8">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
-                  <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
+      {(stats || prediction) && (
+        <Card className="card-premium animate-fade-in-up bg-gradient-to-r from-slate-50 to-blue-50/30 border-slate-200">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-8">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-xs text-neutral-500 font-medium">历史数据</div>
+                    <div className="text-lg font-bold text-neutral-900">{stats?.monthCount ?? 0} 个月</div>
+                  </div>
                 </div>
+                <div className="w-px h-10 bg-neutral-200"></div>
                 <div>
-                  <div className="text-xs text-neutral-500 font-medium">历史数据</div>
-                  <div className="text-lg font-bold text-neutral-900">{stats?.monthCount} 个月</div>
+                  <div className="text-xs text-neutral-500 font-medium">历史月均工时</div>
+                  <div className="text-lg font-bold text-neutral-900">{stats?.mean?.toFixed(0) ?? '-'} <span className="text-sm font-normal text-neutral-500">小时</span></div>
+                </div>
+                <div className="w-px h-10 bg-neutral-200"></div>
+                <div>
+                  <div className="text-xs text-neutral-500 font-medium">波动范围</div>
+                  <div className="text-lg font-bold text-neutral-900">{stats?.min?.toFixed(0) ?? '-'} - {stats?.max?.toFixed(0) ?? '-'} <span className="text-sm font-normal text-neutral-500">小时</span></div>
+                </div>
+                <div className="w-px h-10 bg-neutral-200"></div>
+                <div>
+                  <div className="text-xs text-neutral-500 font-medium">模型拟合度 R²</div>
+                  <div className="text-lg font-bold text-neutral-900">{prediction ? (prediction.r2 * 100).toFixed(1) : '-'}%</div>
                 </div>
               </div>
-              <div className="w-px h-10 bg-neutral-200"></div>
-              <div>
-                <div className="text-xs text-neutral-500 font-medium">历史月均工时</div>
-                <div className="text-lg font-bold text-neutral-900">{stats?.mean.toFixed(0)} <span className="text-sm font-normal text-neutral-500">小时</span></div>
-              </div>
-              <div className="w-px h-10 bg-neutral-200"></div>
-              <div>
-                <div className="text-xs text-neutral-500 font-medium">波动范围</div>
-                <div className="text-lg font-bold text-neutral-900">{stats?.min.toFixed(0)} - {stats?.max.toFixed(0)} <span className="text-sm font-normal text-neutral-500">小时</span></div>
-              </div>
-              <div className="w-px h-10 bg-neutral-200"></div>
-              <div>
-                <div className="text-xs text-neutral-500 font-medium">模型拟合度 R²</div>
-                <div className="text-lg font-bold text-neutral-900">{(prediction.r2 * 100).toFixed(1)}%</div>
+              <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-neutral-200">
+                <span className={`w-2 h-2 rounded-full ${stats?.slope && stats.slope > 0 ? 'bg-emerald-500' : stats?.slope && stats.slope < 0 ? 'bg-rose-500' : 'bg-neutral-400'}`}></span>
+                <span className="text-sm font-medium text-neutral-700">
+                  趋势: <span className={stats?.slope && stats.slope > 0 ? 'text-emerald-600' : stats?.slope && stats.slope < 0 ? 'text-rose-600' : 'text-neutral-600'}>{stats?.trend ?? '-'}</span>
+                </span>
+                <span className="text-xs text-neutral-400">({stats?.slope && stats.slope > 0 ? '+' : ''}{stats?.slope?.toFixed(1) ?? '-'}/月)</span>
               </div>
             </div>
-            <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-neutral-200">
-              <span className={`w-2 h-2 rounded-full ${stats?.slope && stats.slope > 0 ? 'bg-emerald-500' : stats?.slope && stats.slope < 0 ? 'bg-rose-500' : 'bg-neutral-400'}`}></span>
-              <span className="text-sm font-medium text-neutral-700">
-                趋势: <span className={stats?.slope && stats.slope > 0 ? 'text-emerald-600' : stats?.slope && stats.slope < 0 ? 'text-rose-600' : 'text-neutral-600'}>{stats?.trend}</span>
-              </span>
-              <span className="text-xs text-neutral-400">({stats?.slope && stats.slope > 0 ? '+' : ''}{stats?.slope.toFixed(1)}/月)</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
       </div>
       {/* 月度环比变化表 */}
       <Card className="card-premium animate-fade-in-up">

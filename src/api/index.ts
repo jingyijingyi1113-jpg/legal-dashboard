@@ -270,6 +270,18 @@ export const timesheetApi = {
   }>> => {
     return apiClient.get('/api/timesheet/stats');
   },
+
+  // 检查数据更新（轻量级接口）
+  checkUpdates: (lastCount?: number, lastUpdated?: string): Promise<ApiResponse<{
+    count: number;
+    last_updated: string | null;
+    has_updates: boolean;
+  }>> => {
+    const params: Record<string, string> = {};
+    if (lastCount !== undefined) params.last_count = String(lastCount);
+    if (lastUpdated) params.last_updated = lastUpdated;
+    return apiClient.get('/api/timesheet/check-updates', { params });
+  },
 };
 
 // ==================== 模板 API ====================

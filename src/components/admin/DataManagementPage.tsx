@@ -1,6 +1,7 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useTimesheet } from '@/contexts/TimesheetContext';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { timesheetApi } from '@/api';
 import type { TimesheetEntry, TemplateField, FieldOption } from '@/types/timesheet';
 import { getTeamTemplateByName, getChildOptions } from '@/config/teamTemplates';
 import { cn } from '@/lib/utils';
@@ -1113,8 +1114,61 @@ function ImportModal({ isOpen, onClose, onConfirm, previewData, fileName }: Impo
 }
 
 export function DataManagementPage() {
-  const { entries, deleteEntries, updateEntry, importEntries } = useTimesheet();
+  const { entries, deleteEntries, updateEntry, importEntries, refreshEntries } = useTimesheet();
   const { teams } = useOrganization();
+
+  // 自动刷新状态
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date>(new Date());
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastKnownCount, setLastKnownCount] = useState<number>(0);
+  const [lastKnownUpdated, setLastKnownUpdated] = useState<string>('');
+  const AUTO_REFRESH_INTERVAL = 10000; // 10秒检查一次
+
+  // 更新已知状态
+  useEffect(() => {
+    setLastKnownCount(entries.length);
+  }, [entries.length]);
+
+  // 手动刷新（强制全量刷新）
+  const handleManualRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshEntries();
+      setLastRefreshTime(new Date());
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refreshEntries]);
+
+  // 定时轮询（先检查是否有更新，有更新才全量刷新）
+  useEffect(() => {
+    if (!autoRefresh) return;
+    
+    const checkAndRefresh = async () => {
+      try {
+        // 先用轻量级接口检查是否有更新
+        const checkResult = await timesheetApi.checkUpdates(lastKnownCount, lastKnownUpdated);
+        
+        if (checkResult.success && checkResult.data) {
+          const { count, last_updated, has_updates } = checkResult.data;
+          
+          // 如果有更新，才进行全量刷新
+          if (has_updates || count !== lastKnownCount) {
+            await refreshEntries();
+            setLastRefreshTime(new Date());
+            setLastKnownCount(count);
+            if (last_updated) setLastKnownUpdated(last_updated);
+          }
+        }
+      } catch (error) {
+        console.error('检查更新失败:', error);
+      }
+    };
+
+    const interval = setInterval(checkAndRefresh, AUTO_REFRESH_INTERVAL);
+    return () => clearInterval(interval);
+  }, [autoRefresh, refreshEntries, lastKnownCount, lastKnownUpdated]);
 
   // 筛选状态
   const [selectedTeam, setSelectedTeam] = useState<string>('all');
@@ -1476,9 +1530,66 @@ export function DataManagementPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100">
       <div className="p-6 lg:p-8">
         {/* 页面标题 */}
-        <div className="mb-6">
-          <h1 className="text-4xl font-bold text-neutral-900 tracking-tight" style={{ fontWeight: 700 }}>数据管理</h1>
-          <p className="text-neutral-500 mt-2 text-sm font-medium">管理和导出工时数据</p>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl font-bold text-neutral-900 tracking-tight" style={{ fontWeight: 700 }}>数据管理</h1>
+            <p className="text-neutral-500 mt-2 text-sm font-medium">管理和导出工时数据</p>
+          </div>
+          
+          {/* 刷新控制区 */}
+          <div className="flex items-center gap-3">
+            {/* 上次刷新时间 */}
+            <span className="text-xs text-slate-400">
+              上次刷新: {lastRefreshTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
+            
+            {/* 自动刷新开关 */}
+            <button
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all",
+                autoRefresh 
+                  ? "bg-green-50 text-green-600 border border-green-200" 
+                  : "bg-slate-100 text-slate-500 border border-slate-200"
+              )}
+            >
+              <span className={cn(
+                "w-1.5 h-1.5 rounded-full",
+                autoRefresh ? "bg-green-500 animate-pulse" : "bg-slate-400"
+              )} />
+              自动刷新 {autoRefresh ? '开' : '关'}
+            </button>
+            
+            {/* 手动刷新按钮 */}
+            <button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition-all",
+                "bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow-md",
+                isRefreshing && "opacity-70 cursor-not-allowed"
+              )}
+            >
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                width="16" 
+                height="16" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+                className={cn(isRefreshing && "animate-spin")}
+              >
+                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                <path d="M16 16h5v5"/>
+              </svg>
+              {isRefreshing ? '刷新中...' : '刷新数据'}
+            </button>
+          </div>
         </div>
 
         {/* 筛选区域 - 平铺布局 */}
