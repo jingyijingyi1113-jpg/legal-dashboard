@@ -1,47 +1,14 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
-import type { Department, Team, DepartmentFormData, TeamFormData } from '@/types/organization';
-
-// 默认部门
-const DEFAULT_DEPARTMENT: Department = {
-  id: 'dept-001',
-  name: '合规交易部',
-  description: '负责公司合规与交易相关事务',
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-};
-
-// 默认团队
-const DEFAULT_TEAMS: Team[] = [
-  {
-    id: 'team-001',
-    name: '业务管理及合规检测中心',
-    departmentId: 'dept-001',
-    description: '负责业务管理和合规检测工作',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'team-002',
-    name: '投资法务中心',
-    departmentId: 'dept-001',
-    description: '负责投资相关法务工作',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'team-003',
-    name: '公司及国际金融事务中心',
-    departmentId: 'dept-001',
-    description: '负责公司及国际金融事务',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import type { Department, Team, Group, DepartmentFormData, TeamFormData, GroupFormData } from '@/types/organization';
+import { organizationApi } from '@/api/index';
 
 interface OrganizationContextType {
   departments: Department[];
   teams: Team[];
+  groups: Group[];
   loading: boolean;
+  // 刷新数据
+  refreshData: () => Promise<void>;
   // 部门操作
   addDepartment: (data: DepartmentFormData) => Promise<{ success: boolean; message: string }>;
   updateDepartment: (id: string, data: DepartmentFormData) => Promise<{ success: boolean; message: string }>;
@@ -50,158 +17,227 @@ interface OrganizationContextType {
   addTeam: (data: TeamFormData) => Promise<{ success: boolean; message: string }>;
   updateTeam: (id: string, data: TeamFormData) => Promise<{ success: boolean; message: string }>;
   deleteTeam: (id: string) => Promise<{ success: boolean; message: string }>;
+  // 小组操作
+  addGroup: (data: GroupFormData) => Promise<{ success: boolean; message: string }>;
+  updateGroup: (id: string, data: GroupFormData) => Promise<{ success: boolean; message: string }>;
+  deleteGroup: (id: string) => Promise<{ success: boolean; message: string }>;
   // 查询方法
   getDepartmentById: (id: string) => Department | undefined;
   getTeamById: (id: string) => Team | undefined;
+  getGroupById: (id: string) => Group | undefined;
   getTeamsByDepartment: (departmentId: string) => Team[];
+  getGroupsByTeam: (teamId: string) => Group[];
   getTeamNames: () => string[];
+  getGroupNames: (teamName?: string) => string[];
+  getTeamByName: (name: string) => Team | undefined;
 }
 
 const OrganizationContext = createContext<OrganizationContextType | undefined>(undefined);
 
-const STORAGE_KEYS = {
-  DEPARTMENTS: 'task_platform_departments',
-  TEAMS: 'task_platform_teams',
-};
-
 export function OrganizationProvider({ children }: { children: ReactNode }) {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 初始化：从 localStorage 加载数据
-  useEffect(() => {
-    const initOrganization = () => {
-      try {
-        // 加载部门列表
-        const storedDepartments = localStorage.getItem(STORAGE_KEYS.DEPARTMENTS);
-        let deptList: Department[] = storedDepartments ? JSON.parse(storedDepartments) : [];
-        
-        // 确保默认部门存在
-        if (deptList.length === 0) {
-          deptList = [DEFAULT_DEPARTMENT];
-          localStorage.setItem(STORAGE_KEYS.DEPARTMENTS, JSON.stringify(deptList));
-        }
-        setDepartments(deptList);
+  // 从后端加载数据
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [deptRes, teamRes, groupRes] = await Promise.all([
+        organizationApi.getDepartments(),
+        organizationApi.getTeams(),
+        organizationApi.getGroups(),
+      ]);
 
-        // 加载团队列表
-        const storedTeams = localStorage.getItem(STORAGE_KEYS.TEAMS);
-        let teamList: Team[] = storedTeams ? JSON.parse(storedTeams) : [];
-        
-        // 确保默认团队存在
-        if (teamList.length === 0) {
-          teamList = DEFAULT_TEAMS;
-          localStorage.setItem(STORAGE_KEYS.TEAMS, JSON.stringify(teamList));
-        }
-        setTeams(teamList);
-      } catch (error) {
-        console.error('Failed to initialize organization:', error);
-      } finally {
-        setLoading(false);
+      if (deptRes.success && deptRes.data) {
+        setDepartments(deptRes.data.map(d => ({
+          id: d.id,
+          name: d.name,
+          description: d.description,
+          createdAt: d.createdAt,
+          updatedAt: d.updatedAt,
+        })));
       }
-    };
 
-    initOrganization();
+      if (teamRes.success && teamRes.data) {
+        setTeams(teamRes.data.map(t => ({
+          id: t.id,
+          name: t.name,
+          departmentId: t.departmentId,
+          description: t.description,
+          leaderId: t.leaderId?.toString(),
+          createdAt: t.createdAt,
+          updatedAt: t.updatedAt,
+        })));
+      }
+
+      if (groupRes.success && groupRes.data) {
+        setGroups(groupRes.data.map(g => ({
+          id: g.id,
+          name: g.name,
+          teamId: g.teamId,
+          description: g.description,
+          leaderId: g.leaderId?.toString(),
+          createdAt: g.createdAt,
+          updatedAt: g.updatedAt,
+        })));
+      }
+    } catch (error) {
+      console.error('Failed to load organization data:', error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // 保存部门到 localStorage
-  const saveDepartments = (newDepartments: Department[]) => {
-    setDepartments(newDepartments);
-    localStorage.setItem(STORAGE_KEYS.DEPARTMENTS, JSON.stringify(newDepartments));
-  };
+  // 初始化加载
+  useEffect(() => {
+    // 检查是否已登录
+    const token = sessionStorage.getItem('auth_token');
+    if (token) {
+      loadData();
+    } else {
+      setLoading(false);
+    }
+  }, [loadData]);
 
-  // 保存团队到 localStorage
-  const saveTeams = (newTeams: Team[]) => {
-    setTeams(newTeams);
-    localStorage.setItem(STORAGE_KEYS.TEAMS, JSON.stringify(newTeams));
+  // 监听登录事件
+  useEffect(() => {
+    const handleLogin = () => {
+      loadData();
+    };
+    window.addEventListener('auth:login', handleLogin);
+    return () => window.removeEventListener('auth:login', handleLogin);
+  }, [loadData]);
+
+  const refreshData = async () => {
+    await loadData();
   };
 
   // 添加部门
   const addDepartment = async (data: DepartmentFormData): Promise<{ success: boolean; message: string }> => {
-    if (departments.some(d => d.name === data.name)) {
-      return { success: false, message: '部门名称已存在' };
+    try {
+      const res = await organizationApi.createDepartment(data);
+      if (res.success) {
+        await loadData();
+        return { success: true, message: '部门添加成功' };
+      }
+      return { success: false, message: res.message || '添加失败' };
+    } catch (error: any) {
+      return { success: false, message: error.message || '添加失败' };
     }
-
-    const newDepartment: Department = {
-      id: `dept-${Date.now()}`,
-      name: data.name,
-      description: data.description,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    saveDepartments([...departments, newDepartment]);
-    return { success: true, message: '部门添加成功' };
   };
 
   // 更新部门
   const updateDepartment = async (id: string, data: DepartmentFormData): Promise<{ success: boolean; message: string }> => {
-    const existingDept = departments.find(d => d.name === data.name && d.id !== id);
-    if (existingDept) {
-      return { success: false, message: '部门名称已存在' };
+    try {
+      const res = await organizationApi.updateDepartment(id, data);
+      if (res.success) {
+        await loadData();
+        return { success: true, message: '部门更新成功' };
+      }
+      return { success: false, message: res.message || '更新失败' };
+    } catch (error: any) {
+      return { success: false, message: error.message || '更新失败' };
     }
-
-    const updatedDepartments = departments.map(d =>
-      d.id === id
-        ? { ...d, ...data, updatedAt: new Date().toISOString() }
-        : d
-    );
-    saveDepartments(updatedDepartments);
-    return { success: true, message: '部门更新成功' };
   };
 
   // 删除部门
   const deleteDepartment = async (id: string): Promise<{ success: boolean; message: string }> => {
-    // 检查是否有团队属于该部门
-    const hasTeams = teams.some(t => t.departmentId === id);
-    if (hasTeams) {
-      return { success: false, message: '该部门下还有团队，请先删除团队' };
+    try {
+      const res = await organizationApi.deleteDepartment(id);
+      if (res.success) {
+        await loadData();
+        return { success: true, message: '部门删除成功' };
+      }
+      return { success: false, message: res.message || '删除失败' };
+    } catch (error: any) {
+      return { success: false, message: error.message || '删除失败' };
     }
-
-    saveDepartments(departments.filter(d => d.id !== id));
-    return { success: true, message: '部门删除成功' };
   };
 
   // 添加团队
   const addTeam = async (data: TeamFormData): Promise<{ success: boolean; message: string }> => {
-    if (teams.some(t => t.name === data.name)) {
-      return { success: false, message: '团队名称已存在' };
+    try {
+      const res = await organizationApi.createTeam(data);
+      if (res.success) {
+        await loadData();
+        return { success: true, message: '团队添加成功' };
+      }
+      return { success: false, message: res.message || '添加失败' };
+    } catch (error: any) {
+      return { success: false, message: error.message || '添加失败' };
     }
-
-    const newTeam: Team = {
-      id: `team-${Date.now()}`,
-      name: data.name,
-      departmentId: data.departmentId,
-      description: data.description,
-      leaderId: data.leaderId,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    saveTeams([...teams, newTeam]);
-    return { success: true, message: '团队添加成功' };
   };
 
   // 更新团队
   const updateTeam = async (id: string, data: TeamFormData): Promise<{ success: boolean; message: string }> => {
-    const existingTeam = teams.find(t => t.name === data.name && t.id !== id);
-    if (existingTeam) {
-      return { success: false, message: '团队名称已存在' };
+    try {
+      const res = await organizationApi.updateTeam(id, data);
+      if (res.success) {
+        await loadData();
+        return { success: true, message: '团队更新成功' };
+      }
+      return { success: false, message: res.message || '更新失败' };
+    } catch (error: any) {
+      return { success: false, message: error.message || '更新失败' };
     }
-
-    const updatedTeams = teams.map(t =>
-      t.id === id
-        ? { ...t, ...data, updatedAt: new Date().toISOString() }
-        : t
-    );
-    saveTeams(updatedTeams);
-    return { success: true, message: '团队更新成功' };
   };
 
   // 删除团队
   const deleteTeam = async (id: string): Promise<{ success: boolean; message: string }> => {
-    saveTeams(teams.filter(t => t.id !== id));
-    return { success: true, message: '团队删除成功' };
+    try {
+      const res = await organizationApi.deleteTeam(id);
+      if (res.success) {
+        await loadData();
+        return { success: true, message: '团队删除成功' };
+      }
+      return { success: false, message: res.message || '删除失败' };
+    } catch (error: any) {
+      return { success: false, message: error.message || '删除失败' };
+    }
+  };
+
+  // 添加小组
+  const addGroup = async (data: GroupFormData): Promise<{ success: boolean; message: string }> => {
+    try {
+      const res = await organizationApi.createGroup(data);
+      if (res.success) {
+        await loadData();
+        return { success: true, message: '小组添加成功' };
+      }
+      return { success: false, message: res.message || '添加失败' };
+    } catch (error: any) {
+      return { success: false, message: error.message || '添加失败' };
+    }
+  };
+
+  // 更新小组
+  const updateGroup = async (id: string, data: GroupFormData): Promise<{ success: boolean; message: string }> => {
+    try {
+      const res = await organizationApi.updateGroup(id, data);
+      if (res.success) {
+        await loadData();
+        return { success: true, message: '小组更新成功' };
+      }
+      return { success: false, message: res.message || '更新失败' };
+    } catch (error: any) {
+      return { success: false, message: error.message || '更新失败' };
+    }
+  };
+
+  // 删除小组
+  const deleteGroup = async (id: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const res = await organizationApi.deleteGroup(id);
+      if (res.success) {
+        await loadData();
+        return { success: true, message: '小组删除成功' };
+      }
+      return { success: false, message: res.message || '删除失败' };
+    } catch (error: any) {
+      return { success: false, message: error.message || '删除失败' };
+    }
   };
 
   // 根据ID获取部门
@@ -214,9 +250,19 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     return teams.find(t => t.id === id);
   };
 
+  // 根据ID获取小组
+  const getGroupById = (id: string): Group | undefined => {
+    return groups.find(g => g.id === id);
+  };
+
   // 获取某部门下的所有团队
   const getTeamsByDepartment = (departmentId: string): Team[] => {
     return teams.filter(t => t.departmentId === departmentId);
+  };
+
+  // 获取某团队下的所有小组
+  const getGroupsByTeam = (teamId: string): Group[] => {
+    return groups.filter(g => g.teamId === teamId);
   };
 
   // 获取所有团队名称列表
@@ -224,22 +270,48 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     return teams.map(t => t.name);
   };
 
+  // 获取小组名称列表（可选按团队名称筛选）
+  const getGroupNames = (teamName?: string): string[] => {
+    if (teamName) {
+      const team = teams.find(t => t.name === teamName);
+      if (team) {
+        return groups.filter(g => g.teamId === team.id).map(g => g.name);
+      }
+      return [];
+    }
+    return groups.map(g => g.name);
+  };
+
+  // 根据名称获取团队
+  const getTeamByName = (name: string): Team | undefined => {
+    return teams.find(t => t.name === name);
+  };
+
   return (
     <OrganizationContext.Provider
       value={{
         departments,
         teams,
+        groups,
         loading,
+        refreshData,
         addDepartment,
         updateDepartment,
         deleteDepartment,
         addTeam,
         updateTeam,
         deleteTeam,
+        addGroup,
+        updateGroup,
+        deleteGroup,
         getDepartmentById,
         getTeamById,
+        getGroupById,
         getTeamsByDepartment,
+        getGroupsByTeam,
         getTeamNames,
+        getGroupNames,
+        getTeamByName,
       }}
     >
       {children}

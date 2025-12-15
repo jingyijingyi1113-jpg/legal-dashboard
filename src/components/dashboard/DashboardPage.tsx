@@ -399,6 +399,7 @@ export function DashboardPage() {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [dataSource, setDataSource] = useState<'excel' | 'timesheet' | 'merged'>('excel');
   const printRef = useRef<HTMLDivElement>(null);
+  const isInitialLoadRef = useRef(true); // 跟踪是否是首次加载
   
   // 回到顶部按钮状态
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -425,11 +426,22 @@ export function DashboardPage() {
   // 获取工时记录数据
   const { getDashboardData, getSubmittedEntries, entries } = useTimesheet();
   
-  // 获取当前用户信息
-  const { user } = useAuth();
+  // 获取当前用户信息和用户列表（用于按地区折算时间系数）
+  const { user, users } = useAuth();
   
   // 加载工时记录弹窗状态
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
+  
+  // 保存筛选条件（用于数据更新时保持筛选）
+  const [timesheetFilters, setTimesheetFilters] = useState<{
+    team?: string;
+    group?: string;
+    period: 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'custom';
+    year?: string;
+    periodValue?: string;
+    startDate?: Date;
+    endDate?: Date;
+  } | null>(null);
   
   // Period filter states for TimeDimensionTab
   const [period, setPeriod] = useState<Period>('monthly');
@@ -437,6 +449,20 @@ export function DashboardPage() {
   const [selectedPeriodValue, setSelectedPeriodValue] = useState<string | null>(null);
   const [customStartDate, setCustomStartDate] = useState<Date | undefined>(undefined);
   const [customEndDate, setCustomEndDate] = useState<Date | undefined>(undefined);
+
+  // 切换标签页时重置时间筛选器到最新月份
+  useEffect(() => {
+    if (overviewSubTab === 'time-dimension' && monthlyData.length > 0) {
+      const latestMonth = monthlyData[monthlyData.length - 1].month;
+      const latestDate = parseMonthString(latestMonth);
+      if (latestDate) {
+        setSelectedDate(latestDate);
+        setSelectedYear(latestDate.getFullYear().toString());
+        setSelectedPeriodValue(latestDate.getMonth().toString());
+        setPeriod('monthly');
+      }
+    }
+  }, [overviewSubTab, activeTab]);
 
   // 从工时记录加载数据（带筛选条件）
   const loadFromTimesheetWithFilters = (filters: {
@@ -459,8 +485,14 @@ export function DashboardPage() {
     }
     
     // 按小组筛选（仅投资法务中心）
+    // Source Path 格式为 "工时统计-1组"，筛选器传入的是 "1组"
     if (filters.group) {
-      timesheetData = timesheetData.filter(row => row['Source Path'] === filters.group);
+      timesheetData = timesheetData.filter(row => {
+        const sourcePath = row['Source Path']?.toString() || '';
+        // 从 "工时统计-1组" 中提取 "1组" 进行匹配
+        const groupPart = sourcePath.replace('工时统计-', '').trim();
+        return groupPart === filters.group;
+      });
     }
     
     // 按时间筛选
@@ -502,6 +534,9 @@ export function DashboardPage() {
       return;
     }
     
+    // 保存筛选条件，用于数据更新时保持筛选
+    setTimesheetFilters(filters);
+    
     setRawData(timesheetData);
     processTimeData(timesheetData);
     setDataSource('timesheet');
@@ -513,13 +548,70 @@ export function DashboardPage() {
   };
 
   // 监听工时记录变化，自动更新（如果当前使用工时记录数据源）
+  // 使用保存的筛选条件来保持筛选状态
   useEffect(() => {
     if (dataSource === 'timesheet') {
       let timesheetData = getDashboardData();
       
-      // 如果是管理者角色，只显示其负责团队的数据
-      if (user?.role === 'manager' && user?.team) {
-        timesheetData = timesheetData.filter(row => row['团队'] === user.team);
+      // 如果有保存的筛选条件，应用筛选
+      if (timesheetFilters) {
+        const filters = timesheetFilters;
+        
+        // 按团队筛选
+        if (filters.team && filters.team !== 'all') {
+          timesheetData = timesheetData.filter(row => row['团队'] === filters.team);
+        } else if (user?.role === 'manager' && user?.team) {
+          // 管理者只能看自己团队
+          timesheetData = timesheetData.filter(row => row['团队'] === user.team);
+        }
+        
+        // 按小组筛选（仅投资法务中心）
+        if (filters.group) {
+          timesheetData = timesheetData.filter(row => {
+            const sourcePath = row['Source Path']?.toString() || '';
+            const groupPart = sourcePath.replace('工时统计-', '').trim();
+            return groupPart === filters.group;
+          });
+        }
+        
+        // 按时间筛选
+        if (filters.period !== 'custom' && filters.year) {
+          timesheetData = timesheetData.filter(row => {
+            const month = row.Month;
+            if (!month) return false;
+            const rowYear = month.split('-')[0];
+            if (rowYear !== filters.year) return false;
+            
+            if (filters.period === 'monthly' && filters.periodValue) {
+              const rowMonth = month.split('-')[1];
+              return rowMonth === filters.periodValue;
+            } else if (filters.period === 'quarterly' && filters.periodValue) {
+              const rowMonth = parseInt(month.split('-')[1], 10);
+              const quarter = Math.ceil(rowMonth / 3);
+              return `Q${quarter}` === filters.periodValue;
+            } else if (filters.period === 'semiannually' && filters.periodValue) {
+              const rowMonth = parseInt(month.split('-')[1], 10);
+              const half = rowMonth <= 6 ? 'H1' : 'H2';
+              return half === filters.periodValue;
+            }
+            return true; // annually - 只筛选年份
+          });
+        } else if (filters.period === 'custom' && filters.startDate && filters.endDate) {
+          timesheetData = timesheetData.filter(row => {
+            const month = row.Month;
+            if (!month) return false;
+            const [year, mon] = month.split('-').map(Number);
+            const rowDate = new Date(year, mon - 1);
+            const startMonth = new Date(filters.startDate!.getFullYear(), filters.startDate!.getMonth());
+            const endMonth = new Date(filters.endDate!.getFullYear(), filters.endDate!.getMonth());
+            return rowDate >= startMonth && rowDate <= endMonth;
+          });
+        }
+      } else {
+        // 没有筛选条件时，如果是管理者角色，只显示其负责团队的数据
+        if (user?.role === 'manager' && user?.team) {
+          timesheetData = timesheetData.filter(row => row['团队'] === user.team);
+        }
       }
       
       if (timesheetData.length > 0) {
@@ -527,7 +619,7 @@ export function DashboardPage() {
         processTimeData(timesheetData);
       }
     }
-  }, [entries, dataSource, user]);
+  }, [entries, dataSource, user, timesheetFilters]);
 
   // 获取已提交工时记录数量（管理者只看到自己团队的）
   const submittedCount = useMemo(() => {
@@ -695,7 +787,18 @@ export function DashboardPage() {
   };
 
   const processTimeData = (data: any[]) => {
-    const monthlyAgg: { [key: string]: { [key: string]: { hours: number; users: Set<string> } } } = {};
+    // 创建用户名到地区的映射（用于按人员地区折算时间系数）
+    const userRegionMap = new Map<string, 'CN' | 'HK' | 'OTHER'>();
+    users.forEach(u => {
+      if (u.name) {
+        userRegionMap.set(normalizeCategoryDisplay(u.name), u.region || 'CN');
+      }
+      if (u.username) {
+        userRegionMap.set(normalizeCategoryDisplay(u.username), u.region || 'CN');
+      }
+    });
+
+    const monthlyAgg: { [key: string]: { [key: string]: { hours: number; users: Set<string>; userHours: Map<string, number> } } } = {};
 
     data.forEach(item => {
         if (item.Month && item.Name) {
@@ -704,16 +807,21 @@ export function DashboardPage() {
             if (!month) return;
             
             const team = item['团队'] || 'Unknown';
+            const userName = normalizeCategoryDisplay(item.Name?.toString());
+            const hours = Number(item['Hours']) || 0;
 
             if (!monthlyAgg[month]) {
                 monthlyAgg[month] = {};
             }
             if (!monthlyAgg[month][team]) {
-                monthlyAgg[month][team] = { hours: 0, users: new Set() };
+                monthlyAgg[month][team] = { hours: 0, users: new Set(), userHours: new Map() };
             }
-            monthlyAgg[month][team].hours += Number(item['Hours']) || 0;
-            const name = normalizeCategoryDisplay(item.Name?.toString());
-            monthlyAgg[month][team].users.add(name);
+            monthlyAgg[month][team].hours += hours;
+            monthlyAgg[month][team].users.add(userName);
+            
+            // 累计每个用户的工时
+            const currentUserHours = monthlyAgg[month][team].userHours.get(userName) || 0;
+            monthlyAgg[month][team].userHours.set(userName, currentUserHours + hours);
         }
     });
 
@@ -725,10 +833,11 @@ export function DashboardPage() {
         const monthNum = date.getMonth() + 1;
         const cnWorkdays = getWorkdaysInMonth(year, monthNum, 'CN');
         const hkWorkdays = getWorkdaysInMonth(year, monthNum, 'HK');
+        const otherWorkdays = getWorkdaysInMonth(year, monthNum, 'OTHER');
 
         let totalHours = 0;
-        let departmentAvgHours = 0;
-        let contributingTeams = 0;
+        let totalAdjustedHours = 0;
+        let totalUserCount = 0;
 
         const teamsData = monthlyAgg[month];
         const allUsers = new Set<string>();
@@ -738,22 +847,35 @@ export function DashboardPage() {
             totalHours += teamData.hours;
             teamData.users.forEach(user => allUsers.add(user));
 
-            let timeCoefficient = 1;
-            if (team === '投资法务中心') {
-                timeCoefficient = cnWorkdays > 0 ? 20.83 / cnWorkdays : 0;
-            } else if (team === '公司及国际金融事务中心') {
-                timeCoefficient = hkWorkdays > 0 ? 20.83 / hkWorkdays : 0;
-            }
-
-            if (teamData.users.size > 0 && timeCoefficient > 0) {
-                const teamAvgHours = (teamData.hours / teamData.users.size) * timeCoefficient;
-                departmentAvgHours += teamAvgHours;
-                contributingTeams++;
-            }
+            // 按每个用户的地区分别计算折算后的工时
+            teamData.userHours.forEach((userHours, userName) => {
+                // 优先使用用户配置的地区，如果找不到则根据团队回退
+                let userRegion: 'CN' | 'HK' | 'OTHER' = userRegionMap.get(userName) as 'CN' | 'HK' | 'OTHER';
+                if (!userRegion) {
+                    // 回退方案：根据团队确定地区
+                    if (team === '公司及国际金融事务中心') {
+                        userRegion = 'HK';
+                    } else {
+                        // 投资法务中心及其他团队默认使用中国内地
+                        userRegion = 'CN';
+                    }
+                }
+                
+                let workdays = cnWorkdays;
+                if (userRegion === 'HK') {
+                    workdays = hkWorkdays;
+                } else if (userRegion === 'OTHER') {
+                    workdays = otherWorkdays;
+                }
+                
+                const timeCoefficient = workdays > 0 ? 20.83 / workdays : 0;
+                totalAdjustedHours += userHours * timeCoefficient;
+                totalUserCount++;
+            });
         }
 
         const totalActiveUsers = allUsers.size;
-        const avgHoursPerUser = contributingTeams > 0 ? departmentAvgHours / contributingTeams : 0;
+        const avgHoursPerUser = totalUserCount > 0 ? totalAdjustedHours / totalUserCount : 0;
 
         return {
             month,
@@ -785,7 +907,8 @@ export function DashboardPage() {
     });
 
     setMonthlyData(finalData);
-    if (finalData.length > 0) {
+    // 只在首次加载时设置默认值
+    if (finalData.length > 0 && isInitialLoadRef.current) {
         const latestMonth = finalData[finalData.length - 1].month;
         const latestDate = parseMonthString(latestMonth);
         if (latestDate) {
@@ -793,6 +916,7 @@ export function DashboardPage() {
             setSelectedYear(latestDate.getFullYear().toString());
             setSelectedPeriodValue(latestDate.getMonth().toString());
         }
+        isInitialLoadRef.current = false;
     }
   };
 
@@ -1109,7 +1233,7 @@ export function DashboardPage() {
             </TabsContent>
         </Tabs>
       </TabsContent>
-  ), [overviewSubTab, rawData]);
+  ), [overviewSubTab, rawData, period, selectedYear, selectedPeriodValue, customStartDate, customEndDate, monthlyData, displayedData, availableYears]);
 
   return (
     <div className="min-h-screen section-gradient relative overflow-hidden">

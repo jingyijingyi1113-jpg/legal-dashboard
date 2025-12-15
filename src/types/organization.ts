@@ -18,6 +18,17 @@ export interface Team {
   updatedAt: string;
 }
 
+// 小组接口（团队下的子分组）
+export interface Group {
+  id: string;
+  name: string;
+  teamId: string;
+  description?: string;
+  leaderId?: string; // 小组负责人用户ID
+  createdAt: string;
+  updatedAt: string;
+}
+
 // 部门表单数据
 export interface DepartmentFormData {
   name: string;
@@ -32,9 +43,19 @@ export interface TeamFormData {
   leaderId?: string;
 }
 
+// 小组表单数据
+export interface GroupFormData {
+  name: string;
+  teamId: string;
+  description?: string;
+  leaderId?: string;
+}
+
 // 组织架构统计
 export interface OrganizationStats {
   totalDepartments: number;
   totalTeams: number;
+  totalGroups: number;
   teamsPerDepartment: Record<string, number>;
+  groupsPerTeam: Record<string, number>;
 }

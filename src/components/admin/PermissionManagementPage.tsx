@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import type { Department, Team } from '@/types/organization';
+import type { Department, Team, Group } from '@/types/organization';
 import type { UserRole, UserRegion } from '@/types/user';
 import { RoleLabels, RoleColors, RegionLabels, RegionColors } from '@/types/user';
 import { cn } from '@/lib/utils';
@@ -14,22 +14,29 @@ import * as XLSX from 'xlsx';
 const ROLES: UserRole[] = ['admin', 'user', 'manager', 'exporter'];
 const REGIONS: UserRegion[] = ['CN', 'HK', 'OTHER'];
 
-type TabType = 'users' | 'teams' | 'departments';
+type TabType = 'users' | 'teams' | 'groups' | 'departments';
 
 export function PermissionManagementPage() {
   const { user: currentUser, users, addUser, deleteUser, updateUserRole, updateUserRegion, updateUserField, importUsers } = useAuth();
   const {
     departments,
     teams,
+    groups,
     addDepartment,
     updateDepartment,
     deleteDepartment,
     addTeam,
     updateTeam,
     deleteTeam,
+    addGroup,
+    updateGroup,
+    deleteGroup,
     getDepartmentById,
     getTeamsByDepartment,
+    getGroupsByTeam,
     getTeamNames,
+    getGroupNames,
+    getTeamById,
   } = useOrganization();
 
   const [activeTab, setActiveTab] = useState<TabType>('users');
@@ -56,6 +63,13 @@ export function PermissionManagementPage() {
   const [editingTeamData, setEditingTeamData] = useState<Team | null>(null);
   const [teamForm, setTeamForm] = useState({ name: '', departmentId: '', description: '' });
   const [showDeleteTeamConfirm, setShowDeleteTeamConfirm] = useState<string | null>(null);
+
+  // 小组表单
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [editingGroupData, setEditingGroupData] = useState<Group | null>(null);
+  const [groupForm, setGroupForm] = useState({ name: '', teamId: '', description: '' });
+  const [showDeleteGroupConfirm, setShowDeleteGroupConfirm] = useState<string | null>(null);
+  const [editingGroup, setEditingGroup] = useState<string | null>(null);
 
   // 获取动态团队列表
   const TEAMS = getTeamNames();
@@ -267,6 +281,51 @@ export function PermissionManagementPage() {
     setShowDeleteTeamConfirm(null);
   };
 
+  // ========== 小组管理方法 ==========
+  const filteredGroups = groups.filter(g =>
+    g.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (g.description && g.description.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  const openGroupModal = (group?: Group) => {
+    if (group) {
+      setEditingGroupData(group);
+      setGroupForm({ name: group.name, teamId: group.teamId, description: group.description || '' });
+    } else {
+      setEditingGroupData(null);
+      // 默认选择投资法务中心
+      const defaultTeam = teams.find(t => t.name === '投资法务中心');
+      setGroupForm({ name: '', teamId: defaultTeam?.id || teams[0]?.id || '', description: '' });
+    }
+    setShowGroupModal(true);
+  };
+
+  const handleSaveGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    let result;
+    if (editingGroupData) {
+      result = await updateGroup(editingGroupData.id, groupForm);
+    } else {
+      result = await addGroup(groupForm);
+    }
+    showMessage(result.success ? 'success' : 'error', result.message);
+    if (result.success) {
+      setShowGroupModal(false);
+    }
+  };
+
+  const handleDeleteGroup = async (id: string) => {
+    const result = await deleteGroup(id);
+    showMessage(result.success ? 'success' : 'error', result.message);
+    setShowDeleteGroupConfirm(null);
+  };
+
+  const handleUpdateUserGroup = async (userId: string, group: string) => {
+    const result = await updateUserField(userId, 'group' as any, group);
+    showMessage(result.success ? 'success' : 'error', result.message);
+    setEditingGroup(null);
+  };
+
   // 权限检查
   if (currentUser?.role !== 'admin') {
     return (
@@ -293,6 +352,8 @@ export function PermissionManagementPage() {
         return { text: '添加用户', action: () => setShowAddUserModal(true) };
       case 'teams':
         return { text: '添加团队', action: () => openTeamModal() };
+      case 'groups':
+        return { text: '添加小组', action: () => openGroupModal() };
       case 'departments':
         return { text: '添加部门', action: () => openDeptModal() };
     }
@@ -429,13 +490,16 @@ export function PermissionManagementPage() {
           </Card>
           <Card className="card-premium">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-neutral-600">管理员</CardTitle>
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <CardTitle className="text-sm font-medium text-neutral-600">小组数量</CardTitle>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
               </svg>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-neutral-900">{users.filter(u => u.role === 'admin').length}</div>
+              <div className="text-2xl font-bold text-neutral-900">{groups.length}</div>
             </CardContent>
           </Card>
         </div>
@@ -465,6 +529,17 @@ export function PermissionManagementPage() {
             团队管理
           </button>
           <button
+            onClick={() => setActiveTab('groups')}
+            className={cn(
+              "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+              activeTab === 'groups'
+                ? "bg-white text-blue-600 shadow-sm"
+                : "text-slate-500 hover:text-slate-700 hover:bg-white/50"
+            )}
+          >
+            小组管理
+          </button>
+          <button
             onClick={() => setActiveTab('departments')}
             className={cn(
               "px-4 py-2 rounded-lg text-sm font-medium transition-all",
@@ -482,7 +557,7 @@ export function PermissionManagementPage() {
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold text-neutral-900">
-                {activeTab === 'users' ? '用户列表' : activeTab === 'teams' ? '团队列表' : '部门列表'}
+                {activeTab === 'users' ? '用户列表' : activeTab === 'teams' ? '团队列表' : activeTab === 'groups' ? '小组列表' : '部门列表'}
               </CardTitle>
               <div className="relative">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -509,6 +584,7 @@ export function PermissionManagementPage() {
                       <th className="text-left py-3 px-2 text-[11px] font-medium text-slate-500 uppercase tracking-wider">用户名</th>
                       <th className="text-left py-3 px-2 text-[11px] font-medium text-slate-500 uppercase tracking-wider">邮箱</th>
                       <th className="text-left py-3 px-2 text-[11px] font-medium text-slate-500 uppercase tracking-wider">团队</th>
+                      <th className="text-left py-3 px-2 text-[11px] font-medium text-slate-500 uppercase tracking-wider">小组</th>
                       <th className="text-left py-3 px-2 text-[11px] font-medium text-slate-500 uppercase tracking-wider">地区</th>
                       <th className="text-left py-3 px-2 text-[11px] font-medium text-slate-500 uppercase tracking-wider">角色</th>
                       <th className="text-left py-3 px-2 text-[11px] font-medium text-slate-500 uppercase tracking-wider">创建时间</th>
@@ -606,6 +682,62 @@ export function PermissionManagementPage() {
                             </Popover>
                           ) : (
                             <span className="text-slate-600 text-xs">{u.team || '-'}</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-2">
+                          {u.username !== 'admin' && u.team === '投资法务中心' ? (
+                            <Popover open={editingGroup === u.id} onOpenChange={(open) => setEditingGroup(open ? u.id : null)}>
+                              <PopoverTrigger asChild>
+                                <button className="text-slate-600 text-xs cursor-pointer hover:text-blue-500 transition-colors text-left">
+                                  {u.group || '-'}
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-40 p-1.5 bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-xl rounded-xl" align="start">
+                                <div className="space-y-0.5 max-h-64 overflow-y-auto">
+                                  <button
+                                    onClick={() => handleUpdateUserGroup(u.id, '')}
+                                    className={cn(
+                                      "w-full text-left px-3 py-2 text-xs rounded-lg transition-all",
+                                      !u.group ? "bg-amber-50 text-amber-600 font-medium" : "text-slate-600 hover:bg-slate-50"
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      {!u.group && <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
+                                      <span className={!u.group ? "" : "ml-[20px]"}>-</span>
+                                    </div>
+                                  </button>
+                                  <button
+                                    onClick={() => handleUpdateUserGroup(u.id, '全部')}
+                                    className={cn(
+                                      "w-full text-left px-3 py-2 text-xs rounded-lg transition-all",
+                                      u.group === '全部' ? "bg-amber-50 text-amber-600 font-medium" : "text-slate-600 hover:bg-slate-50"
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      {u.group === '全部' && <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
+                                      <span className={u.group === '全部' ? "" : "ml-[20px]"}>全部</span>
+                                    </div>
+                                  </button>
+                                  {getGroupNames(u.team).map(group => (
+                                    <button
+                                      key={group}
+                                      onClick={() => handleUpdateUserGroup(u.id, group)}
+                                      className={cn(
+                                        "w-full text-left px-3 py-2 text-xs rounded-lg transition-all",
+                                        u.group === group ? "bg-amber-50 text-amber-600 font-medium" : "text-slate-600 hover:bg-slate-50"
+                                      )}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        {u.group === group && <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
+                                        <span className={u.group === group ? "" : "ml-[20px]"}>{group}</span>
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              </PopoverContent>
+                            </Popover>
+                          ) : (
+                            <span className="text-slate-400 text-xs">{u.team === '投资法务中心' ? (u.group || '-') : '-'}</span>
                           )}
                         </td>
                         <td className="py-2.5 px-2">
@@ -782,6 +914,75 @@ export function PermissionManagementPage() {
               </div>
             )}
 
+            {/* 小组列表 */}
+            {activeTab === 'groups' && (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-100">
+                      <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase tracking-wider">小组名称</th>
+                      <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase tracking-wider">所属团队</th>
+                      <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase tracking-wider">描述</th>
+                      <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase tracking-wider">创建时间</th>
+                      <th className="text-right py-3 px-4 text-xs font-medium text-slate-500 uppercase tracking-wider">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredGroups.map((group) => (
+                      <tr key={group.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center text-amber-600">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                                <circle cx="9" cy="7" r="4" />
+                              </svg>
+                            </div>
+                            <span className="font-medium text-slate-800">{group.name}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="px-2 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-medium">
+                            {getTeamById(group.teamId)?.name || '-'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-slate-600">{group.description || '-'}</td>
+                        <td className="py-3 px-4 text-slate-500 text-sm">
+                          {new Date(group.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openGroupModal(group)}
+                              className="h-8 w-8 p-0 text-slate-400 hover:text-blue-500 hover:bg-blue-50"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                              </svg>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setShowDeleteGroupConfirm(group.id)}
+                              className="h-8 w-8 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
             {/* 部门列表 */}
             {activeTab === 'departments' && (
               <div className="overflow-x-auto">
@@ -854,58 +1055,224 @@ export function PermissionManagementPage() {
         </Card>
       </div>
 
-      {/* Add User Modal */}
+      {/* Add User Modal - Refined Design */}
       {showAddUserModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowAddUserModal(false)} />
-          <div className="relative z-10 w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl animate-fade-in-up">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <h2 className="text-lg font-semibold text-slate-800">添加用户</h2>
-              <button onClick={() => setShowAddUserModal(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop with subtle gradient */}
+          <div 
+            className="absolute inset-0 bg-gradient-to-br from-slate-900/60 via-slate-800/50 to-slate-900/60 backdrop-blur-md transition-opacity duration-300" 
+            onClick={() => setShowAddUserModal(false)} 
+          />
+          
+          {/* Modal Container */}
+          <div className="relative z-10 w-full max-w-lg bg-white rounded-3xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.3)] animate-fade-in-up overflow-hidden">
+            {/* Header with gradient accent */}
+            <div className="relative px-8 pt-8 pb-6">
+              {/* Decorative gradient bar */}
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500" />
+              
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <line x1="19" y1="8" x2="19" y2="14" />
+                      <line x1="22" y1="11" x2="16" y2="11" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-800 tracking-tight">添加新用户</h2>
+                    <p className="text-sm text-slate-500 mt-0.5">填写以下信息创建用户账户</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowAddUserModal(false)} 
+                  className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all duration-200 hover:rotate-90"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
             </div>
-            <form onSubmit={handleAddUser} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">用户名</label>
-                <Input value={newUserForm.username} onChange={(e) => setNewUserForm({ ...newUserForm, username: e.target.value })} className="w-full h-11 rounded-xl" required />
+            
+            {/* Form Content */}
+            <form onSubmit={handleAddUser} className="px-8 pb-8">
+              {/* Two-column grid for basic info */}
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="group">
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-600 mb-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                    用户名
+                  </label>
+                  <Input 
+                    value={newUserForm.username} 
+                    onChange={(e) => setNewUserForm({ ...newUserForm, username: e.target.value })} 
+                    placeholder="请输入用户名"
+                    className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 bg-slate-50/50 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 transition-all duration-200" 
+                    required 
+                  />
+                </div>
+                <div className="group">
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-600 mb-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                    密码
+                  </label>
+                  <Input 
+                    type="password" 
+                    value={newUserForm.password} 
+                    onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })} 
+                    placeholder="请输入密码"
+                    className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 bg-slate-50/50 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 transition-all duration-200" 
+                    required 
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">密码</label>
-                <Input type="password" value={newUserForm.password} onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })} className="w-full h-11 rounded-xl" required />
+              
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="group">
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-600 mb-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+                      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                    姓名
+                  </label>
+                  <Input 
+                    value={newUserForm.name} 
+                    onChange={(e) => setNewUserForm({ ...newUserForm, name: e.target.value })} 
+                    placeholder="请输入真实姓名"
+                    className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 bg-slate-50/50 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 transition-all duration-200" 
+                    required 
+                  />
+                </div>
+                <div className="group">
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-600 mb-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                      <polyline points="22,6 12,13 2,6" />
+                    </svg>
+                    邮箱
+                  </label>
+                  <Input 
+                    type="email" 
+                    value={newUserForm.email} 
+                    onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })} 
+                    placeholder="example@company.com"
+                    className="w-full h-12 px-4 rounded-xl border-2 border-slate-200 bg-slate-50/50 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 transition-all duration-200" 
+                    required 
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">姓名</label>
-                <Input value={newUserForm.name} onChange={(e) => setNewUserForm({ ...newUserForm, name: e.target.value })} className="w-full h-11 rounded-xl" required />
+              
+              {/* Full width team select */}
+              <div className="mb-4">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-600 mb-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                  所属团队
+                </label>
+                <div className="relative">
+                  <select 
+                    value={newUserForm.team} 
+                    onChange={(e) => setNewUserForm({ ...newUserForm, team: e.target.value })} 
+                    className="w-full h-12 px-4 pr-10 rounded-xl border-2 border-slate-200 bg-slate-50/50 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 appearance-none cursor-pointer text-slate-700" 
+                    required
+                  >
+                    <option value="" className="text-slate-400">请选择团队</option>
+                    {TEAMS.map(team => <option key={team} value={team}>{team}</option>)}
+                  </select>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">邮箱</label>
-                <Input type="email" value={newUserForm.email} onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })} className="w-full h-11 rounded-xl" required />
+              
+              {/* Two-column for region and role */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-600 mb-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="2" y1="12" x2="22" y2="12" />
+                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                    </svg>
+                    国家/地区
+                  </label>
+                  <div className="relative">
+                    <select 
+                      value={newUserForm.region} 
+                      onChange={(e) => setNewUserForm({ ...newUserForm, region: e.target.value as UserRegion })} 
+                      className="w-full h-12 px-4 pr-10 rounded-xl border-2 border-slate-200 bg-slate-50/50 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 appearance-none cursor-pointer text-slate-700"
+                    >
+                      {REGIONS.map(region => <option key={region} value={region}>{RegionLabels[region]}</option>)}
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-600 mb-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                    角色权限
+                  </label>
+                  <div className="relative">
+                    <select 
+                      value={newUserForm.role} 
+                      onChange={(e) => setNewUserForm({ ...newUserForm, role: e.target.value as UserRole })} 
+                      className="w-full h-12 px-4 pr-10 rounded-xl border-2 border-slate-200 bg-slate-50/50 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 appearance-none cursor-pointer text-slate-700"
+                    >
+                      {ROLES.map(role => <option key={role} value={role}>{RoleLabels[role]}</option>)}
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">团队</label>
-                <select value={newUserForm.team} onChange={(e) => setNewUserForm({ ...newUserForm, team: e.target.value })} className="w-full h-11 px-4 rounded-xl border border-slate-200" required>
-                  <option value="">请选择团队</option>
-                  {TEAMS.map(team => <option key={team} value={team}>{team}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">国家/地区</label>
-                <select value={newUserForm.region} onChange={(e) => setNewUserForm({ ...newUserForm, region: e.target.value as UserRegion })} className="w-full h-11 px-4 rounded-xl border border-slate-200">
-                  {REGIONS.map(region => <option key={region} value={region}>{RegionLabels[region]}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">角色</label>
-                <select value={newUserForm.role} onChange={(e) => setNewUserForm({ ...newUserForm, role: e.target.value as UserRole })} className="w-full h-11 px-4 rounded-xl border border-slate-200">
-                  {ROLES.map(role => <option key={role} value={role}>{RoleLabels[role]}</option>)}
-                </select>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <Button type="button" onClick={() => setShowAddUserModal(false)} variant="ghost" className="flex-1 h-11 rounded-xl border border-slate-200">取消</Button>
-                <Button type="submit" className="flex-1 h-11 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 text-white">添加</Button>
+              
+              {/* Action Buttons */}
+              <div className="flex gap-4 pt-2">
+                <Button 
+                  type="button" 
+                  onClick={() => setShowAddUserModal(false)} 
+                  variant="ghost" 
+                  className="flex-1 h-12 rounded-xl border-2 border-slate-200 text-slate-600 font-medium hover:bg-slate-50 hover:border-slate-300 transition-all duration-200"
+                >
+                  取消
+                </Button>
+                <Button 
+                  type="submit" 
+                  className="flex-1 h-12 rounded-xl bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-600 text-white font-medium shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <line x1="19" y1="8" x2="19" y2="14" />
+                    <line x1="22" y1="11" x2="16" y2="11" />
+                  </svg>
+                  添加用户
+                </Button>
               </div>
             </form>
           </div>
@@ -1116,6 +1483,107 @@ export function PermissionManagementPage() {
               <div className="flex gap-3">
                 <Button onClick={() => setShowDeleteTeamConfirm(null)} variant="ghost" className="flex-1 h-11 rounded-xl border-2 border-slate-200">取消</Button>
                 <Button onClick={() => handleDeleteTeam(showDeleteTeamConfirm)} className="flex-1 h-11 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 text-white">确认删除</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Group Modal */}
+      {showGroupModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowGroupModal(false)} />
+          <div className="relative z-10 w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up">
+            <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-transparent pointer-events-none" />
+            <div className="relative flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/25">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-800">{editingGroupData ? '编辑小组' : '添加小组'}</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">{editingGroupData ? '修改小组信息' : '创建新的小组'}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowGroupModal(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all duration-200">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={handleSaveGroup} className="p-6 space-y-5">
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  小组名称 <span className="text-red-400">*</span>
+                </label>
+                <Input
+                  value={groupForm.name}
+                  onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })}
+                  placeholder="请输入小组名称"
+                  className="w-full h-12 px-4 rounded-xl border-2 border-slate-200"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  所属团队 <span className="text-red-400">*</span>
+                </label>
+                <select
+                  value={groupForm.teamId}
+                  onChange={(e) => setGroupForm({ ...groupForm, teamId: e.target.value })}
+                  className="w-full h-12 px-4 rounded-xl border-2 border-slate-200"
+                  required
+                >
+                  {teams.map(team => (
+                    <option key={team.id} value={team.id}>{team.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  描述 <span className="text-slate-400 text-xs font-normal">（可选）</span>
+                </label>
+                <textarea
+                  value={groupForm.description}
+                  onChange={(e) => setGroupForm({ ...groupForm, description: e.target.value })}
+                  className="w-full h-28 px-4 py-3 rounded-xl border-2 border-slate-200 resize-none focus:outline-none focus:border-amber-400 text-sm"
+                  placeholder="请输入小组描述..."
+                />
+              </div>
+              <div className="flex gap-3 pt-3">
+                <Button type="button" onClick={() => setShowGroupModal(false)} variant="ghost" className="flex-1 h-11 rounded-xl border-2 border-slate-200">取消</Button>
+                <Button type="submit" className="flex-1 h-11 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white">
+                  {editingGroupData ? '保存更改' : '创建小组'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Group Confirm */}
+      {showDeleteGroupConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowDeleteGroupConfirm(null)} />
+          <div className="relative z-10 w-full max-w-sm mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up">
+            <div className="relative p-6 text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg shadow-red-500/25">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-slate-800 mb-2">确认删除小组</h3>
+              <p className="text-slate-500 text-sm mb-6">删除后无法恢复，小组成员将失去归属</p>
+              <div className="flex gap-3">
+                <Button onClick={() => setShowDeleteGroupConfirm(null)} variant="ghost" className="flex-1 h-11 rounded-xl border-2 border-slate-200">取消</Button>
+                <Button onClick={() => handleDeleteGroup(showDeleteGroupConfirm)} className="flex-1 h-11 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 text-white">确认删除</Button>
               </div>
             </div>
           </div>

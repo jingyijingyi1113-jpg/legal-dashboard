@@ -31,6 +31,7 @@ def create_entry():
     hours = data.get('hours', 0)
     status = data.get('status', 'draft')
     entry_data = data.get('data', {})
+    user_group = data.get('user_group') or entry_data.get('userGroup')
     
     if not date:
         return jsonify({'success': False, 'message': '日期不能为空'}), 400
@@ -42,7 +43,8 @@ def create_entry():
         date=date,
         hours=hours,
         status=status,
-        data=entry_data
+        data=entry_data,
+        user_group=user_group
     )
     
     return jsonify({
@@ -150,6 +152,61 @@ def batch_submit():
         'success': True,
         'message': f'成功提交 {submitted} 条记录'
     })
+
+@timesheet_bp.route('/entries/batch-import', methods=['POST'])
+@token_required
+def batch_import():
+    """批量导入工时记录（管理员专用）"""
+    user = User.find_by_id(request.user_id)
+    if user['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足，仅管理员可批量导入'}), 403
+    
+    data = request.get_json()
+    entries = data.get('entries', [])
+    
+    print(f"[DEBUG] batch_import: 收到 {len(entries)} 条记录")
+    if entries:
+        print(f"[DEBUG] 第一条记录: {entries[0]}")
+    
+    if not entries:
+        return jsonify({'success': False, 'message': '没有可导入的数据'}), 400
+    
+    try:
+        # 批量插入
+        inserted = TimesheetEntry.batch_create(entries)
+        print(f"[DEBUG] batch_create 返回: {inserted}")
+        return jsonify({
+            'success': True,
+            'message': f'成功导入 {inserted} 条记录',
+            'count': inserted
+        })
+    except Exception as e:
+        print(f"[DEBUG] batch_import 异常: {str(e)}")
+        return jsonify({'success': False, 'message': f'导入失败: {str(e)}'}), 500
+
+@timesheet_bp.route('/entries/batch-delete', methods=['POST'])
+@token_required
+def batch_delete():
+    """批量删除工时记录（管理员专用）"""
+    user = User.find_by_id(request.user_id)
+    if user['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足，仅管理员可批量删除'}), 403
+    
+    data = request.get_json()
+    entry_ids = data.get('ids', [])
+    
+    if not entry_ids:
+        return jsonify({'success': False, 'message': '请选择要删除的记录'}), 400
+    
+    try:
+        deleted = TimesheetEntry.batch_delete(entry_ids)
+        return jsonify({
+            'success': True,
+            'message': f'成功删除 {deleted} 条记录',
+            'count': deleted
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'删除失败: {str(e)}'}), 500
 
 @timesheet_bp.route('/team-entries', methods=['GET'])
 @token_required

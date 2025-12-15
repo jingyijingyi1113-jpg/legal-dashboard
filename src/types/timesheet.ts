@@ -37,6 +37,7 @@ export interface TimesheetEntry {
   userName: string;
   teamId: string;
   teamName: string;
+  groupName?: string; // 小组名称
   date: string;
   hours: number;
   data: Record<string, string | number>; // 动态字段数据

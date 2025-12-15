@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { useAuth } from '@/contexts/AuthContext';
 
 type Period = 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'custom';
 type Option = { value: string; label: string };
@@ -2420,6 +2421,23 @@ const AverageMonthlyHourPerPersonChart = ({ teamData, onDataUpdate }: { teamData
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [dialogData, setDialogData] = useState<any[]>([]);
     const [dialogTitle, setDialogTitle] = useState('');
+    
+    // 获取用户列表用于按地区折算时间系数
+    const { users } = useAuth();
+    
+    // 创建用户名到地区的映射
+    const userRegionMap = useMemo(() => {
+        const map = new Map<string, 'CN' | 'HK' | 'OTHER'>();
+        users.forEach(u => {
+            if (u.name) {
+                map.set(normalizeCategoryDisplay(u.name), u.region || 'CN');
+            }
+            if (u.username) {
+                map.set(normalizeCategoryDisplay(u.username), u.region || 'CN');
+            }
+        });
+        return map;
+    }, [users]);
 
     // Handle save from DetailsDialog
     const handleSave = (updatedData: any[]) => {
@@ -2431,7 +2449,8 @@ const AverageMonthlyHourPerPersonChart = ({ teamData, onDataUpdate }: { teamData
     // Premium color palette for groups - high contrast colors
     const GROUP_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899'];
 
-    const monthlyHourPerPersonData: { [key: string]: { [key: string]: { hours: number, users: Set<string> } } } = {};
+    // 修改数据结构以支持按用户地区折算，同时记录团队信息用于回退
+    const monthlyHourPerPersonData: { [key: string]: { [key: string]: { userHours: Map<string, number>, users: Set<string>, userTeams: Map<string, string> } } } = {};
     const allSourcePaths = new Set<string>();
     
     teamData.forEach(row => {
@@ -2442,10 +2461,20 @@ const AverageMonthlyHourPerPersonChart = ({ teamData, onDataUpdate }: { teamData
             const monthKey = normalizeMonthString(row['Month']);
             if (monthKey) {
                 const hours = Number(row['Hours']) || 0;
+                const userName = normalizeCategoryDisplay(row['Name']?.toString());
+                const team = row['团队'] || '';
                 if (!monthlyHourPerPersonData[monthKey]) monthlyHourPerPersonData[monthKey] = {};
-                if (!monthlyHourPerPersonData[monthKey][sourcePath]) monthlyHourPerPersonData[monthKey][sourcePath] = { hours: 0, users: new Set() };
-                monthlyHourPerPersonData[monthKey][sourcePath].hours += hours;
-                monthlyHourPerPersonData[monthKey][sourcePath].users.add(row['Name']);
+                if (!monthlyHourPerPersonData[monthKey][sourcePath]) {
+                    monthlyHourPerPersonData[monthKey][sourcePath] = { userHours: new Map(), users: new Set(), userTeams: new Map() };
+                }
+                monthlyHourPerPersonData[monthKey][sourcePath].users.add(userName);
+                // 记录用户所属团队（用于回退）
+                if (team && !monthlyHourPerPersonData[monthKey][sourcePath].userTeams.has(userName)) {
+                    monthlyHourPerPersonData[monthKey][sourcePath].userTeams.set(userName, team);
+                }
+                // 累计每个用户的工时
+                const currentUserHours = monthlyHourPerPersonData[monthKey][sourcePath].userHours.get(userName) || 0;
+                monthlyHourPerPersonData[monthKey][sourcePath].userHours.set(userName, currentUserHours + hours);
             }
         }
     });
@@ -2453,13 +2482,47 @@ const AverageMonthlyHourPerPersonChart = ({ teamData, onDataUpdate }: { teamData
     const sourcePathList = Array.from(allSourcePaths).sort();
     const avgMonthlyHoursPerGroup = Object.entries(monthlyHourPerPersonData).map(([month, groupData]) => {
         const date = parseMonthString(month) || new Date();
-        const workdays = getWorkdaysInMonth(date.getFullYear(), date.getMonth() + 1, 'CN');
-        const timeCoefficient = workdays > 0 ? 20.83 / workdays : 0;
+        const year = date.getFullYear();
+        const monthNum = date.getMonth() + 1;
+        const cnWorkdays = getWorkdaysInMonth(year, monthNum, 'CN');
+        const hkWorkdays = getWorkdaysInMonth(year, monthNum, 'HK');
+        const otherWorkdays = getWorkdaysInMonth(year, monthNum, 'OTHER');
+        
         const monthEntry: any = { month };
         sourcePathList.forEach(sp => {
-             const group = groupData[sp];
-             if(group && group.users.size > 0) monthEntry[sp] = (group.hours / group.users.size) * timeCoefficient;
-             else monthEntry[sp] = 0;
+            const group = groupData[sp];
+            if (group && group.users.size > 0) {
+                // 按每个用户的地区分别计算折算后的工时
+                let totalAdjustedHours = 0;
+                let userCount = 0;
+                group.userHours.forEach((userHours, userName) => {
+                    // 优先使用用户配置的地区，如果找不到则根据团队回退
+                    let userRegion: 'CN' | 'HK' | 'OTHER' = userRegionMap.get(userName) as 'CN' | 'HK' | 'OTHER';
+                    if (!userRegion) {
+                        // 回退方案：根据团队确定地区
+                        const userTeam = group.userTeams.get(userName) || '';
+                        if (userTeam === '公司及国际金融事务中心') {
+                            userRegion = 'HK';
+                        } else {
+                            // 投资法务中心及其他团队默认使用中国内地
+                            userRegion = 'CN';
+                        }
+                    }
+                    
+                    let workdays = cnWorkdays;
+                    if (userRegion === 'HK') {
+                        workdays = hkWorkdays;
+                    } else if (userRegion === 'OTHER') {
+                        workdays = otherWorkdays;
+                    }
+                    const timeCoefficient = workdays > 0 ? 20.83 / workdays : 0;
+                    totalAdjustedHours += userHours * timeCoefficient;
+                    userCount++;
+                });
+                monthEntry[sp] = userCount > 0 ? totalAdjustedHours / userCount : 0;
+            } else {
+                monthEntry[sp] = 0;
+            }
         });
         return monthEntry;
     }).sort((a,b) => a.month.localeCompare(b.month));

@@ -7,6 +7,7 @@ from routes.auth import auth_bp
 from routes.timesheet import timesheet_bp
 from routes.template import template_bp
 from routes.hunyuan import hunyuan_bp
+from routes.organization import org_bp
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
@@ -20,6 +21,7 @@ app.register_blueprint(auth_bp, url_prefix='/api/auth')
 app.register_blueprint(timesheet_bp, url_prefix='/api/timesheet')
 app.register_blueprint(template_bp, url_prefix='/api')
 app.register_blueprint(hunyuan_bp, url_prefix='/api/hunyuan')
+app.register_blueprint(org_bp, url_prefix='/api/organization')
 
 # 健康检查
 @app.route('/api/health', methods=['GET'])

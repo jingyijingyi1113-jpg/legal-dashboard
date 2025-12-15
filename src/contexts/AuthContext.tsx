@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import type { User, UserRole, UserRegion, LoginFormData, RegisterFormData, ChangePasswordFormData } from '@/types/user';
-import { authApi } from '@/api';
+import { authApi, userApi } from '@/api';
 
 // API 模式开关 - 设置为 true 使用后端 API，false 使用 localStorage
 const USE_API = true;
@@ -98,7 +98,7 @@ interface AuthContextType {
   deleteUser: (userId: string) => Promise<{ success: boolean; message: string }>;
   updateUserRole: (userId: string, role: UserRole) => Promise<{ success: boolean; message: string }>;
   updateUserRegion: (userId: string, region: UserRegion) => Promise<{ success: boolean; message: string }>;
-  updateUserField: (userId: string, field: 'username' | 'email' | 'team', value: string) => Promise<{ success: boolean; message: string }>;
+  updateUserField: (userId: string, field: 'username' | 'email' | 'team' | 'group', value: string) => Promise<{ success: boolean; message: string }>;
   importUsers: (users: Omit<User, 'id' | 'createdAt' | 'updatedAt'>[]) => Promise<{ success: boolean; message: string; imported: number; failed: number }>;
 }
 
@@ -110,17 +110,31 @@ const STORAGE_KEYS = {
   AUTH_TOKEN: 'auth_token',
 };
 
+// 使用 sessionStorage 存储会话信息（每个窗口/标签页独立）
+// 使用 localStorage 存储用户列表（共享数据库）
+const sessionStore = {
+  getItem: (key: string) => sessionStorage.getItem(key),
+  setItem: (key: string, value: string) => sessionStorage.setItem(key, value),
+  removeItem: (key: string) => sessionStorage.removeItem(key),
+};
+
+const localStore = {
+  getItem: (key: string) => localStorage.getItem(key),
+  setItem: (key: string, value: string) => localStorage.setItem(key, value),
+  removeItem: (key: string) => localStorage.removeItem(key),
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 初始化：从 localStorage 加载用户数据，或从 API 获取
+  // 初始化：从 sessionStorage 加载用户数据，或从 API 获取
   useEffect(() => {
     const initAuth = async () => {
       try {
         // 检查是否有 token，尝试从 API 获取用户信息
-        const token = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
+        const token = sessionStore.getItem(STORAGE_KEYS.AUTH_TOKEN);
         if (USE_API && token) {
           try {
             const response = await authApi.getCurrentUser();
@@ -139,19 +153,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 updatedAt: new Date().toISOString(),
               };
               setUser(localUser);
-              localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(localUser));
+              sessionStore.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(localUser));
+              
+              // 如果是管理员，从 API 加载所有用户
+              if (localUser.role === 'admin') {
+                try {
+                  const usersResponse = await userApi.getAllUsers();
+                  if (usersResponse.success && usersResponse.data) {
+                    const apiUsers = usersResponse.data.map((u: any) => ({
+                      id: String(u.id),
+                      username: u.username,
+                      name: u.name || u.realName || u.username,
+                      email: u.email || '',
+                      role: u.role as UserRole,
+                      region: (u.region || 'CN') as UserRegion,
+                      team: u.team,
+                      group: u.group,
+                      department: u.center,
+                      createdAt: u.createdAt || new Date().toISOString(),
+                      updatedAt: u.updatedAt || new Date().toISOString(),
+                    }));
+                    setUsers(apiUsers);
+                    localStore.setItem(STORAGE_KEYS.USERS, JSON.stringify(apiUsers));
+                  }
+                } catch (error) {
+                  console.log('获取用户列表失败:', error);
+                }
+              }
+              
               setLoading(false);
               return;
             }
           } catch (error) {
             console.log('API 认证失败，回退到本地模式');
-            localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+            sessionStore.removeItem(STORAGE_KEYS.AUTH_TOKEN);
           }
         }
 
         // 回退到 localStorage 模式
         // 加载用户列表
-        const storedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
+        const storedUsers = localStore.getItem(STORAGE_KEYS.USERS);
         let userList: User[] = storedUsers ? JSON.parse(storedUsers) : [];
         
         // 确保所有预置用户都存在，并同步更新角色
@@ -178,24 +219,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         
         if (needsUpdate) {
-          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(userList));
+          localStore.setItem(STORAGE_KEYS.USERS, JSON.stringify(userList));
         }
         setUsers(userList);
 
-        // 加载当前登录用户
-        const storedUser = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
+        // 加载当前登录用户（从 sessionStorage）
+        const storedUser = sessionStore.getItem(STORAGE_KEYS.CURRENT_USER);
         if (storedUser) {
           const parsedUser = JSON.parse(storedUser);
           // 验证用户是否仍存在于用户列表中，并获取最新信息
           const userExists = userList.find(u => u.id === parsedUser.id);
           if (userExists) {
             setUser(userExists);
-            // 同步更新 localStorage 中的当前用户信息
+            // 同步更新 sessionStorage 中的当前用户信息
             if (userExists.role !== parsedUser.role || userExists.team !== parsedUser.team) {
-              localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(userExists));
+              sessionStore.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(userExists));
             }
           } else {
-            localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+            sessionStore.removeItem(STORAGE_KEYS.CURRENT_USER);
           }
         }
       } catch (error) {
@@ -210,8 +251,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 监听登出事件
     const handleLogout = () => {
       setUser(null);
-      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
-      localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+      sessionStore.removeItem(STORAGE_KEYS.CURRENT_USER);
+      sessionStore.removeItem(STORAGE_KEYS.AUTH_TOKEN);
     };
     window.addEventListener('auth:logout', handleLogout);
     return () => window.removeEventListener('auth:logout', handleLogout);
@@ -220,7 +261,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // 保存用户列表到 localStorage
   const saveUsers = (newUsers: User[]) => {
     setUsers(newUsers);
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(newUsers));
+    localStore.setItem(STORAGE_KEYS.USERS, JSON.stringify(newUsers));
+  };
+
+  // 加载所有用户（管理员权限）
+  const loadAllUsers = async () => {
+    if (USE_API) {
+      try {
+        const response = await userApi.getAllUsers();
+        if (response.success && response.data) {
+          const apiUsers = response.data.map((apiUser: any) => ({
+            id: String(apiUser.id),
+            username: apiUser.username,
+            name: apiUser.name || apiUser.realName || apiUser.username,
+            email: apiUser.email || '',
+            role: apiUser.role as UserRole,
+            region: (apiUser.region || 'CN') as UserRegion,
+            team: apiUser.team,
+            group: apiUser.group,
+            department: apiUser.center,
+            createdAt: apiUser.createdAt || new Date().toISOString(),
+            updatedAt: apiUser.updatedAt || new Date().toISOString(),
+          }));
+          setUsers(apiUsers);
+          localStore.setItem(STORAGE_KEYS.USERS, JSON.stringify(apiUsers));
+        }
+      } catch (error) {
+        console.log('获取用户列表失败:', error);
+      }
+    }
   };
 
   // 登录
@@ -232,8 +301,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (response.success && response.data) {
           const { token, user: apiUser } = response.data;
           
-          // 保存 token
-          localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, token);
+          // 保存 token 到 sessionStorage
+          sessionStore.setItem(STORAGE_KEYS.AUTH_TOKEN, token);
           
           // 转换用户格式
           const localUser: User = {
@@ -249,7 +318,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           };
           
           setUser(localUser);
-          localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(localUser));
+          sessionStore.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(localUser));
+          
+          // 如果是管理员，加载所有用户
+          if (localUser.role === 'admin') {
+            await loadAllUsers();
+          }
+          
+          // 触发登录事件，通知 OrganizationContext 刷新数据
+          window.dispatchEvent(new CustomEvent('auth:login'));
+          
           return { success: true, message: '登录成功' };
         }
         return { success: false, message: response.message || '登录失败' };
@@ -266,7 +344,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (foundUser) {
       setUser(foundUser);
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(foundUser));
+      sessionStore.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(foundUser));
       return { success: true, message: '登录成功' };
     }
 
@@ -329,8 +407,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // 登出
   const logout = () => {
     setUser(null);
-    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
-    localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+    sessionStore.removeItem(STORAGE_KEYS.CURRENT_USER);
+    sessionStore.removeItem(STORAGE_KEYS.AUTH_TOKEN);
   };
 
   // 修改密码
@@ -370,7 +448,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const updatedUser = { ...user, password: data.newPassword, updatedAt: new Date().toISOString() };
     setUser(updatedUser);
-    localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedUser));
+    sessionStore.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedUser));
 
     return { success: true, message: '密码修改成功' };
   };
@@ -381,6 +459,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, message: '无权限执行此操作' };
     }
 
+    // 使用后端 API
+    if (USE_API) {
+      try {
+        const response = await userApi.createUser({
+          username: userData.username,
+          password: userData.password || '123456',
+          name: userData.name,
+          email: userData.email,
+          team: userData.team,
+          department: userData.department || '合规交易部',
+          role: userData.role,
+          region: userData.region,
+          group: userData.group,
+        });
+        if (response.success) {
+          await loadAllUsers();
+          return { success: true, message: '用户添加成功' };
+        }
+        return { success: false, message: response.message || '添加失败' };
+      } catch (error: any) {
+        return { success: false, message: error.message || '添加失败' };
+      }
+    }
+
+    // 本地模式
     if (users.some(u => u.username === userData.username)) {
       return { success: false, message: '用户名已存在' };
     }
@@ -411,6 +514,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, message: '不能删除系统管理员' };
     }
 
+    // 使用后端 API
+    if (USE_API) {
+      try {
+        const response = await userApi.deleteUser(parseInt(userId));
+        if (response.success) {
+          await loadAllUsers();
+          return { success: true, message: '用户删除成功' };
+        }
+        return { success: false, message: response.message || '删除失败' };
+      } catch (error: any) {
+        return { success: false, message: error.message || '删除失败' };
+      }
+    }
+
     saveUsers(users.filter(u => u.id !== userId));
     return { success: true, message: '用户删除成功' };
   };
@@ -428,6 +545,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (targetUser.username === 'admin' && role !== 'admin') {
       return { success: false, message: '不能修改系统管理员的角色' };
+    }
+
+    // 使用后端 API
+    if (USE_API) {
+      try {
+        const response = await userApi.updateUser(parseInt(userId), { role });
+        if (response.success) {
+          await loadAllUsers();
+          return { success: true, message: '角色更新成功' };
+        }
+        return { success: false, message: response.message || '更新失败' };
+      } catch (error: any) {
+        return { success: false, message: error.message || '更新失败' };
+      }
     }
 
     const updatedUsers = users.map(u =>
@@ -451,6 +582,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, message: '用户不存在' };
     }
 
+    // 使用后端 API
+    if (USE_API) {
+      try {
+        const response = await userApi.updateUser(parseInt(userId), { region });
+        if (response.success) {
+          await loadAllUsers();
+          // 如果更新的是当前用户，同步更新当前用户状态
+          if (userId === user.id) {
+            const updatedCurrentUser = { ...user, region, updatedAt: new Date().toISOString() };
+            setUser(updatedCurrentUser);
+            sessionStore.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedCurrentUser));
+          }
+          return { success: true, message: '地区更新成功' };
+        }
+        return { success: false, message: response.message || '更新失败' };
+      } catch (error: any) {
+        return { success: false, message: error.message || '更新失败' };
+      }
+    }
+
     const updatedUsers = users.map(u =>
       u.id === userId
         ? { ...u, region, updatedAt: new Date().toISOString() }
@@ -462,14 +613,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (userId === user.id) {
       const updatedCurrentUser = { ...user, region, updatedAt: new Date().toISOString() };
       setUser(updatedCurrentUser);
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedCurrentUser));
+      sessionStore.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedCurrentUser));
     }
 
     return { success: true, message: '地区更新成功' };
   };
 
   // 更新用户字段（管理员功能）
-  const updateUserField = async (userId: string, field: 'username' | 'email' | 'team', value: string): Promise<{ success: boolean; message: string }> => {
+  const updateUserField = async (userId: string, field: 'username' | 'email' | 'team' | 'group', value: string): Promise<{ success: boolean; message: string }> => {
     if (!user || user.role !== 'admin') {
       return { success: false, message: '无权限执行此操作' };
     }
@@ -493,6 +644,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, message: '邮箱已被使用' };
     }
 
+    // 使用后端 API
+    if (USE_API) {
+      try {
+        const updateData: any = {};
+        if (field === 'username') updateData.username = value;
+        else if (field === 'email') updateData.email = value;
+        else if (field === 'team') updateData.team = value;
+        else if (field === 'group') updateData.group = value;
+        
+        const response = await userApi.updateUser(parseInt(userId), updateData);
+        if (response.success) {
+          await loadAllUsers();
+          // 如果更新的是当前用户，同步更新当前用户状态
+          if (userId === user.id) {
+            const updatedCurrentUser = { ...user, [field]: value, updatedAt: new Date().toISOString() };
+            setUser(updatedCurrentUser);
+            sessionStore.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedCurrentUser));
+          }
+          const fieldLabels: Record<string, string> = { username: '用户名', email: '邮箱', team: '团队', group: '小组' };
+          return { success: true, message: `${fieldLabels[field]}更新成功` };
+        }
+        return { success: false, message: response.message || '更新失败' };
+      } catch (error: any) {
+        return { success: false, message: error.message || '更新失败' };
+      }
+    }
+
     const updatedUsers = users.map(u =>
       u.id === userId
         ? { ...u, [field]: value, updatedAt: new Date().toISOString() }
@@ -504,10 +682,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (userId === user.id) {
       const updatedCurrentUser = { ...user, [field]: value, updatedAt: new Date().toISOString() };
       setUser(updatedCurrentUser);
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedCurrentUser));
+      sessionStore.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedCurrentUser));
     }
 
-    const fieldLabels = { username: '用户名', email: '邮箱', team: '团队' };
+    const fieldLabels: Record<string, string> = { username: '用户名', email: '邮箱', team: '团队', group: '小组' };
     return { success: true, message: `${fieldLabels[field]}更新成功` };
   };
 
@@ -519,6 +697,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, message: '无权限执行此操作', imported: 0, failed: importData.length };
     }
 
+    // 使用后端 API
+    if (USE_API) {
+      try {
+        const response = await userApi.batchImport(importData.map(u => ({
+          username: u.username,
+          password: u.password || '123456',
+          name: u.name,
+          email: u.email,
+          team: u.team,
+          department: u.department || '合规交易部',
+          role: u.role,
+          region: u.region,
+          group: u.group,
+        })));
+        if (response.success) {
+          await loadAllUsers();
+          const count = response.data?.count || 0;
+          return { 
+            success: true, 
+            message: `成功导入 ${count} 个用户`,
+            imported: count,
+            failed: importData.length - count
+          };
+        }
+        return { success: false, message: response.message || '导入失败', imported: 0, failed: importData.length };
+      } catch (error: any) {
+        return { success: false, message: error.message || '导入失败', imported: 0, failed: importData.length };
+      }
+    }
+
+    // 本地模式
     let imported = 0;
     let failed = 0;
     const newUsers: User[] = [...users];

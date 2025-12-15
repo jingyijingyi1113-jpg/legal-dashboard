@@ -62,6 +62,8 @@ def register():
     email = data.get('email', '')
     team = data.get('team')
     center = data.get('center')
+    region = data.get('region', 'CN')
+    user_group = data.get('group')
     
     if not all([username, password, real_name, team, center]):
         return jsonify({'success': False, 'message': '请填写所有必填字段'}), 400
@@ -72,7 +74,7 @@ def register():
     
     # 创建用户
     password_hash = generate_password_hash(password)
-    user_id = User.create(username, password_hash, real_name, email, team, center)
+    user_id = User.create(username, password_hash, real_name, email, team, center, 'user', region, user_group)
     
     if user_id:
         token = generate_token(user_id, username)
@@ -88,7 +90,9 @@ def register():
                     'email': email,
                     'team': team,
                     'center': center,
-                    'role': 'user'
+                    'role': 'user',
+                    'region': region,
+                    'group': user_group
                 }
             }
         })
@@ -126,7 +130,9 @@ def login():
                 'email': user['email'],
                 'team': user['team'],
                 'center': user['center'],
-                'role': user['role']
+                'role': user['role'],
+                'region': user.get('region', 'CN'),
+                'group': user.get('user_group')
             }
         }
     })
@@ -148,7 +154,9 @@ def get_current_user():
             'email': user['email'],
             'team': user['team'],
             'center': user['center'],
-            'role': user['role']
+            'role': user['role'],
+            'region': user.get('region', 'CN'),
+            'group': user.get('user_group')
         }
     })
 
@@ -182,4 +190,151 @@ def get_all_users():
         return jsonify({'success': False, 'message': '权限不足'}), 403
     
     users = User.get_all()
-    return jsonify({'success': True, 'data': users})
+    return jsonify({
+        'success': True,
+        'data': [{
+            'id': u['id'],
+            'username': u['username'],
+            'name': u['real_name'],
+            'email': u.get('email', ''),
+            'team': u['team'],
+            'center': u['center'],
+            'role': u['role'],
+            'region': u.get('region', 'CN'),
+            'group': u.get('user_group'),
+            'createdAt': u['created_at']
+        } for u in users]
+    })
+
+@auth_bp.route('/users', methods=['POST'])
+@token_required
+def create_user():
+    """创建用户（管理员）"""
+    admin = User.find_by_id(request.user_id)
+    if admin['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password', '123456')
+    real_name = data.get('name') or data.get('realName')
+    email = data.get('email', '')
+    team = data.get('team', '')
+    center = data.get('center', data.get('department', '合规交易部'))
+    role = data.get('role', 'user')
+    region = data.get('region', 'CN')
+    user_group = data.get('group')
+    
+    if not username or not real_name:
+        return jsonify({'success': False, 'message': '用户名和姓名不能为空'}), 400
+    
+    if User.find_by_username(username):
+        return jsonify({'success': False, 'message': '用户名已存在'}), 400
+    
+    password_hash = generate_password_hash(password)
+    user_id = User.create(username, password_hash, real_name, email, team, center, role, region, user_group)
+    
+    if user_id:
+        return jsonify({
+            'success': True,
+            'message': '用户创建成功',
+            'data': {'id': user_id}
+        })
+    else:
+        return jsonify({'success': False, 'message': '创建失败'}), 500
+
+@auth_bp.route('/users/<int:user_id>', methods=['PUT'])
+@token_required
+def update_user(user_id):
+    """更新用户信息（管理员）"""
+    admin = User.find_by_id(request.user_id)
+    if admin['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    target_user = User.find_by_id(user_id)
+    if not target_user:
+        return jsonify({'success': False, 'message': '用户不存在'}), 404
+    
+    # 禁止修改 admin 用户
+    if target_user['username'] == 'admin':
+        return jsonify({'success': False, 'message': '不能修改管理员账户'}), 403
+    
+    data = request.get_json()
+    update_fields = {}
+    
+    if 'username' in data:
+        update_fields['username'] = data['username']
+    if 'name' in data or 'realName' in data:
+        update_fields['real_name'] = data.get('name') or data.get('realName')
+    if 'email' in data:
+        update_fields['email'] = data['email']
+    if 'team' in data:
+        update_fields['team'] = data['team']
+    if 'center' in data:
+        update_fields['center'] = data['center']
+    if 'role' in data:
+        update_fields['role'] = data['role']
+    if 'region' in data:
+        update_fields['region'] = data['region']
+    if 'group' in data:
+        update_fields['user_group'] = data['group']
+    if 'password' in data and data['password']:
+        update_fields['password_hash'] = generate_password_hash(data['password'])
+    
+    if update_fields:
+        User.update(user_id, **update_fields)
+    
+    return jsonify({'success': True, 'message': '用户更新成功'})
+
+@auth_bp.route('/users/<int:user_id>', methods=['DELETE'])
+@token_required
+def delete_user(user_id):
+    """删除用户（管理员）"""
+    admin = User.find_by_id(request.user_id)
+    if admin['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    target_user = User.find_by_id(user_id)
+    if not target_user:
+        return jsonify({'success': False, 'message': '用户不存在'}), 404
+    
+    if target_user['username'] == 'admin':
+        return jsonify({'success': False, 'message': '不能删除管理员账户'}), 403
+    
+    User.delete(user_id)
+    return jsonify({'success': True, 'message': '用户删除成功'})
+
+@auth_bp.route('/users/batch-import', methods=['POST'])
+@token_required
+def batch_import_users():
+    """批量导入用户（管理员）"""
+    admin = User.find_by_id(request.user_id)
+    if admin['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    data = request.get_json()
+    users_data = data.get('users', [])
+    
+    if not users_data:
+        return jsonify({'success': False, 'message': '没有要导入的用户'}), 400
+    
+    users_to_create = []
+    for u in users_data:
+        users_to_create.append({
+            'username': u.get('username'),
+            'password_hash': generate_password_hash(u.get('password', '123456')),
+            'real_name': u.get('name') or u.get('realName', ''),
+            'email': u.get('email', ''),
+            'team': u.get('team', ''),
+            'center': u.get('center', u.get('department', '合规交易部')),
+            'role': u.get('role', 'user'),
+            'region': u.get('region', 'CN'),
+            'user_group': u.get('group')
+        })
+    
+    created = User.batch_create(users_to_create)
+    return jsonify({
+        'success': True,
+        'message': f'成功导入 {created} 个用户',
+        'data': {'count': created}
+    })

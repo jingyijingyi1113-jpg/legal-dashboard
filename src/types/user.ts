@@ -44,6 +44,7 @@ export interface User {
   role: UserRole;
   region?: UserRegion; // 国家/地区
   team?: string;
+  group?: string; // 小组（团队下的子分组）
   department?: string;
   createdAt: string;
   updatedAt: string;

@@ -85,6 +85,7 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
           userName: entry.real_name || entry.username,
           teamId: entry.data?.teamId || entry.team || '',
           teamName: entry.data?.teamName || entry.center || '',
+          groupName: entry.user_group || entry.data?.userGroup || '',
           date: entry.date,
           hours: entry.hours,
           data: entry.data || {},
@@ -178,6 +179,7 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
       userName: user.name,
       teamId: user.team || '',
       teamName: user.team || '',
+      groupName: user.group || '',
       date: data.date,
       hours: data.hours,
       data: data.data,
@@ -190,15 +192,20 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
     // 尝试 API 保存
     if (USE_API) {
       try {
+        // 从表单数据中获取小组信息（投资法务中心使用 sourcePath 字段）
+        const userGroup = data.data?.sourcePath as string || user.group || '';
+        
         const response = await timesheetApi.createEntry({
           id: entryId,
           date: data.date,
           hours: data.hours,
           status: 'draft',
+          user_group: userGroup,
           data: {
             ...data.data,
             teamId: user.team || '',
             teamName: user.team || '',
+            userGroup: userGroup,
             description: data.description,
           },
         });
@@ -284,15 +291,14 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
     // 尝试 API 批量删除
     if (USE_API) {
       try {
-        let deletedCount = 0;
-        for (const id of ids) {
-          const response = await timesheetApi.deleteEntry(id);
-          if (response.success) {
-            deletedCount++;
-          }
+        // 使用批量删除接口
+        const response = await timesheetApi.batchDelete(ids);
+        if (response.success) {
+          await refreshEntries();
+          return { success: true, message: `成功删除 ${response.data?.count || ids.length} 条记录`, count: response.data?.count || ids.length };
+        } else {
+          return { success: false, message: response.message || '删除失败', count: 0 };
         }
-        await refreshEntries();
-        return { success: true, message: `成功删除 ${deletedCount} 条记录`, count: deletedCount };
       } catch (error: any) {
         console.log('API 批量删除失败，使用本地存储:', error.message);
       }
@@ -341,26 +347,32 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
     // 尝试 API 批量导入
     if (USE_API) {
       try {
-        let importedCount = 0;
-        for (const entry of newEntries) {
-          const response = await timesheetApi.createEntry({
-            id: entry.id,
-            date: entry.date,
-            hours: entry.hours,
-            status: entry.status,
-            data: {
-              ...entry.data,
-              teamId: entry.teamId,
-              teamName: entry.teamName,
-              description: entry.description,
-            },
-          });
-          if (response.success) {
-            importedCount++;
-          }
+        // 转换为后端需要的格式
+        const entriesToImport = newEntries.map(entry => ({
+          id: entry.id,
+          user_id: Number(entry.userId) || 0,
+          username: String(entry.userName || entry.data?.userName || ''),
+          date: entry.date,
+          hours: entry.hours,
+          status: entry.status || 'submitted',
+          user_group: entry.groupName || entry.data?.sourcePath || '',
+          data: {
+            ...entry.data,
+            teamId: entry.teamId,
+            teamName: entry.teamName,
+            userGroup: entry.groupName || entry.data?.sourcePath || '',
+            description: entry.description || '',
+          },
+        }));
+        
+        // 使用批量导入接口
+        const response = await timesheetApi.batchImport(entriesToImport);
+        if (response.success) {
+          await refreshEntries();
+          return { success: true, message: `成功导入 ${response.data?.count || newEntries.length} 条工时记录`, count: response.data?.count || newEntries.length };
+        } else {
+          return { success: false, message: response.message || '导入失败', count: 0 };
         }
-        await refreshEntries();
-        return { success: true, message: `成功导入 ${importedCount} 条工时记录`, count: importedCount };
       } catch (error: any) {
         console.log('API 批量导入失败，使用本地存储:', error.message);
       }

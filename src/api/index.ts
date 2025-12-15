@@ -16,7 +16,7 @@ const apiClient: AxiosInstance = axios.create({
 // 请求拦截器 - 自动添加 token
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('auth_token');
+    const token = sessionStorage.getItem('auth_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -38,8 +38,8 @@ apiClient.interceptors.response.use(
       
       // 401 未授权 - token 过期或无效
       if (status === 401) {
-        localStorage.removeItem('auth_token');
-        localStorage.removeItem('current_user');
+        sessionStorage.removeItem('auth_token');
+        sessionStorage.removeItem('current_user');
         // 可以在这里触发重新登录
         window.dispatchEvent(new CustomEvent('auth:logout'));
       }
@@ -75,6 +75,39 @@ export interface User {
   team: string;
   center: string;
   role: string;
+  region?: string;
+  group?: string;
+}
+
+// 部门类型
+export interface Department {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 团队类型
+export interface TeamData {
+  id: string;
+  name: string;
+  departmentId: string;
+  description?: string;
+  leaderId?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 小组类型
+export interface GroupData {
+  id: string;
+  name: string;
+  teamId: string;
+  description?: string;
+  leaderId?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // 工时记录类型
@@ -165,6 +198,7 @@ export const timesheetApi = {
     date: string;
     hours: number;
     status?: 'draft' | 'submitted';
+    user_group?: string;
     data: Record<string, any>;
   }): Promise<ApiResponse<{ id: string }>> => {
     return apiClient.post('/api/timesheet/entries', data);
@@ -197,6 +231,24 @@ export const timesheetApi = {
   // 批量提交工时记录
   batchSubmit: (ids: string[]): Promise<ApiResponse> => {
     return apiClient.post('/api/timesheet/entries/batch-submit', { ids });
+  },
+
+  // 批量导入工时记录（管理员专用）
+  batchImport: (entries: Array<{
+    id: string;
+    user_id: number;
+    username: string;
+    date: string;
+    hours: number;
+    status: 'draft' | 'submitted';
+    data: Record<string, any>;
+  }>): Promise<ApiResponse<{ count: number }>> => {
+    return apiClient.post('/api/timesheet/entries/batch-import', { entries });
+  },
+
+  // 批量删除工时记录（管理员专用）
+  batchDelete: (ids: string[]): Promise<ApiResponse<{ count: number }>> => {
+    return apiClient.post('/api/timesheet/entries/batch-delete', { ids });
   },
 
   // 获取团队工时记录（管理员/组长）
@@ -251,6 +303,128 @@ export const templateApi = {
   },
 };
 
+// ==================== 用户管理 API ====================
+
+export const userApi = {
+  // 获取所有用户（管理员）
+  getAllUsers: (): Promise<ApiResponse<any[]>> => {
+    return apiClient.get('/api/auth/users');
+  },
+
+  // 创建用户（管理员）
+  createUser: (data: {
+    username: string;
+    password?: string;
+    name: string;
+    email?: string;
+    team?: string;
+    department?: string;
+    role?: string;
+    region?: string;
+    group?: string;
+  }): Promise<ApiResponse<{ id: number }>> => {
+    return apiClient.post('/api/auth/users', data);
+  },
+
+  // 更新用户（管理员）
+  updateUser: (userId: number, data: {
+    username?: string;
+    name?: string;
+    email?: string;
+    team?: string;
+    role?: string;
+    region?: string;
+    group?: string;
+    password?: string;
+  }): Promise<ApiResponse> => {
+    return apiClient.put(`/api/auth/users/${userId}`, data);
+  },
+
+  // 删除用户（管理员）
+  deleteUser: (userId: number): Promise<ApiResponse> => {
+    return apiClient.delete(`/api/auth/users/${userId}`);
+  },
+
+  // 批量导入用户（管理员）
+  batchImport: (users: Array<{
+    username: string;
+    password?: string;
+    name: string;
+    email?: string;
+    team?: string;
+    department?: string;
+    role?: string;
+    region?: string;
+    group?: string;
+  }>): Promise<ApiResponse<{ count: number }>> => {
+    return apiClient.post('/api/auth/users/batch-import', { users });
+  },
+};
+
+// ==================== 组织架构 API ====================
+
+export const organizationApi = {
+  // 获取所有部门
+  getDepartments: (): Promise<ApiResponse<Department[]>> => {
+    return apiClient.get('/api/organization/departments');
+  },
+
+  // 创建部门
+  createDepartment: (data: { name: string; description?: string }): Promise<ApiResponse<{ id: string }>> => {
+    return apiClient.post('/api/organization/departments', data);
+  },
+
+  // 更新部门
+  updateDepartment: (deptId: string, data: { name: string; description?: string }): Promise<ApiResponse> => {
+    return apiClient.put(`/api/organization/departments/${deptId}`, data);
+  },
+
+  // 删除部门
+  deleteDepartment: (deptId: string): Promise<ApiResponse> => {
+    return apiClient.delete(`/api/organization/departments/${deptId}`);
+  },
+
+  // 获取所有团队
+  getTeams: (): Promise<ApiResponse<TeamData[]>> => {
+    return apiClient.get('/api/organization/teams');
+  },
+
+  // 创建团队
+  createTeam: (data: { name: string; departmentId: string; description?: string }): Promise<ApiResponse<{ id: string }>> => {
+    return apiClient.post('/api/organization/teams', data);
+  },
+
+  // 更新团队
+  updateTeam: (teamId: string, data: { name: string; departmentId: string; description?: string }): Promise<ApiResponse> => {
+    return apiClient.put(`/api/organization/teams/${teamId}`, data);
+  },
+
+  // 删除团队
+  deleteTeam: (teamId: string): Promise<ApiResponse> => {
+    return apiClient.delete(`/api/organization/teams/${teamId}`);
+  },
+
+  // 获取所有小组
+  getGroups: (teamId?: string): Promise<ApiResponse<GroupData[]>> => {
+    return apiClient.get('/api/organization/groups', { params: teamId ? { teamId } : undefined });
+  },
+
+  // 创建小组
+  createGroup: (data: { name: string; teamId: string; description?: string }): Promise<ApiResponse<{ id: string }>> => {
+    return apiClient.post('/api/organization/groups', data);
+  },
+
+  // 更新小组
+  updateGroup: (groupId: string, data: { name: string; teamId: string; description?: string }): Promise<ApiResponse> => {
+    return apiClient.put(`/api/organization/groups/${groupId}`, data);
+  },
+
+  // 删除小组
+  deleteGroup: (groupId: string): Promise<ApiResponse> => {
+    return apiClient.delete(`/api/organization/groups/${groupId}`);
+  },
+};
+
 // 导出 axios 实例供特殊情况使用
 export { apiClient };
 
@@ -259,4 +433,6 @@ export default {
   auth: authApi,
   timesheet: timesheetApi,
   template: templateApi,
+  user: userApi,
+  organization: organizationApi,
 };

@@ -396,6 +396,14 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
       if (field.parentField === key) {
         newFormData[field.key] = '';
       }
+      // 如果是条件必填的依赖字段变化，且新值不满足条件，清空该字段
+      if (field.conditionalRequired && field.conditionalRequired.dependsOn === key) {
+        const { when } = field.conditionalRequired;
+        const conditionMet = Array.isArray(when) ? when.includes(value as string) : value === when;
+        if (!conditionMet) {
+          newFormData[field.key] = '';
+        }
+      }
     });
     
     setFormData(newFormData);
@@ -610,8 +618,22 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
       case 'select':
       case 'cascader': {
         const options = getFieldOptions(field);
-        const isDisabled = field.parentField && !formData[field.parentField];
+        const isParentDisabled = field.parentField && !formData[field.parentField];
         const required = isFieldRequired(field);
+        
+        // 条件禁用逻辑：如果有 conditionalRequired 且条件不满足，则禁用该字段
+        let isConditionalDisabled = false;
+        if (field.conditionalRequired) {
+          const { dependsOn, when } = field.conditionalRequired;
+          const dependValue = formData[dependsOn];
+          if (Array.isArray(when)) {
+            isConditionalDisabled = !when.includes(dependValue as string);
+          } else {
+            isConditionalDisabled = dependValue !== when;
+          }
+        }
+        
+        const isDisabled = !!isParentDisabled || isConditionalDisabled;
         
         return (
           <div key={field.key} className="space-y-2">
@@ -625,11 +647,11 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
               )}
             </label>
             <CustomSelect
-              value={value as string}
+              value={isDisabled ? '' : value as string}
               onChange={(val) => handleFieldChange(field.key, val)}
               options={options}
-              placeholder={field.placeholder || `请选择${field.label}`}
-              disabled={!!isDisabled}
+              placeholder={isConditionalDisabled ? '无需填写' : (field.placeholder || `请选择${field.label}`)}
+              disabled={isDisabled}
               required={required}
               icon={icon}
             />
@@ -715,8 +737,26 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
     const data = entry.data;
     const category = data.category as string || '';
     const task = data.task as string || data.project as string || '';
-    return { category, task };
+    const tag = data.tag as string || '';
+    const keyTask = data.keyTask as string || '';
+    // narrative/description 可能在 entry.description 或 data.description 中
+    const narrative = entry.description as string || data.description as string || '';
+    const internalClient = data.internalClient as string || '';
+    const workCategory = data.workCategory as string || '';
+    // 投资法务中心特有字段
+    const dealName = data.dealName as string || '';  // Deal/Matter Name
+    const bscTag = data.bscTag as string || '';
+    const bscItem = data.bscItem as string || '';
+    // 公司及国际金融事务中心特有字段
+    const virtualGroup = data.virtualGroup as string || '';
+    const item = data.item as string || '';
+    return { category, task, tag, keyTask, narrative, internalClient, workCategory, dealName, bscTag, bscItem, virtualGroup, item };
   };
+
+  // 判断是否是投资法务中心
+  const isInvestmentLegal = user?.team === '投资法务中心';
+  // 判断是否是公司及国际金融事务中心
+  const isInternationalFinance = user?.team === '公司及国际金融事务中心';
 
   return (
     <div className="space-y-6">
@@ -1015,7 +1055,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
               ) : (
                 <div className="space-y-2 h-full overflow-y-auto pr-2">
                   {userDraftEntries.map((entry) => {
-                    const { category, task } = getEntryDisplayInfo(entry);
+                    const { category, task, tag, keyTask, internalClient, workCategory, narrative, dealName, bscTag, bscItem, virtualGroup, item } = getEntryDisplayInfo(entry);
                     const isSelected = selectedIds.has(entry.id);
                     const isEditing = editingId === entry.id;
                     return (
@@ -1047,16 +1087,164 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                         </div>
                         
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                            <span className="text-sm font-medium text-neutral-900 truncate max-w-[180px]">
-                              {task || category || '未分类'}
-                            </span>
-                            {category && (
-                              <span className="px-1.5 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-600 truncate max-w-[120px]">
-                                {category.replace(/^_/, '').replace(/_/g, ' ')}
-                              </span>
+                          {/* 第一行：根据团队显示不同内容 */}
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            {isInvestmentLegal ? (
+                              <>
+                                {/* 投资法务中心：Deal/Matter Name + Deal/Matter Category + 描述 */}
+                                <span className="text-sm font-semibold text-neutral-800 truncate max-w-[180px]" title={dealName}>
+                                  {dealName || '未填写'}
+                                </span>
+                                {category && (
+                                  <span className="px-1.5 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-600 truncate max-w-[120px]" title={category}>
+                                    {category.length > 15 ? category.substring(0, 15) + '...' : category}
+                                  </span>
+                                )}
+                                {narrative && (
+                                  <span 
+                                    className="text-xs text-neutral-500 truncate max-w-[150px]"
+                                    title={narrative}
+                                  >
+                                    {narrative.length > 15 ? narrative.substring(0, 15) + '...' : narrative}
+                                  </span>
+                                )}
+                              </>
+                            ) : isInternationalFinance ? (
+                              <>
+                                {/* 公司及国际金融事务中心：Internal Client + Virtual Group + 描述 */}
+                                <span className="text-sm font-semibold text-neutral-800 truncate max-w-[180px]" title={internalClient}>
+                                  {internalClient || '未填写'}
+                                </span>
+                                {virtualGroup && (
+                                  <span className="px-1.5 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-600 truncate max-w-[120px]" title={virtualGroup}>
+                                    {virtualGroup.length > 15 ? virtualGroup.substring(0, 15) + '...' : virtualGroup}
+                                  </span>
+                                )}
+                                {narrative && (
+                                  <span 
+                                    className="text-xs text-neutral-500 truncate max-w-[150px]"
+                                    title={narrative}
+                                  >
+                                    {narrative.length > 15 ? narrative.substring(0, 15) + '...' : narrative}
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                {/* 其他中心：工作任务 + 事项分类 + Narrative */}
+                                <span className="text-sm font-semibold text-neutral-800 truncate max-w-[200px]">
+                                  {task || category || '未分类'}
+                                </span>
+                                {category && task && (
+                                  <span className="px-1.5 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-600 truncate max-w-[100px]">
+                                    {category.replace(/^_/, '').replace(/_/g, ' ')}
+                                  </span>
+                                )}
+                                {narrative && (
+                                  <div className="group/narrative relative flex-1 min-w-0">
+                                    <span 
+                                      className="text-xs text-neutral-500 truncate block max-w-[200px]"
+                                      title={narrative}
+                                    >
+                                      {narrative.length > 20 ? narrative.substring(0, 20) + '...' : narrative}
+                                    </span>
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
+                          
+                          {/* 第二行：标签信息 */}
+                          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                            {isInvestmentLegal ? (
+                              <>
+                                {/* 投资法务中心：BSC Tag + BSC Item */}
+                                {bscTag && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-purple-50 text-purple-600 border border-purple-100">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                                      <line x1="7" y1="7" x2="7.01" y2="7"/>
+                                    </svg>
+                                    {bscTag}
+                                  </span>
+                                )}
+                                {bscItem && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-amber-50 text-amber-600 border border-amber-100" title={bscItem}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                                    </svg>
+                                    {bscItem.length > 20 ? bscItem.substring(0, 20) + '...' : bscItem}
+                                  </span>
+                                )}
+                              </>
+                            ) : isInternationalFinance ? (
+                              <>
+                                {/* 公司及国际金融事务中心：Tag + Item */}
+                                {tag && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-purple-50 text-purple-600 border border-purple-100" title={tag}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                                      <line x1="7" y1="7" x2="7.01" y2="7"/>
+                                    </svg>
+                                    {tag.replace(/^_/, '').length > 15 ? tag.replace(/^_/, '').substring(0, 15) + '...' : tag.replace(/^_/, '')}
+                                  </span>
+                                )}
+                                {item && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-amber-50 text-amber-600 border border-amber-100" title={item}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                                    </svg>
+                                    {item.length > 20 ? item.substring(0, 20) + '...' : item}
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                {/* 其他中心的标签 */}
+                                {tag && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-purple-50 text-purple-600 border border-purple-100">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                                      <line x1="7" y1="7" x2="7.01" y2="7"/>
+                                    </svg>
+                                    {tag}
+                                  </span>
+                                )}
+                                {keyTask && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-amber-50 text-amber-600 border border-amber-100">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                                    </svg>
+                                    {keyTask.length > 15 ? keyTask.substring(0, 15) + '...' : keyTask}
+                                  </span>
+                                )}
+                                {internalClient && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-green-50 text-green-600 border border-green-100">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                      <circle cx="9" cy="7" r="4"/>
+                                      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                                      <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                                    </svg>
+                                    {internalClient.length > 12 ? internalClient.substring(0, 12) + '...' : internalClient}
+                                  </span>
+                                )}
+                                {workCategory && !category && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-slate-100 text-slate-600 border border-slate-200">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <rect x="3" y="3" width="7" height="7"/>
+                                      <rect x="14" y="3" width="7" height="7"/>
+                                      <rect x="14" y="14" width="7" height="7"/>
+                                      <rect x="3" y="14" width="7" height="7"/>
+                                    </svg>
+                                    {workCategory}
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </div>
+                          
+                          {/* 第三行：日期 */}
                           <div className="flex items-center gap-3 text-xs text-neutral-500">
                             <span className="flex items-center gap-1">
                               <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

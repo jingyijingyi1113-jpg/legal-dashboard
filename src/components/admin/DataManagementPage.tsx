@@ -902,6 +902,7 @@ function ImportModal({ isOpen, onClose, onConfirm, previewData, fileName }: Impo
           userName: row.name,
           teamId: teamName,
           teamName: teamName,
+          groupName: row.sourcePath || '', // 小组信息
           date: date,
           hours: row.hours,
           data: data,
@@ -1154,12 +1155,14 @@ export function DataManagementPage() {
     return Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
   }, []);
 
-  // 获取所有可用的小组（从投资法务中心的 sourcePath 字段）
+  // 获取所有可用的小组（从 groupName 或 sourcePath 字段）
   const availableGroups = useMemo(() => {
     const groups = new Set<string>();
     entries.forEach(entry => {
-      if (entry.teamName === '投资法务中心' && entry.data.sourcePath) {
-        groups.add(String(entry.data.sourcePath));
+      // 优先使用 groupName，其次使用 data.sourcePath
+      const groupValue = entry.groupName || entry.data?.sourcePath;
+      if (groupValue) {
+        groups.add(String(groupValue));
       }
     });
     return Array.from(groups).sort();
@@ -1173,9 +1176,10 @@ export function DataManagementPage() {
         return false;
       }
 
-      // 按小组筛选（仅对投资法务中心有效）
+      // 按小组筛选
       if (selectedGroup !== 'all') {
-        if (entry.teamName !== '投资法务中心' || entry.data.sourcePath !== selectedGroup) {
+        const entryGroup = entry.groupName || entry.data?.sourcePath;
+        if (entryGroup !== selectedGroup) {
           return false;
         }
       }
@@ -1858,6 +1862,7 @@ export function DataManagementPage() {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">月份</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">姓名</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">团队</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">小组</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">小时数</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">状态</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">日期</th>
@@ -1867,7 +1872,7 @@ export function DataManagementPage() {
               <tbody className="divide-y divide-slate-100">
                 {paginatedEntries.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
+                    <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
                       <div className="flex flex-col items-center gap-2">
                         <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300">
                           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -1913,6 +1918,9 @@ export function DataManagementPage() {
                             </span>
                           );
                         })()}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-600">
+                        {entry.groupName || entry.data?.sourcePath || '-'}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-600">
                         {entry.hours}h
