@@ -473,8 +473,8 @@ export function DashboardPage() {
     });
   };
   
-  // 获取工时记录数据
-  const { getDashboardData, getSubmittedEntries, entries } = useTimesheet();
+  // 获取工时记录数据和请假记录
+  const { getDashboardData, getSubmittedEntries, entries, leaveRecords } = useTimesheet();
   
   // 获取当前用户信息和用户列表（用于按地区折算时间系数）
   const { user, users } = useAuth();
@@ -846,14 +846,70 @@ export function DashboardPage() {
   const processTimeData = (data: any[]) => {
     // 创建用户名到地区的映射（用于按人员地区折算时间系数）
     const userRegionMap = new Map<string, 'CN' | 'HK' | 'OTHER'>();
+    // 创建用户名到用户ID的映射（用于查找请假记录）
+    const userNameToIdMap = new Map<string, string>();
     users.forEach(u => {
       if (u.name) {
         userRegionMap.set(normalizeCategoryDisplay(u.name), u.region || 'CN');
+        userNameToIdMap.set(normalizeCategoryDisplay(u.name), u.id);
       }
       if (u.username) {
         userRegionMap.set(normalizeCategoryDisplay(u.username), u.region || 'CN');
+        userNameToIdMap.set(normalizeCategoryDisplay(u.username), u.id);
       }
     });
+
+    // 辅助函数：获取用户在指定月份的请假天数
+    const getUserLeaveDaysInMonth = (userName: string, monthStr: string): number => {
+      // 通过用户名查找请假记录（直接匹配 userName 字段）
+      const monthDate = parseMonthString(monthStr);
+      if (!monthDate) return 0;
+      
+      const monthStart = format(monthDate, 'yyyy-MM-01');
+      const lastDay = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+      const monthEnd = format(monthDate, `yyyy-MM-${lastDay}`);
+      
+      // 查找该用户在当月的请假记录
+      const userLeaveRecords = leaveRecords.filter(r => {
+        const normalizedRecordName = normalizeCategoryDisplay(r.userName);
+        const normalizedUserName = normalizeCategoryDisplay(userName);
+        return normalizedRecordName === normalizedUserName &&
+               r.startDate <= monthEnd &&
+               r.endDate >= monthStart;
+      });
+      
+      // 计算请假天数（考虑请假日期与月份的交集）
+      let totalLeaveDays = 0;
+      userLeaveRecords.forEach(record => {
+        // 计算请假记录与当月的交集
+        const leaveStart = new Date(Math.max(new Date(record.startDate).getTime(), new Date(monthStart).getTime()));
+        const leaveEnd = new Date(Math.min(new Date(record.endDate).getTime(), new Date(monthEnd).getTime()));
+        
+        if (leaveEnd >= leaveStart) {
+          // 简化处理：直接使用记录的天数（如果完全在月内），否则按比例计算
+          const recordStart = new Date(record.startDate);
+          const recordEnd = new Date(record.endDate);
+          if (recordStart >= new Date(monthStart) && recordEnd <= new Date(monthEnd)) {
+            // 请假完全在当月内
+            totalLeaveDays += record.days;
+          } else {
+            // 请假跨月，按工作日计算交集天数
+            let count = 0;
+            const current = new Date(leaveStart);
+            while (current <= leaveEnd) {
+              const dayOfWeek = current.getDay();
+              if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                count++;
+              }
+              current.setDate(current.getDate() + 1);
+            }
+            totalLeaveDays += count;
+          }
+        }
+      });
+      
+      return totalLeaveDays;
+    };
 
     const monthlyAgg: { [key: string]: { [key: string]: { hours: number; users: Set<string>; userHours: Map<string, number> } } } = {};
 
@@ -925,7 +981,11 @@ export function DashboardPage() {
                     workdays = otherWorkdays;
                 }
                 
-                const timeCoefficient = workdays > 0 ? 20.83 / workdays : 0;
+                // 获取用户当月请假天数并从工作日中扣除
+                const leaveDays = getUserLeaveDaysInMonth(userName, month);
+                const effectiveWorkdays = Math.max(1, workdays - leaveDays); // 至少保留1天避免除零
+                
+                const timeCoefficient = effectiveWorkdays > 0 ? 20.83 / effectiveWorkdays : 0;
                 totalAdjustedHours += userHours * timeCoefficient;
                 totalUserCount++;
             });

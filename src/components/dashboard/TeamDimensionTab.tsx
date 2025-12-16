@@ -20,6 +20,8 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { useAuth } from '@/contexts/AuthContext';
+import { useTimesheet } from '@/contexts/TimesheetContext';
+import type { LeaveRecord } from '@/types/timesheet';
 
 type Period = 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'custom';
 type Option = { value: string; label: string };
@@ -2424,6 +2426,8 @@ const AverageMonthlyHourPerPersonChart = ({ teamData, onDataUpdate }: { teamData
     
     // 获取用户列表用于按地区折算时间系数
     const { users } = useAuth();
+    // 获取请假记录
+    const { leaveRecords } = useTimesheet();
     
     // 创建用户名到地区的映射
     const userRegionMap = useMemo(() => {
@@ -2438,6 +2442,53 @@ const AverageMonthlyHourPerPersonChart = ({ teamData, onDataUpdate }: { teamData
         });
         return map;
     }, [users]);
+    
+    // 辅助函数：获取用户在指定月份的请假天数
+    const getUserLeaveDaysInMonth = useCallback((userName: string, monthStr: string): number => {
+        const monthDate = parseMonthString(monthStr);
+        if (!monthDate) return 0;
+        
+        const monthStart = format(monthDate, 'yyyy-MM-01');
+        const lastDay = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+        const monthEnd = format(monthDate, `yyyy-MM-${lastDay}`);
+        
+        // 查找该用户在当月的请假记录
+        const userLeaveRecords = leaveRecords.filter(r => {
+            const normalizedRecordName = normalizeCategoryDisplay(r.userName);
+            const normalizedUserName = normalizeCategoryDisplay(userName);
+            return normalizedRecordName === normalizedUserName &&
+                   r.startDate <= monthEnd &&
+                   r.endDate >= monthStart;
+        });
+        
+        // 计算请假天数（考虑请假日期与月份的交集）
+        let totalLeaveDays = 0;
+        userLeaveRecords.forEach(record => {
+            const leaveStart = new Date(Math.max(new Date(record.startDate).getTime(), new Date(monthStart).getTime()));
+            const leaveEnd = new Date(Math.min(new Date(record.endDate).getTime(), new Date(monthEnd).getTime()));
+            
+            if (leaveEnd >= leaveStart) {
+                const recordStart = new Date(record.startDate);
+                const recordEnd = new Date(record.endDate);
+                if (recordStart >= new Date(monthStart) && recordEnd <= new Date(monthEnd)) {
+                    totalLeaveDays += record.days;
+                } else {
+                    let count = 0;
+                    const current = new Date(leaveStart);
+                    while (current <= leaveEnd) {
+                        const dayOfWeek = current.getDay();
+                        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                            count++;
+                        }
+                        current.setDate(current.getDate() + 1);
+                    }
+                    totalLeaveDays += count;
+                }
+            }
+        });
+        
+        return totalLeaveDays;
+    }, [leaveRecords]);
 
     // Handle save from DetailsDialog
     const handleSave = (updatedData: any[]) => {
@@ -2515,7 +2566,12 @@ const AverageMonthlyHourPerPersonChart = ({ teamData, onDataUpdate }: { teamData
                     } else if (userRegion === 'OTHER') {
                         workdays = otherWorkdays;
                     }
-                    const timeCoefficient = workdays > 0 ? 20.83 / workdays : 0;
+                    
+                    // 获取用户当月请假天数并从工作日中扣除
+                    const leaveDays = getUserLeaveDaysInMonth(userName, month);
+                    const effectiveWorkdays = Math.max(1, workdays - leaveDays);
+                    
+                    const timeCoefficient = effectiveWorkdays > 0 ? 20.83 / effectiveWorkdays : 0;
                     totalAdjustedHours += userHours * timeCoefficient;
                     userCount++;
                 });
@@ -4688,6 +4744,72 @@ const InvestmentLegalCenterPanel = ({ data, onDataUpdate }: { data: any[], onDat
     // Available groups for filtering
     const GROUP_OPTIONS = ['all', '1组', '2组', '3组', '4组', '5组', '6组'];
     
+    // 获取用户列表用于按地区折算时间系数
+    const { users } = useAuth();
+    // 获取请假记录
+    const { leaveRecords } = useTimesheet();
+    
+    // 创建用户名到地区的映射
+    const userRegionMap = useMemo(() => {
+        const map = new Map<string, 'CN' | 'HK' | 'OTHER'>();
+        users.forEach(u => {
+            if (u.name) {
+                map.set(normalizeCategoryDisplay(u.name), u.region || 'CN');
+            }
+            if (u.username) {
+                map.set(normalizeCategoryDisplay(u.username), u.region || 'CN');
+            }
+        });
+        return map;
+    }, [users]);
+    
+    // 辅助函数：获取用户在指定月份的请假天数
+    const getUserLeaveDaysInMonth = useCallback((userName: string, monthStr: string): number => {
+        const monthDate = parseMonthString(monthStr);
+        if (!monthDate) return 0;
+        
+        const monthStart = format(monthDate, 'yyyy-MM-01');
+        const lastDay = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+        const monthEnd = format(monthDate, `yyyy-MM-${lastDay}`);
+        
+        // 查找该用户在当月的请假记录
+        const userLeaveRecords = leaveRecords.filter(r => {
+            const normalizedRecordName = normalizeCategoryDisplay(r.userName);
+            const normalizedUserName = normalizeCategoryDisplay(userName);
+            return normalizedRecordName === normalizedUserName &&
+                   r.startDate <= monthEnd &&
+                   r.endDate >= monthStart;
+        });
+        
+        // 计算请假天数（考虑请假日期与月份的交集）
+        let totalLeaveDays = 0;
+        userLeaveRecords.forEach(record => {
+            const leaveStart = new Date(Math.max(new Date(record.startDate).getTime(), new Date(monthStart).getTime()));
+            const leaveEnd = new Date(Math.min(new Date(record.endDate).getTime(), new Date(monthEnd).getTime()));
+            
+            if (leaveEnd >= leaveStart) {
+                const recordStart = new Date(record.startDate);
+                const recordEnd = new Date(record.endDate);
+                if (recordStart >= new Date(monthStart) && recordEnd <= new Date(monthEnd)) {
+                    totalLeaveDays += record.days;
+                } else {
+                    let count = 0;
+                    const current = new Date(leaveStart);
+                    while (current <= leaveEnd) {
+                        const dayOfWeek = current.getDay();
+                        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                            count++;
+                        }
+                        current.setDate(current.getDate() + 1);
+                    }
+                    totalLeaveDays += count;
+                }
+            }
+        });
+        
+        return totalLeaveDays;
+    }, [leaveRecords]);
+    
     // Pre-process data once: filter team and parse dates
     const allTeamData = useMemo(() => {
         return data
@@ -4774,7 +4896,11 @@ const InvestmentLegalCenterPanel = ({ data, onDataUpdate }: { data: any[], onDat
                     workdays = otherWorkdays;
                 }
                 
-                const timeCoefficient = workdays > 0 ? 20.83 / workdays : 0;
+                // 获取用户当月请假天数并从工作日中扣除
+                const leaveDays = getUserLeaveDaysInMonth(userName, month);
+                const effectiveWorkdays = Math.max(1, workdays - leaveDays);
+                
+                const timeCoefficient = effectiveWorkdays > 0 ? 20.83 / effectiveWorkdays : 0;
                 totalAdjustedHours += userHours * timeCoefficient;
                 userCount++;
             });
@@ -5757,6 +5883,8 @@ const BSCItemsComparisonChart = ({ teamData, onDataUpdate }: { teamData: any[], 
 const CorporateFinancePanel = ({ data, onDataUpdate }: { data: any[], onDataUpdate?: (updatedRecords: any[]) => void }) => {
     // 获取用户列表用于按地区折算时间系数
     const { users } = useAuth();
+    // 获取请假记录
+    const { leaveRecords } = useTimesheet();
     
     // 创建用户名到地区的映射
     const userRegionMap = useMemo(() => {
@@ -5771,6 +5899,53 @@ const CorporateFinancePanel = ({ data, onDataUpdate }: { data: any[], onDataUpda
         });
         return map;
     }, [users]);
+    
+    // 辅助函数：获取用户在指定月份的请假天数
+    const getUserLeaveDaysInMonth = useCallback((userName: string, monthStr: string): number => {
+        const monthDate = parseMonthString(monthStr);
+        if (!monthDate) return 0;
+        
+        const monthStart = format(monthDate, 'yyyy-MM-01');
+        const lastDay = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+        const monthEnd = format(monthDate, `yyyy-MM-${lastDay}`);
+        
+        // 查找该用户在当月的请假记录
+        const userLeaveRecords = leaveRecords.filter(r => {
+            const normalizedRecordName = normalizeCategoryDisplay(r.userName);
+            const normalizedUserName = normalizeCategoryDisplay(userName);
+            return normalizedRecordName === normalizedUserName &&
+                   r.startDate <= monthEnd &&
+                   r.endDate >= monthStart;
+        });
+        
+        // 计算请假天数（考虑请假日期与月份的交集）
+        let totalLeaveDays = 0;
+        userLeaveRecords.forEach(record => {
+            const leaveStart = new Date(Math.max(new Date(record.startDate).getTime(), new Date(monthStart).getTime()));
+            const leaveEnd = new Date(Math.min(new Date(record.endDate).getTime(), new Date(monthEnd).getTime()));
+            
+            if (leaveEnd >= leaveStart) {
+                const recordStart = new Date(record.startDate);
+                const recordEnd = new Date(record.endDate);
+                if (recordStart >= new Date(monthStart) && recordEnd <= new Date(monthEnd)) {
+                    totalLeaveDays += record.days;
+                } else {
+                    let count = 0;
+                    const current = new Date(leaveStart);
+                    while (current <= leaveEnd) {
+                        const dayOfWeek = current.getDay();
+                        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                            count++;
+                        }
+                        current.setDate(current.getDate() + 1);
+                    }
+                    totalLeaveDays += count;
+                }
+            }
+        });
+        
+        return totalLeaveDays;
+    }, [leaveRecords]);
 
     // Pre-process data once: filter team and parse dates
     const teamData = useMemo(() => {
@@ -5844,7 +6019,11 @@ const CorporateFinancePanel = ({ data, onDataUpdate }: { data: any[], onDataUpda
                     workdays = otherWorkdays;
                 }
                 
-                const timeCoefficient = workdays > 0 ? 20.83 / workdays : 0;
+                // 获取用户当月请假天数并从工作日中扣除
+                const leaveDays = getUserLeaveDaysInMonth(userName, month);
+                const effectiveWorkdays = Math.max(1, workdays - leaveDays);
+                
+                const timeCoefficient = effectiveWorkdays > 0 ? 20.83 / effectiveWorkdays : 0;
                 totalAdjustedHours += userHours * timeCoefficient;
                 userCount++;
             });
