@@ -5,9 +5,7 @@ import { useTimesheet } from '@/contexts/TimesheetContext';
 import { getTeamTemplateByName, getChildOptions, DEFAULT_TEMPLATE } from '@/config/teamTemplates';
 import type { TemplateField, FieldOption, TimesheetEntry as TimesheetEntryType, LeaveRecord, TimesheetTemplate } from '@/types/timesheet';
 import { AIAssistant } from './AIAssistant';
-
-// 常用模版存储key
-const TEMPLATES_STORAGE_KEY = 'timesheet_user_templates';
+import { timesheetApi } from '@/api';
 
 // 自定义下拉选择组件
 interface CustomSelectProps {
@@ -280,47 +278,56 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
   const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
+  const [templateLoading, setTemplateLoading] = useState(false);
   const templateMenuRef = useRef<HTMLDivElement>(null);
 
-  // 加载用户模版
+  // 加载用户模版（从服务端）
+  const loadUserTemplates = useCallback(async () => {
+    if (!user) return;
+    try {
+      const response = await timesheetApi.getUserTemplates();
+      if (response.success && response.data) {
+        // 转换为前端格式
+        const templates: TimesheetTemplate[] = response.data.map(t => ({
+          id: t.id,
+          name: t.name,
+          userId: String(t.user_id),
+          teamId: t.team_id,
+          data: t.data,
+          createdAt: t.created_at,
+          updatedAt: t.updated_at,
+        }));
+        setUserTemplates(templates);
+      }
+    } catch (error) {
+      console.error('加载模版失败:', error);
+    }
+  }, [user]);
+
   useEffect(() => {
-    if (!user) return;
-    const stored = localStorage.getItem(TEMPLATES_STORAGE_KEY);
-    if (stored) {
-      try {
-        const allTemplates: TimesheetTemplate[] = JSON.parse(stored);
-        // 只加载当前用户和团队的模版
-        const filtered = allTemplates.filter(t => t.userId === user.id && t.teamId === (user.team || ''));
-        setUserTemplates(filtered);
-      } catch {
-        setUserTemplates([]);
-      }
-    }
-  }, [user]);
+    loadUserTemplates();
+  }, [loadUserTemplates]);
 
-  // 保存模版到localStorage
-  const saveTemplatesToStorage = useCallback((templates: TimesheetTemplate[]) => {
-    if (!user) return;
-    // 读取所有模版，更新当前用户的
-    const stored = localStorage.getItem(TEMPLATES_STORAGE_KEY);
-    let allTemplates: TimesheetTemplate[] = [];
-    if (stored) {
-      try {
-        allTemplates = JSON.parse(stored);
-      } catch {
-        allTemplates = [];
-      }
+  // 保存当前表单为模版（调用API）
+  const handleSaveAsTemplate = async () => {
+    console.log('[DEBUG] handleSaveAsTemplate called', { user, newTemplateName, templateLoading });
+    
+    if (!user) {
+      console.error('[DEBUG] 用户未登录');
+      alert('请先登录');
+      return;
     }
-    // 移除当前用户的旧模版
-    allTemplates = allTemplates.filter(t => !(t.userId === user.id && t.teamId === (user.team || '')));
-    // 添加新模版
-    allTemplates = [...allTemplates, ...templates];
-    localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(allTemplates));
-  }, [user]);
-
-  // 保存当前表单为模版
-  const handleSaveAsTemplate = () => {
-    if (!user || !newTemplateName.trim()) return;
+    
+    if (!newTemplateName.trim()) {
+      console.error('[DEBUG] 模版名称为空');
+      alert('请输入模版名称');
+      return;
+    }
+    
+    if (templateLoading) {
+      console.log('[DEBUG] 正在保存中，跳过');
+      return;
+    }
     
     // 创建模版数据（不包含日期和小时数）
     const templateData: Record<string, string | number> = {};
@@ -330,22 +337,33 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
       }
     });
     
-    const newTemplate: TimesheetTemplate = {
-      id: `tpl_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      name: newTemplateName.trim(),
-      userId: user.id,
-      teamId: user.team || '',
-      data: templateData,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    console.log('[DEBUG] 准备保存模版:', { name: newTemplateName.trim(), data: templateData });
     
-    const updatedTemplates = [...userTemplates, newTemplate];
-    setUserTemplates(updatedTemplates);
-    saveTemplatesToStorage(updatedTemplates);
-    
-    setNewTemplateName('');
-    setShowSaveTemplateModal(false);
+    setTemplateLoading(true);
+    try {
+      const response = await timesheetApi.createUserTemplate({
+        name: newTemplateName.trim(),
+        data: templateData,
+      });
+      
+      console.log('[DEBUG] API响应:', response);
+      
+      if (response.success) {
+        // 重新加载模版列表
+        await loadUserTemplates();
+        setNewTemplateName('');
+        setShowSaveTemplateModal(false);
+        console.log('[DEBUG] 模版保存成功');
+      } else {
+        console.error('[DEBUG] 保存失败:', response);
+        alert('保存失败: ' + (response.message || '未知错误'));
+      }
+    } catch (error: any) {
+      console.error('[DEBUG] 保存模版异常:', error);
+      alert('保存模版失败: ' + (error?.message || '网络错误'));
+    } finally {
+      setTemplateLoading(false);
+    }
   };
 
   // 应用模版
@@ -354,12 +372,17 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
     setShowTemplateMenu(false);
   };
 
-  // 删除模版
-  const handleDeleteTemplate = (tplId: string, e: React.MouseEvent) => {
+  // 删除模版（调用API）
+  const handleDeleteTemplate = async (tplId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const updatedTemplates = userTemplates.filter(t => t.id !== tplId);
-    setUserTemplates(updatedTemplates);
-    saveTemplatesToStorage(updatedTemplates);
+    try {
+      const response = await timesheetApi.deleteUserTemplate(tplId);
+      if (response.success) {
+        setUserTemplates(prev => prev.filter(t => t.id !== tplId));
+      }
+    } catch (error) {
+      console.error('删除模版失败:', error);
+    }
   };
 
   // 点击外部关闭模版菜单
@@ -1705,13 +1728,25 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
               <Button
                 type="button"
                 onClick={handleSaveAsTemplate}
-                disabled={!newTemplateName.trim()}
+                disabled={!newTemplateName.trim() || templateLoading}
                 className="h-10 px-4 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-medium shadow-md shadow-blue-200"
               >
-                <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                保存模版
+                {templateLoading ? (
+                  <>
+                    <svg className="animate-spin w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    保存中...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    保存模版
+                  </>
+                )}
               </Button>
             </div>
           </div>

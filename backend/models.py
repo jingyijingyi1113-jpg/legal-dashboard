@@ -139,6 +139,20 @@ def init_db():
         )
     ''')
     
+    # 用户常用模版表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_templates (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            team_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            data TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+    
     # 初始化默认数据
     _init_default_data(cursor)
     
@@ -701,6 +715,71 @@ class Template:
             template['fields'] = json.loads(template['fields']) if template['fields'] else []
             templates.append(template)
         return templates
+
+# 用户常用模版模型操作
+class UserTemplate:
+    @staticmethod
+    def create(template_id, user_id, team_id, name, data):
+        conn = get_db()
+        cursor = conn.cursor()
+        now = datetime.now().isoformat()
+        cursor.execute('''
+            INSERT INTO user_templates (id, user_id, team_id, name, data, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (template_id, user_id, team_id, name, json.dumps(data, ensure_ascii=False), now, now))
+        conn.commit()
+        conn.close()
+        return template_id
+    
+    @staticmethod
+    def find_by_user(user_id, team_id=None):
+        conn = get_db()
+        cursor = conn.cursor()
+        if team_id:
+            cursor.execute('SELECT * FROM user_templates WHERE user_id = ? AND team_id = ? ORDER BY created_at DESC', (user_id, team_id))
+        else:
+            cursor.execute('SELECT * FROM user_templates WHERE user_id = ? ORDER BY created_at DESC', (user_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        templates = []
+        for row in rows:
+            template = dict(row)
+            template['data'] = json.loads(template['data']) if template['data'] else {}
+            templates.append(template)
+        return templates
+    
+    @staticmethod
+    def find_by_id(template_id):
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM user_templates WHERE id = ?', (template_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            template = dict(row)
+            template['data'] = json.loads(template['data']) if template['data'] else {}
+            return template
+        return None
+    
+    @staticmethod
+    def update(template_id, **kwargs):
+        conn = get_db()
+        cursor = conn.cursor()
+        if 'data' in kwargs:
+            kwargs['data'] = json.dumps(kwargs['data'], ensure_ascii=False)
+        fields = ', '.join([f"{k} = ?" for k in kwargs.keys()])
+        values = list(kwargs.values()) + [template_id]
+        cursor.execute(f'UPDATE user_templates SET {fields}, updated_at = CURRENT_TIMESTAMP WHERE id = ?', values)
+        conn.commit()
+        conn.close()
+    
+    @staticmethod
+    def delete(template_id):
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM user_templates WHERE id = ?', (template_id,))
+        conn.commit()
+        conn.close()
 
 if __name__ == '__main__':
     init_db()

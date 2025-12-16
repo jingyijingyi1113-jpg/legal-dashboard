@@ -282,6 +282,42 @@ export const timesheetApi = {
     if (lastUpdated) params.last_updated = lastUpdated;
     return apiClient.get('/api/timesheet/check-updates', { params });
   },
+
+  // ==================== 用户常用模版 API ====================
+  
+  // 获取用户常用模版
+  getUserTemplates: (): Promise<ApiResponse<Array<{
+    id: string;
+    user_id: number;
+    team_id: string;
+    name: string;
+    data: Record<string, any>;
+    created_at: string;
+    updated_at: string;
+  }>>> => {
+    return apiClient.get('/api/timesheet/user-templates');
+  },
+
+  // 创建用户常用模版
+  createUserTemplate: (data: {
+    name: string;
+    data: Record<string, any>;
+  }): Promise<ApiResponse<{ id: string }>> => {
+    return apiClient.post('/api/timesheet/user-templates', data);
+  },
+
+  // 更新用户常用模版
+  updateUserTemplate: (templateId: string, data: {
+    name?: string;
+    data?: Record<string, any>;
+  }): Promise<ApiResponse> => {
+    return apiClient.put(`/api/timesheet/user-templates/${templateId}`, data);
+  },
+
+  // 删除用户常用模版
+  deleteUserTemplate: (templateId: string): Promise<ApiResponse> => {
+    return apiClient.delete(`/api/timesheet/user-templates/${templateId}`);
+  },
 };
 
 // ==================== 模板 API ====================
