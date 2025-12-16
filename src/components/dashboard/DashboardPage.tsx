@@ -1491,9 +1491,6 @@ export function DashboardPage() {
                     <polyline points="12 6 12 12 16 14"/>
                   </svg>
                   加载工时记录
-                  {submittedCount > 0 && (
-                    <span className="ml-auto px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-blue-500 text-white">{submittedCount}</span>
-                  )}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

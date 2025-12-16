@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useTimesheet } from '@/contexts/TimesheetContext';
 import { useOrganization } from '@/contexts/OrganizationContext';
-import { timesheetApi } from '@/api';
+import { timesheetApi, backupApi, type BackupFile } from '@/api';
 import type { TimesheetEntry, TemplateField, FieldOption } from '@/types/timesheet';
 import { getTeamTemplateByName, getChildOptions } from '@/config/teamTemplates';
 import { cn } from '@/lib/utils';
@@ -1125,6 +1125,116 @@ export function DataManagementPage() {
   const [lastKnownUpdated, setLastKnownUpdated] = useState<string>('');
   const AUTO_REFRESH_INTERVAL = 10000; // 10秒检查一次
 
+  // 备份管理状态
+  const [showBackupPanel, setShowBackupPanel] = useState(false);
+  const [backupFiles, setBackupFiles] = useState<BackupFile[]>([]);
+  const [isLoadingBackups, setIsLoadingBackups] = useState(false);
+  const [isCreatingBackup, setIsCreatingBackup] = useState(false);
+
+  // 加载备份列表
+  const loadBackups = useCallback(async () => {
+    setIsLoadingBackups(true);
+    try {
+      const result = await backupApi.list();
+      if (result.success && result.data) {
+        setBackupFiles(result.data);
+      }
+    } catch (error) {
+      console.error('加载备份列表失败:', error);
+    } finally {
+      setIsLoadingBackups(false);
+    }
+  }, []);
+
+  // 创建备份
+  const handleCreateBackup = useCallback(async () => {
+    setIsCreatingBackup(true);
+    try {
+      const result = await backupApi.create();
+      if (result.success) {
+        await loadBackups();
+        alert('备份创建成功！');
+      }
+    } catch (error) {
+      console.error('创建备份失败:', error);
+      alert('创建备份失败');
+    } finally {
+      setIsCreatingBackup(false);
+    }
+  }, [loadBackups]);
+
+  // 下载备份
+  const handleDownloadBackup = useCallback(async (filename: string) => {
+    try {
+      await backupApi.download(filename);
+    } catch (error) {
+      console.error('下载备份失败:', error);
+      alert('下载备份失败');
+    }
+  }, []);
+
+  // 删除备份
+  const handleDeleteBackup = useCallback(async (filename: string) => {
+    if (!confirm(`确定要删除备份 "${filename}" 吗？`)) return;
+    try {
+      const result = await backupApi.delete(filename);
+      if (result.success) {
+        await loadBackups();
+      }
+    } catch (error) {
+      console.error('删除备份失败:', error);
+      alert('删除备份失败');
+    }
+  }, [loadBackups]);
+
+  // 邮件配置状态
+  const [emailConfig, setEmailConfig] = useState<{
+    enabled: boolean;
+    smtp_server: string;
+    sender: string;
+    receivers: string[];
+    max_size_mb: number;
+  } | null>(null);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+
+  // 加载邮件配置
+  const loadEmailConfig = useCallback(async () => {
+    try {
+      const result = await backupApi.getEmailConfig();
+      if (result.success && result.data) {
+        setEmailConfig(result.data);
+      }
+    } catch (error) {
+      console.error('加载邮件配置失败:', error);
+    }
+  }, []);
+
+  // 发送备份邮件
+  const handleSendEmail = useCallback(async () => {
+    setIsSendingEmail(true);
+    try {
+      const result = await backupApi.sendEmail();
+      if (result.success) {
+        alert('备份邮件发送任务已启动，请稍后查收邮件');
+      } else {
+        alert(result.message || '发送失败');
+      }
+    } catch (error: any) {
+      console.error('发送邮件失败:', error);
+      alert(error?.message || '发送邮件失败');
+    } finally {
+      setIsSendingEmail(false);
+    }
+  }, []);
+
+  // 打开备份面板时加载列表和邮件配置
+  useEffect(() => {
+    if (showBackupPanel) {
+      loadBackups();
+      loadEmailConfig();
+    }
+  }, [showBackupPanel, loadBackups, loadEmailConfig]);
+
   // 更新已知状态
   useEffect(() => {
     setLastKnownCount(entries.length);
@@ -1589,8 +1699,171 @@ export function DataManagementPage() {
               </svg>
               {isRefreshing ? '刷新中...' : '刷新数据'}
             </button>
+            
+            {/* 备份管理按钮 */}
+            <button
+              onClick={() => setShowBackupPanel(!showBackupPanel)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition-all",
+                showBackupPanel
+                  ? "bg-amber-600 text-white shadow-md"
+                  : "bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
+              )}
+            >
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                width="16" 
+                height="16" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              备份管理
+            </button>
           </div>
         </div>
+
+        {/* 备份管理面板 */}
+        {showBackupPanel && (
+          <div className="bg-white rounded-2xl shadow-sm border border-amber-200 p-5 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <h3 className="text-lg font-semibold text-slate-800">备份管理</h3>
+                <span className="text-xs text-slate-400 ml-2">服务器每天 6:00, 12:00, 18:00 自动备份，22:00 发送邮件</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* 发送邮件按钮 */}
+                {emailConfig?.enabled && (
+                  <button
+                    onClick={handleSendEmail}
+                    disabled={isSendingEmail}
+                    className={cn(
+                      "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition-all",
+                      "bg-blue-600 text-white hover:bg-blue-700 shadow-sm",
+                      isSendingEmail && "opacity-70 cursor-not-allowed"
+                    )}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect width="20" height="16" x="2" y="4" rx="2"/>
+                      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+                    </svg>
+                    {isSendingEmail ? '发送中...' : '发送到邮箱'}
+                  </button>
+                )}
+                <button
+                  onClick={handleCreateBackup}
+                  disabled={isCreatingBackup}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition-all",
+                    "bg-amber-600 text-white hover:bg-amber-700 shadow-sm",
+                    isCreatingBackup && "opacity-70 cursor-not-allowed"
+                  )}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 5v14"/>
+                    <path d="M5 12h14"/>
+                  </svg>
+                  {isCreatingBackup ? '创建中...' : '立即备份'}
+                </button>
+              </div>
+            </div>
+            
+            {/* 邮件配置状态 */}
+            {emailConfig && (
+              <div className={cn(
+                "mb-4 p-3 rounded-xl text-sm",
+                emailConfig.enabled 
+                  ? "bg-green-50 border border-green-200 text-green-700"
+                  : "bg-slate-50 border border-slate-200 text-slate-500"
+              )}>
+                {emailConfig.enabled ? (
+                  <div className="flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                      <polyline points="22 4 12 14.01 9 11.01"/>
+                    </svg>
+                    <span>邮件通知已启用 · 发件人: {emailConfig.sender} · 收件人: {emailConfig.receivers.join(', ')}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/>
+                      <line x1="12" y1="8" x2="12" y2="12"/>
+                      <line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    <span>邮件通知未启用 · 请在服务器配置环境变量以启用自动邮件发送</span>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {isLoadingBackups ? (
+              <div className="text-center py-8 text-slate-400">加载中...</div>
+            ) : backupFiles.length === 0 ? (
+              <div className="text-center py-8 text-slate-400">暂无备份文件</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-100">
+                      <th className="text-left py-2 px-3 text-xs font-medium text-slate-500 uppercase">文件名</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-slate-500 uppercase">大小</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-slate-500 uppercase">创建时间</th>
+                      <th className="text-right py-2 px-3 text-xs font-medium text-slate-500 uppercase">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {backupFiles.map((file) => (
+                      <tr key={file.filename} className="border-b border-slate-50 hover:bg-slate-50/50">
+                        <td className="py-3 px-3 text-sm text-slate-700 font-medium">{file.filename}</td>
+                        <td className="py-3 px-3 text-sm text-slate-500">{file.size_mb} MB</td>
+                        <td className="py-3 px-3 text-sm text-slate-500">
+                          {new Date(file.created_at).toLocaleString('zh-CN')}
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <button
+                            onClick={() => handleDownloadBackup(file.filename)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 mr-2"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                              <polyline points="7 10 12 15 17 10"/>
+                              <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                            下载
+                          </button>
+                          <button
+                            onClick={() => handleDeleteBackup(file.filename)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M3 6h18"/>
+                              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                            </svg>
+                            删除
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 筛选区域 - 平铺布局 */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-5 mb-6">

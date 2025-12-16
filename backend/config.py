@@ -34,3 +34,13 @@ CORS_ORIGINS = [
 # 服务器配置
 HOST = '0.0.0.0'
 PORT = int(os.environ.get('PORT', 5001))
+
+# ==================== 邮件配置 ====================
+# 腾讯企业邮箱 SMTP 配置
+EMAIL_ENABLED = os.environ.get('EMAIL_ENABLED', 'true').lower() == 'true'
+EMAIL_SMTP_SERVER = os.environ.get('EMAIL_SMTP_SERVER', 'smtp.exmail.qq.com')
+EMAIL_SMTP_PORT = int(os.environ.get('EMAIL_SMTP_PORT', 465))
+EMAIL_SENDER = os.environ.get('EMAIL_SENDER', 'OMCT@tencent.com')
+EMAIL_PASSWORD = os.environ.get('EMAIL_PASSWORD', 'LJ3XYGmmBn8SKnWR')
+EMAIL_RECEIVERS = os.environ.get('EMAIL_RECEIVERS', 'ivyjyding@tencent.com').split(',')
+EMAIL_MAX_SIZE_MB = int(os.environ.get('EMAIL_MAX_SIZE_MB', 45))

@@ -549,6 +549,11 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
     return field.options || [];
   };
 
+  // AI助手填充表单
+  const handleAIFillForm = (data: Record<string, string | number>) => {
+    setFormData(prev => ({ ...prev, ...data }));
+  };
+
   // 提交表单（保存草稿或更新）
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1106,6 +1111,13 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
               <div className="mx-6 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
 
               <div className="relative px-6 py-5">
+                {/* AI 工时助手 */}
+                <AIAssistant 
+                  fields={template.fields} 
+                  teamName={user?.team} 
+                  onFillForm={handleAIFillForm} 
+                />
+                
                 <form onSubmit={handleSubmit} className="space-y-5">
                   <div className="space-y-2">
                     <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
@@ -1753,14 +1765,6 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
         </div>
       )}
 
-      {/* AI 助手 */}
-      <AIAssistant 
-        fields={template.fields}
-        teamName={user?.team || ''}
-        onFillForm={(data) => {
-          setFormData(prev => ({ ...prev, ...data }));
-        }} 
-      />
     </div>
   );
 }

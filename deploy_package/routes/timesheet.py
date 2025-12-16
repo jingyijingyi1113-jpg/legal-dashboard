@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from models import TimesheetEntry, User
+from models import TimesheetEntry, User, UserTemplate, get_db
 from routes.auth import token_required
 
 timesheet_bp = Blueprint('timesheet', __name__)
@@ -19,6 +19,51 @@ def get_entries():
     
     entries = TimesheetEntry.find_by_user(request.user_id, start_date, end_date)
     return jsonify({'success': True, 'data': entries})
+
+@timesheet_bp.route('/check-updates', methods=['GET'])
+@token_required
+def check_updates():
+    """检查是否有数据更新（轻量级接口）"""
+    user = User.find_by_id(request.user_id)
+    last_count = request.args.get('last_count', type=int)
+    last_updated = request.args.get('last_updated')
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # 获取当前记录总数和最新更新时间
+    if user['role'] == 'admin':
+        cursor.execute('SELECT COUNT(*) as count, MAX(updated_at) as last_updated FROM timesheet_entries')
+    else:
+        center = user['center']
+        cursor.execute('''
+            SELECT COUNT(*) as count, MAX(te.updated_at) as last_updated 
+            FROM timesheet_entries te
+            LEFT JOIN users u ON te.user_id = u.id
+            WHERE u.center = ? OR json_extract(te.data, '$.teamId') = ?
+        ''', (center, center))
+    
+    row = cursor.fetchone()
+    conn.close()
+    
+    current_count = row['count'] if row else 0
+    current_updated = row['last_updated'] if row else None
+    
+    # 判断是否有更新
+    has_updates = False
+    if last_count is not None and current_count != last_count:
+        has_updates = True
+    elif last_updated and current_updated and current_updated > last_updated:
+        has_updates = True
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'count': current_count,
+            'last_updated': current_updated,
+            'has_updates': has_updates
+        }
+    })
 
 @timesheet_bp.route('/entries', methods=['POST'])
 @token_required
@@ -265,3 +310,84 @@ def get_stats():
             'totalEntries': total_entries
         }
     })
+
+# ==================== 用户常用模版 API ====================
+
+@timesheet_bp.route('/user-templates', methods=['GET'])
+@token_required
+def get_user_templates():
+    """获取当前用户的常用模版"""
+    user = User.find_by_id(request.user_id)
+    team_id = user.get('team', '')
+    
+    templates = UserTemplate.find_by_user(request.user_id, team_id)
+    return jsonify({'success': True, 'data': templates})
+
+@timesheet_bp.route('/user-templates', methods=['POST'])
+@token_required
+def create_user_template():
+    """创建用户常用模版"""
+    data = request.get_json()
+    
+    name = data.get('name')
+    template_data = data.get('data', {})
+    
+    if not name:
+        return jsonify({'success': False, 'message': '模版名称不能为空'}), 400
+    
+    user = User.find_by_id(request.user_id)
+    team_id = user.get('team', '')
+    
+    template_id = f"utpl_{uuid.uuid4().hex[:12]}"
+    
+    UserTemplate.create(
+        template_id=template_id,
+        user_id=request.user_id,
+        team_id=team_id,
+        name=name,
+        data=template_data
+    )
+    
+    return jsonify({
+        'success': True,
+        'message': '模版保存成功',
+        'data': {'id': template_id}
+    })
+
+@timesheet_bp.route('/user-templates/<template_id>', methods=['PUT'])
+@token_required
+def update_user_template(template_id):
+    """更新用户常用模版"""
+    template = UserTemplate.find_by_id(template_id)
+    if not template:
+        return jsonify({'success': False, 'message': '模版不存在'}), 404
+    
+    if template['user_id'] != request.user_id:
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    data = request.get_json()
+    update_fields = {}
+    
+    if 'name' in data:
+        update_fields['name'] = data['name']
+    if 'data' in data:
+        update_fields['data'] = data['data']
+    
+    UserTemplate.update(template_id, **update_fields)
+    
+    return jsonify({'success': True, 'message': '更新成功'})
+
+@timesheet_bp.route('/user-templates/<template_id>', methods=['DELETE'])
+@token_required
+def delete_user_template(template_id):
+    """删除用户常用模版"""
+    template = UserTemplate.find_by_id(template_id)
+    if not template:
+        return jsonify({'success': False, 'message': '模版不存在'}), 404
+    
+    if template['user_id'] != request.user_id:
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    UserTemplate.delete(template_id)
+    
+    return jsonify({'success': True, 'message': '删除成功'})

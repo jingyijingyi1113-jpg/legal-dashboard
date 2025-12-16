@@ -2,8 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import type { TemplateField, FieldOption } from '@/types/timesheet';
 
-// API基础URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+// API基础URL - 生产环境使用相对路径
+const API_BASE_URL = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || 'http://localhost:5001');
 
 interface AIAssistantProps {
   fields: TemplateField[];

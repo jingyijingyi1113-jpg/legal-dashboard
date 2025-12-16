@@ -1,8 +1,8 @@
 // API 请求模块
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios';
 
-// API 基础地址 - 开发环境使用本地，生产环境使用服务器地址
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5001';
+// API 基础地址 - 生产环境使用相对路径（通过 Nginx 代理），开发环境使用本地
+const API_BASE_URL = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || 'http://127.0.0.1:5001');
 
 // 创建 axios 实例
 const apiClient: AxiosInstance = axios.create({
@@ -35,13 +35,19 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error.response) {
       const { status, data } = error.response;
+      const url = error.config?.url || '';
       
       // 401 未授权 - token 过期或无效
-      if (status === 401) {
-        sessionStorage.removeItem('auth_token');
-        sessionStorage.removeItem('current_user');
-        // 可以在这里触发重新登录
-        window.dispatchEvent(new CustomEvent('auth:logout'));
+      // 但不要在登录/注册请求时触发logout，也不要在刚登录后立即触发
+      if (status === 401 && !url.includes('/auth/login') && !url.includes('/auth/register')) {
+        // 检查是否有有效的token，如果有则不立即登出（可能是时序问题）
+        const token = sessionStorage.getItem('auth_token');
+        if (!token) {
+          sessionStorage.removeItem('auth_token');
+          sessionStorage.removeItem('current_user');
+          window.dispatchEvent(new CustomEvent('auth:logout'));
+        }
+        // 如果有token但请求失败，可能是token刚保存，不触发logout
       }
       
       return Promise.reject({
@@ -470,6 +476,72 @@ export const organizationApi = {
   // 删除小组
   deleteGroup: (groupId: string): Promise<ApiResponse> => {
     return apiClient.delete(`/api/organization/groups/${groupId}`);
+  },
+};
+
+// ==================== 备份 API ====================
+
+export interface BackupFile {
+  filename: string;
+  size: number;
+  size_mb: number;
+  created_at: string;
+}
+
+export const backupApi = {
+  // 获取备份列表
+  list: (): Promise<ApiResponse<BackupFile[]>> => {
+    return apiClient.get('/api/backup/list');
+  },
+
+  // 创建备份
+  create: (): Promise<ApiResponse<BackupFile>> => {
+    return apiClient.post('/api/backup/create');
+  },
+
+  // 下载备份
+  download: async (filename: string): Promise<void> => {
+    const token = sessionStorage.getItem('auth_token');
+    const response = await fetch(`${API_BASE_URL}/api/backup/download/${encodeURIComponent(filename)}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error('下载失败');
+    }
+    
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  },
+
+  // 删除备份
+  delete: (filename: string): Promise<ApiResponse> => {
+    return apiClient.delete(`/api/backup/delete/${encodeURIComponent(filename)}`);
+  },
+
+  // 发送备份邮件
+  sendEmail: (): Promise<ApiResponse> => {
+    return apiClient.post('/api/backup/send-email');
+  },
+
+  // 获取邮件配置状态
+  getEmailConfig: (): Promise<ApiResponse<{
+    enabled: boolean;
+    smtp_server: string;
+    sender: string;
+    receivers: string[];
+    max_size_mb: number;
+  }>> => {
+    return apiClient.get('/api/backup/email-config');
   },
 };
 
