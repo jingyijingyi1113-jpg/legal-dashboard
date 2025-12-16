@@ -4727,11 +4727,11 @@ const InvestmentLegalCenterPanel = ({ data, onDataUpdate }: { data: any[], onDat
         const trendStartDate = overallMinDate ? startOfMonth(overallMinDate) : new Date();
         const trendEndDate = overallMaxDate ? endOfMonth(overallMaxDate) : new Date();
 
-        // Monthly Trends
-        const monthlyAgg: { [key: string]: { hours: number; users: Set<string> } } = {};
+        // Monthly Trends - 使用精细化计算，按用户地区分别折算
+        const monthlyAgg: { [key: string]: { hours: number; users: Set<string>; userHours: Map<string, number> } } = {};
         const monthsInPeriod = eachMonthOfInterval({ start: trendStartDate, end: trendEndDate });
         monthsInPeriod.forEach(monthDate => {
-            monthlyAgg[format(monthDate, 'yyyy/MM')] = { hours: 0, users: new Set() };
+            monthlyAgg[format(monthDate, 'yyyy/MM')] = { hours: 0, users: new Set(), userHours: new Map() };
         });
 
         teamData.forEach(row => {
@@ -4741,18 +4741,45 @@ const InvestmentLegalCenterPanel = ({ data, onDataUpdate }: { data: any[], onDat
             if (!rowDate) return;
             const monthKey = format(rowDate, 'yyyy/MM');
             if (monthlyAgg.hasOwnProperty(monthKey)) {
-                monthlyAgg[monthKey].hours += Number(row['Hours']) || 0;
-                const name = row['Name'].toString().replace(/\\s+/g, ' ').trim();
+                const hours = Number(row['Hours']) || 0;
+                monthlyAgg[monthKey].hours += hours;
+                const name = normalizeCategoryDisplay(row['Name'].toString());
                 monthlyAgg[monthKey].users.add(name);
+                // 累计每个用户的工时
+                const currentUserHours = monthlyAgg[monthKey].userHours.get(name) || 0;
+                monthlyAgg[monthKey].userHours.set(name, currentUserHours + hours);
             }
         });
 
         const monthlyTrends = Object.keys(monthlyAgg).sort().map(month => {
             const monthData = monthlyAgg[month];
             const date = parseMonthString(month) || new Date();
-            const workdays = getWorkdaysInMonth(date.getFullYear(), date.getMonth() + 1, 'CN');
-            const timeCoefficient = workdays > 0 ? 20.83 / workdays : 0;
-            const avgHours = monthData.users.size > 0 ? (monthData.hours / monthData.users.size) * timeCoefficient : 0;
+            const year = date.getFullYear();
+            const monthNum = date.getMonth() + 1;
+            const cnWorkdays = getWorkdaysInMonth(year, monthNum, 'CN');
+            const hkWorkdays = getWorkdaysInMonth(year, monthNum, 'HK');
+            const otherWorkdays = getWorkdaysInMonth(year, monthNum, 'OTHER');
+            
+            // 按每个用户的地区分别计算折算后的工时
+            let totalAdjustedHours = 0;
+            let userCount = 0;
+            monthData.userHours.forEach((userHours, userName) => {
+                // 优先使用用户配置的地区，如果找不到则默认CN（投资法务中心）
+                let userRegion: 'CN' | 'HK' | 'OTHER' = userRegionMap.get(userName) as 'CN' | 'HK' | 'OTHER' || 'CN';
+                
+                let workdays = cnWorkdays;
+                if (userRegion === 'HK') {
+                    workdays = hkWorkdays;
+                } else if (userRegion === 'OTHER') {
+                    workdays = otherWorkdays;
+                }
+                
+                const timeCoefficient = workdays > 0 ? 20.83 / workdays : 0;
+                totalAdjustedHours += userHours * timeCoefficient;
+                userCount++;
+            });
+            
+            const avgHours = userCount > 0 ? totalAdjustedHours / userCount : 0;
             return { month, totalHours: monthData.hours, avgHoursPerUser: avgHours };
         }).map((current, index, array) => {
             const prevTotalHours = index > 0 ? array[index - 1].totalHours : 0;
@@ -5728,6 +5755,23 @@ const BSCItemsComparisonChart = ({ teamData, onDataUpdate }: { teamData: any[], 
 };
 
 const CorporateFinancePanel = ({ data, onDataUpdate }: { data: any[], onDataUpdate?: (updatedRecords: any[]) => void }) => {
+    // 获取用户列表用于按地区折算时间系数
+    const { users } = useAuth();
+    
+    // 创建用户名到地区的映射
+    const userRegionMap = useMemo(() => {
+        const map = new Map<string, 'CN' | 'HK' | 'OTHER'>();
+        users.forEach(u => {
+            if (u.name) {
+                map.set(normalizeCategoryDisplay(u.name), u.region || 'HK');
+            }
+            if (u.username) {
+                map.set(normalizeCategoryDisplay(u.username), u.region || 'HK');
+            }
+        });
+        return map;
+    }, [users]);
+
     // Pre-process data once: filter team and parse dates
     const teamData = useMemo(() => {
         return data
@@ -5757,9 +5801,9 @@ const CorporateFinancePanel = ({ data, onDataUpdate }: { data: any[], onDataUpda
         const trendEndDate = overallMaxDate ? endOfMonth(overallMaxDate) : new Date();
         const monthsInPeriod = eachMonthOfInterval({ start: trendStartDate, end: trendEndDate });
 
-        // Monthly Trends
-        const monthlyAgg: { [key: string]: { hours: number; users: Set<string> } } = {};
-        monthsInPeriod.forEach(monthDate => monthlyAgg[format(monthDate, 'yyyy/MM')] = { hours: 0, users: new Set() });
+        // Monthly Trends - 使用精细化计算，按用户地区分别折算
+        const monthlyAgg: { [key: string]: { hours: number; users: Set<string>; userHours: Map<string, number> } } = {};
+        monthsInPeriod.forEach(monthDate => monthlyAgg[format(monthDate, 'yyyy/MM')] = { hours: 0, users: new Set(), userHours: new Map() });
         teamData.forEach(row => {
             if (!row || !row['Name']) return;
             // Use pre-parsed date
@@ -5767,17 +5811,45 @@ const CorporateFinancePanel = ({ data, onDataUpdate }: { data: any[], onDataUpda
             if (!rowDate) return;
             const monthKey = format(rowDate, 'yyyy/MM');
             if (monthlyAgg.hasOwnProperty(monthKey)) {
-                monthlyAgg[monthKey].hours += Number(row['Hours']) || 0;
-                monthlyAgg[monthKey].users.add(row['Name'].toString().replace(/\\s+/g, ' ').trim());
+                const hours = Number(row['Hours']) || 0;
+                monthlyAgg[monthKey].hours += hours;
+                const name = normalizeCategoryDisplay(row['Name'].toString());
+                monthlyAgg[monthKey].users.add(name);
+                // 累计每个用户的工时
+                const currentUserHours = monthlyAgg[monthKey].userHours.get(name) || 0;
+                monthlyAgg[monthKey].userHours.set(name, currentUserHours + hours);
             }
         });
 
         const monthlyTrends = Object.keys(monthlyAgg).sort().map(month => {
             const monthData = monthlyAgg[month];
             const date = parseMonthString(month) || new Date();
-            const workdays = getWorkdaysInMonth(date.getFullYear(), date.getMonth() + 1, 'HK');
-            const timeCoefficient = workdays > 0 ? 20.83 / workdays : 0;
-            const avgHours = monthData.users.size > 0 ? (monthData.hours / monthData.users.size) * timeCoefficient : 0;
+            const year = date.getFullYear();
+            const monthNum = date.getMonth() + 1;
+            const cnWorkdays = getWorkdaysInMonth(year, monthNum, 'CN');
+            const hkWorkdays = getWorkdaysInMonth(year, monthNum, 'HK');
+            const otherWorkdays = getWorkdaysInMonth(year, monthNum, 'OTHER');
+            
+            // 按每个用户的地区分别计算折算后的工时
+            let totalAdjustedHours = 0;
+            let userCount = 0;
+            monthData.userHours.forEach((userHours, userName) => {
+                // 优先使用用户配置的地区，如果找不到则默认HK（公司及国际金融事务中心）
+                let userRegion: 'CN' | 'HK' | 'OTHER' = userRegionMap.get(userName) as 'CN' | 'HK' | 'OTHER' || 'HK';
+                
+                let workdays = hkWorkdays;
+                if (userRegion === 'CN') {
+                    workdays = cnWorkdays;
+                } else if (userRegion === 'OTHER') {
+                    workdays = otherWorkdays;
+                }
+                
+                const timeCoefficient = workdays > 0 ? 20.83 / workdays : 0;
+                totalAdjustedHours += userHours * timeCoefficient;
+                userCount++;
+            });
+            
+            const avgHours = userCount > 0 ? totalAdjustedHours / userCount : 0;
             return { month, totalHours: monthData.hours, avgHoursPerUser: avgHours };
         }).map((current, index, array) => {
             const prevTotalHours = index > 0 ? array[index - 1].totalHours : 0;

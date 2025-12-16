@@ -83,3 +83,14 @@ export interface LeaveFormData {
   endDate: string;
   days: number;
 }
+
+// 常用模版
+export interface TimesheetTemplate {
+  id: string;
+  name: string;
+  userId: string;
+  teamId: string;
+  data: Record<string, string | number>; // 保存的字段数据（不含日期和小时数）
+  createdAt: string;
+  updatedAt: string;
+}

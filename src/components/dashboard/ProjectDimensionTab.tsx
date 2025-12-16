@@ -930,10 +930,11 @@ const InvestmentLegalCenterAnalysis = ({ data }: { data: any[] }) => {
   // 活跃度分析数据 - 基于全量历史数据计算
   const activityData = useMemo(() => {
     const emptyResult = { 
-      activityRanking: [], 
+      activityRanking: [] as CompanyActivity[], 
       trendData: [], 
+      top5Companies: [] as CompanyActivity[],
       stats: { active: 0, new: 0, rising: 0, declining: 0 },
-      companyLists: { active: [], new: [], rising: [], declining: [] }
+      companyLists: { active: [] as CompanyActivity[], new: [] as CompanyActivity[], rising: [] as CompanyActivity[], declining: [] as CompanyActivity[] }
     };
     
     if (!teamData || teamData.length === 0) {
