@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="ascii"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>&#24037;&#20316;&#37327;&#21270;&#35780;&#20272;&#27719;&#25253;</dc:title>
+  <dc:creator>Codebuddy</dc:creator>
+  <dc:subject>&#24037;&#26102;&#31649;&#29702;&#31995;&#32479;&#27719;&#25253;</dc:subject>
+  <cp:lastModifiedBy>Ivy.</cp:lastModifiedBy>
+  <cp:revision>8</cp:revision>
+  <dcterms:created xsi:type="dcterms:W3CDTF">2025-12-15T17:13:05Z</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">2025-12-15T17:13:05Z</dcterms:modified>
+</cp:coreProperties>

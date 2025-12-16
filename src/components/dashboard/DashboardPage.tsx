@@ -390,16 +390,66 @@ interface MonthlyData {
     avgHoursTrend: number;
   }
 
+// localStorage 存储键 - 只保存筛选条件，不保存原始数据
+const DASHBOARD_FILTERS_KEY = 'dashboard_filters';
+const DASHBOARD_SOURCE_KEY = 'dashboard_data_source';
+
 export function DashboardPage() {
+  // 从 localStorage 恢复数据源类型
+  const getInitialDataSource = (): 'excel' | 'timesheet' | 'merged' => {
+    try {
+      const stored = localStorage.getItem(DASHBOARD_SOURCE_KEY);
+      return (stored as 'excel' | 'timesheet' | 'merged') || 'excel';
+    } catch {
+      return 'excel';
+    }
+  };
+  
+  // 从 localStorage 恢复筛选条件
+  const getInitialFilters = () => {
+    try {
+      const stored = localStorage.getItem(DASHBOARD_FILTERS_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        // 恢复日期对象
+        if (parsed.startDate) parsed.startDate = new Date(parsed.startDate);
+        if (parsed.endDate) parsed.endDate = new Date(parsed.endDate);
+        return parsed;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
   const [rawData, setRawData] = useState<any[]>([]);
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [overviewSubTab, setOverviewSubTab] = useState<string>('time-dimension');
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
-  const [dataSource, setDataSource] = useState<'excel' | 'timesheet' | 'merged'>('excel');
+  const [dataSource, setDataSource] = useState<'excel' | 'timesheet' | 'merged'>(getInitialDataSource);
   const printRef = useRef<HTMLDivElement>(null);
   const isInitialLoadRef = useRef(true); // 跟踪是否是首次加载
+  const hasRestoredData = useRef(false); // 跟踪是否已恢复数据
+  
+  // 保存数据源类型到 localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(DASHBOARD_SOURCE_KEY, dataSource);
+    } catch (e) {
+      console.warn('Failed to save dataSource to localStorage');
+    }
+  }, [dataSource]);
+  
+  // 清除 localStorage 数据的函数
+  const clearDashboardData = () => {
+    setRawData([]);
+    setMonthlyData([]);
+    setDataSource('excel');
+    localStorage.removeItem(DASHBOARD_FILTERS_KEY);
+    localStorage.removeItem(DASHBOARD_SOURCE_KEY);
+  };
   
   // 回到顶部按钮状态
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -441,7 +491,7 @@ export function DashboardPage() {
     periodValue?: string;
     startDate?: Date;
     endDate?: Date;
-  } | null>(null);
+  } | null>(getInitialFilters);
   
   // Period filter states for TimeDimensionTab
   const [period, setPeriod] = useState<Period>('monthly');
@@ -536,6 +586,13 @@ export function DashboardPage() {
     
     // 保存筛选条件，用于数据更新时保持筛选
     setTimesheetFilters(filters);
+    
+    // 保存筛选条件到 localStorage（用于页面切换后恢复）
+    try {
+      localStorage.setItem(DASHBOARD_FILTERS_KEY, JSON.stringify(filters));
+    } catch (e) {
+      console.warn('Failed to save filters to localStorage');
+    }
     
     setRawData(timesheetData);
     processTimeData(timesheetData);
@@ -919,6 +976,86 @@ export function DashboardPage() {
         isInitialLoadRef.current = false;
     }
   };
+
+  // 页面加载时自动恢复数据（如果有保存的筛选条件）
+  useEffect(() => {
+    if (hasRestoredData.current) return;
+    
+    const savedSource = getInitialDataSource();
+    const savedFilters = getInitialFilters();
+    
+    if (savedSource === 'timesheet' && savedFilters) {
+      // 从工时记录恢复数据
+      let timesheetData = getDashboardData();
+      
+      if (timesheetData.length === 0) {
+        // 数据还未加载，等待下次渲染
+        return;
+      }
+      
+      hasRestoredData.current = true;
+      
+      // 应用保存的筛选条件
+      const filters = savedFilters;
+      
+      // 按团队筛选
+      if (filters.team && filters.team !== 'all') {
+        timesheetData = timesheetData.filter((row: any) => row['团队'] === filters.team);
+      } else if (user?.role === 'manager' && user?.team) {
+        timesheetData = timesheetData.filter((row: any) => row['团队'] === user.team);
+      }
+      
+      // 按小组筛选
+      if (filters.group) {
+        timesheetData = timesheetData.filter((row: any) => {
+          const sourcePath = row['Source Path']?.toString() || '';
+          const groupPart = sourcePath.replace('工时统计-', '').trim();
+          return groupPart === filters.group;
+        });
+      }
+      
+      // 按时间筛选
+      if (filters.period !== 'custom' && filters.year) {
+        timesheetData = timesheetData.filter((row: any) => {
+          const month = row.Month;
+          if (!month) return false;
+          const rowYear = month.split('-')[0];
+          if (rowYear !== filters.year) return false;
+          
+          if (filters.period === 'monthly' && filters.periodValue) {
+            const rowMonth = month.split('-')[1];
+            return rowMonth === filters.periodValue;
+          } else if (filters.period === 'quarterly' && filters.periodValue) {
+            const rowMonth = parseInt(month.split('-')[1], 10);
+            const quarter = Math.ceil(rowMonth / 3);
+            return `Q${quarter}` === filters.periodValue;
+          } else if (filters.period === 'semiannually' && filters.periodValue) {
+            const rowMonth = parseInt(month.split('-')[1], 10);
+            const half = rowMonth <= 6 ? 'H1' : 'H2';
+            return half === filters.periodValue;
+          }
+          return true;
+        });
+      } else if (filters.period === 'custom' && filters.startDate && filters.endDate) {
+        timesheetData = timesheetData.filter((row: any) => {
+          const month = row.Month;
+          if (!month) return false;
+          const [year, mon] = month.split('-').map(Number);
+          const rowDate = new Date(year, mon - 1);
+          const startMonth = new Date(filters.startDate!.getFullYear(), filters.startDate!.getMonth());
+          const endMonth = new Date(filters.endDate!.getFullYear(), filters.endDate!.getMonth());
+          return rowDate >= startMonth && rowDate <= endMonth;
+        });
+      }
+      
+      if (timesheetData.length > 0) {
+        setRawData(timesheetData);
+        processTimeData(timesheetData);
+        setDataSource('timesheet');
+        setTimesheetFilters(filters);
+      }
+    }
+  }, [getDashboardData, user]);
 
   // 计算可用年份
   const availableYears = useMemo(() => {
@@ -1329,9 +1466,7 @@ export function DashboardPage() {
                 variant="ghost" 
                 onClick={() => {
                   if (confirm('确定要清除当前看板数据吗？此操作不会影响工时记录中的原始数据。')) {
-                    setRawData([]);
-                    setMonthlyData([]);
-                    setDataSource('excel');
+                    clearDashboardData();
                   }
                 }}
                 className="no-print group relative overflow-hidden px-4 py-2 h-9 rounded-lg border border-red-200/60 bg-white/60 backdrop-blur-sm hover:bg-red-50/80 hover:border-red-300/80 transition-all duration-200"

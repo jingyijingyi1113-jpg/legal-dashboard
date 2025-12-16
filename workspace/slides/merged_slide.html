@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+html { background: #ffffff; }
+body {
+  width: 720pt; height: 405pt; margin: 0; padding: 0;
+  background: #ffffff; font-family: Arial, sans-serif;
+  display: flex; flex-direction: column;
+}
+.header {
+  background: #1E3A8A; padding: 10pt 25pt;
+}
+h2 { color: #ffffff; font-size: 22pt; margin: 0; }
+.content {
+  display: flex; flex: 1; padding: 10pt 25pt; gap: 15pt;
+}
+.section {
+  flex: 1; display: flex; flex-direction: column; gap: 8pt;
+}
+.section-title {
+  background: #1E3A8A; color: #ffffff; padding: 6pt 10pt; border-radius: 4pt;
+}
+.section-title p { margin: 0; font-size: 11pt; font-weight: bold; }
+.columns {
+  display: flex; flex: 1; gap: 8pt;
+}
+.column {
+  flex: 1; background: #F8FAFC; border-radius: 6pt; padding: 8pt;
+}
+h3 { font-size: 11pt; margin: 0 0 6pt 0; }
+h3.green { color: #16A34A; }
+h3.red { color: #DC2626; }
+ul { margin: 0; padding-left: 12pt; }
+li { color: #334155; font-size: 8pt; margin-bottom: 4pt; line-height: 1.3; }
+.footer {
+  background: #F1F5F9; padding: 8pt 25pt; border-left: 4pt solid #2563EB;
+}
+.footer p { color: #475569; font-size: 9pt; margin: 0; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h2>前期进展：PA & 消保 / 合规交易部</h2>
+</div>
+<div class="content">
+  <div class="section">
+    <div class="section-title">
+      <p>PA & 消保</p>
+    </div>
+    <div class="columns">
+      <div class="column">
+        <h3 class="green">✅ 现状与执行</h3>
+        <ul>
+          <li>工时记录：各团队以周为单位上传 Timesheet 至指定微盘。</li>
+          <li>工时分析（部门）：业管按月进行整体统计分析（架构调整后暂停汇报）。</li>
+          <li>工时分析（团队）：目前无团队自主进行工时统计分析。</li>
+          <li>价值评估：年初基于 OKR 开展过一次评估；上半年计算过两次 VOC。</li>
+        </ul>
+      </div>
+      <div class="column">
+        <h3 class="red">⚠️ 存在问题</h3>
+        <ul>
+          <li>提交不及时：部分同事未能按时提交。</li>
+          <li>填写质量差：存在信息不完整、随意更改模版等现象。</li>
+          <li>缺乏复核：团队 Leader 未对数据进行确认。</li>
+          <li>备注：架构调整后，部分统计汇报工作已暂停。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-title">
+      <p>合规交易部</p>
+    </div>
+    <div class="columns">
+      <div class="column">
+        <h3 class="green">✅ 现状与执行</h3>
+        <ul>
+          <li>工时记录：保持以周为单位上传 Timesheet 至指定微盘。</li>
+          <li>工时分析：业管月度协助统计，投并 & Corporate 管理 Leader 按月 Review。</li>
+        </ul>
+      </div>
+      <div class="column">
+        <h3 class="red">⚠️ 存在问题</h3>
+        <ul>
+          <li>提交不及时：部分人员未按时交付数据。</li>
+          <li>填写质量差：填写不规范、模版被随意修改。</li>
+          <li>管理差异：相比 PA 部门，增加了 Leader Review 环节，但基础数据质量问题依然存在。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="footer">
+  <p>现状：基础数据收集流程存在，数据质量有待提升以及后续工作执行方向和力度待确认。</p>
+</div>
+</body>
+</html>

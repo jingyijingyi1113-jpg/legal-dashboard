@@ -409,6 +409,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     sessionStore.removeItem(STORAGE_KEYS.CURRENT_USER);
     sessionStore.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+    // 清除 Dashboard 数据（只保存筛选条件和数据源类型）
+    localStorage.removeItem('dashboard_filters');
+    localStorage.removeItem('dashboard_data_source');
   };
 
   // 修改密码
