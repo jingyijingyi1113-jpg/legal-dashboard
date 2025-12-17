@@ -478,8 +478,12 @@ export const TEAM_TEMPLATES: TeamTemplate[] = [
         key: 'dealName',
         label: 'Deal/Matter Name (项目名称)',
         type: 'text',
-        required: true,
+        required: false,
         placeholder: '请输入TIM系统中的公司名称',
+        conditionalRequired: {
+          dependsOn: 'category',
+          when: ['Investment Related - M&A Deal', 'Investment Related - IPO', 'Investment Related - Corporate Matter'],
+        },
       },
       {
         key: 'bscTag',

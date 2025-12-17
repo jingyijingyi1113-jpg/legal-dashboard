@@ -781,7 +781,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
               value={isDisabled ? '' : value as string}
               onChange={(val) => handleFieldChange(field.key, val)}
               options={options}
-              placeholder={isConditionalDisabled ? '无需填写' : (field.placeholder || `请选择${field.label}`)}
+              placeholder={isConditionalDisabled ? '选择BSC时需填写' : (field.placeholder || `请选择${field.label}`)}
               disabled={isDisabled}
               required={required}
               icon={icon}
@@ -832,34 +832,66 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
         );
       
       case 'text':
-      default:
+      default: {
+        const required = isFieldRequired(field);
+        
+        // 条件禁用逻辑：如果有 conditionalRequired 且条件不满足，则禁用该字段
+        let isConditionalDisabled = false;
+        if (field.conditionalRequired) {
+          const { dependsOn, when } = field.conditionalRequired;
+          const dependValue = formData[dependsOn];
+          if (Array.isArray(when)) {
+            isConditionalDisabled = !when.includes(dependValue as string);
+          } else {
+            isConditionalDisabled = dependValue !== when;
+          }
+        }
+        
+        // 获取禁用时的提示文本
+        const getDisabledPlaceholder = () => {
+          if (field.conditionalRequired) {
+            const { dependsOn } = field.conditionalRequired;
+            const parentField = template.fields.find(f => f.key === dependsOn);
+            if (parentField) {
+              return `选择 Investment Related 时需填写`;
+            }
+          }
+          return '无需填写';
+        };
+        
         return (
           <div key={field.key} className="space-y-2">
             <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
               {field.label}
-              {field.required ? (
+              {required ? (
                 <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-rose-100 text-rose-500 text-xs pt-[3px]">*</span>
               ) : (
                 <span className="text-xs font-normal text-slate-400">（可选）</span>
               )}
             </label>
             <div className="relative group">
-              <div className="absolute left-4 top-4 text-slate-400 group-focus-within:text-blue-500 transition-colors">
+              <div className={`absolute left-4 top-4 transition-colors ${isConditionalDisabled ? 'text-slate-300' : 'text-slate-400 group-focus-within:text-blue-500'}`}>
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h7" />
                 </svg>
               </div>
               <textarea
-                placeholder={field.placeholder}
+                placeholder={isConditionalDisabled ? getDisabledPlaceholder() : field.placeholder}
                 value={value as string}
                 onChange={(e) => handleFieldChange(field.key, e.target.value)}
-                required={field.required}
+                required={required}
+                disabled={isConditionalDisabled}
                 rows={3}
-                className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-800 placeholder:text-xs placeholder:text-slate-400 focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 hover:border-blue-300 hover:shadow-md hover:shadow-blue-100/50 transition-all duration-200 resize-none"
+                className={`w-full pl-12 pr-4 py-3 rounded-xl border text-sm placeholder:text-xs transition-all duration-200 resize-none ${
+                  isConditionalDisabled 
+                    ? 'border-slate-100 bg-slate-50 text-slate-400 placeholder:text-slate-300 cursor-not-allowed' 
+                    : 'border-slate-200 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 hover:border-blue-300 hover:shadow-md hover:shadow-blue-100/50'
+                }`}
               />
             </div>
           </div>
         );
+      }
     }
   };
 

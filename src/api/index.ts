@@ -355,6 +355,31 @@ export const templateApi = {
   getMyTemplate: (): Promise<ApiResponse<Template>> => {
     return apiClient.get('/api/my-template');
   },
+
+  // 上传 Excel 模版文件
+  uploadTemplateExcel: (file: File): Promise<ApiResponse<{ count: number }>> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return apiClient.post('/api/templates/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  // 下载当前模版配置 Excel
+  downloadTemplateExcel: async (): Promise<Blob> => {
+    const response = await apiClient.get('/api/templates/download', {
+      responseType: 'blob',
+    });
+    return response as unknown as Blob;
+  },
+
+  // 下载空白模版示例
+  downloadSampleTemplate: async (): Promise<Blob> => {
+    const response = await apiClient.get('/api/templates/sample', {
+      responseType: 'blob',
+    });
+    return response as unknown as Blob;
+  },
 };
 
 // ==================== 用户管理 API ====================

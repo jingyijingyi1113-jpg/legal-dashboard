@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { TEAM_TEMPLATES, getChildOptions } from '@/config/teamTemplates';
 import type { TemplateField, FieldOption, TeamTemplate } from '@/types/timesheet';
+import { templateApi } from '@/api';
 
 // 自定义下拉选择组件（只读预览版）
 interface PreviewSelectProps {
@@ -477,6 +478,72 @@ function TemplateCard({ template }: TemplateCardProps) {
 }
 
 export function AdminTemplatePreview() {
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{ success: boolean; message: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 下载当前模版配置
+  const handleDownloadConfig = async () => {
+    try {
+      const blob = await templateApi.downloadTemplateExcel();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'template_config.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('下载失败:', error);
+      setUploadResult({ success: false, message: '下载失败，请重试' });
+    }
+  };
+
+  // 下载空白模版示例
+  const handleDownloadSample = async () => {
+    try {
+      const blob = await templateApi.downloadSampleTemplate();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'template_sample.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('下载失败:', error);
+      setUploadResult({ success: false, message: '下载失败，请重试' });
+    }
+  };
+
+  // 上传模版文件
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setUploadResult(null);
+
+    try {
+      const result = await templateApi.uploadTemplateExcel(file);
+      if (result.success) {
+        setUploadResult({ success: true, message: result.message || `成功更新 ${result.data?.count || 0} 个模版` });
+      } else {
+        setUploadResult({ success: false, message: result.message || '上传失败' });
+      }
+    } catch (error: any) {
+      console.error('上传失败:', error);
+      setUploadResult({ success: false, message: error.message || '上传失败，请重试' });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen section-gradient relative overflow-hidden">
       {/* Ambient background elements */}
@@ -495,7 +562,81 @@ export function AdminTemplatePreview() {
               查看各中心的工时填写模版
             </p>
           </div>
+          {/* 操作按钮 */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleDownloadSample}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 shadow-sm"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span className="text-sm font-medium">下载模版示例</span>
+            </button>
+            <button
+              onClick={handleDownloadConfig}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 shadow-sm"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              <span className="text-sm font-medium">导出当前配置</span>
+            </button>
+            <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-500 text-white hover:bg-blue-600 transition-all duration-200 shadow-sm cursor-pointer">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              <span className="text-sm font-medium">{uploading ? '上传中...' : '上传模版'}</span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleUpload}
+                disabled={uploading}
+                className="hidden"
+              />
+            </label>
+          </div>
         </div>
+
+        {/* 上传结果提示 */}
+        {uploadResult && (
+          <div className={`animate-fade-in-up flex items-center gap-3 px-4 py-3 rounded-xl border ${
+            uploadResult.success 
+              ? 'bg-green-50 border-green-100' 
+              : 'bg-red-50 border-red-100'
+          }`}>
+            <div className={`flex items-center justify-center w-8 h-8 rounded-lg ${
+              uploadResult.success ? 'bg-green-500' : 'bg-red-500'
+            } text-white`}>
+              {uploadResult.success ? (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              )}
+            </div>
+            <div>
+              <p className={`text-sm font-medium ${uploadResult.success ? 'text-green-800' : 'text-red-800'}`}>
+                {uploadResult.success ? '上传成功' : '上传失败'}
+              </p>
+              <p className={`text-xs mt-0.5 ${uploadResult.success ? 'text-green-600' : 'text-red-600'}`}>
+                {uploadResult.message}
+              </p>
+            </div>
+            <button
+              onClick={() => setUploadResult(null)}
+              className="ml-auto text-slate-400 hover:text-slate-600"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
 
         {/* 提示信息 */}
         <div className="animate-fade-in-up">
@@ -507,7 +648,7 @@ export function AdminTemplatePreview() {
             </div>
             <div>
               <p className="text-sm font-medium text-blue-800">系统管理员模式</p>
-              <p className="text-xs text-blue-600 mt-0.5">作为系统管理员，您可以在此预览各团队的工时填写模版。以下展示的是三个中心的填写表单结构。</p>
+              <p className="text-xs text-blue-600 mt-0.5">作为系统管理员，您可以在此预览各团队的工时填写模版。点击"下载模版示例"获取 Excel 格式说明，修改后上传即可更新模版配置。</p>
             </div>
           </div>
         </div>
