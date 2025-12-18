@@ -10,6 +10,8 @@ from routes.template import template_bp
 from routes.hunyuan import hunyuan_bp
 from routes.organization import org_bp
 from routes.backup import backup_bp, start_backup_scheduler
+from routes.config import config_bp
+from routes.ai_feedback import ai_feedback_bp
 
 # 前端静态文件目录
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend')
@@ -28,6 +30,8 @@ app.register_blueprint(template_bp, url_prefix='/api')
 app.register_blueprint(hunyuan_bp, url_prefix='/api/hunyuan')
 app.register_blueprint(org_bp, url_prefix='/api/organization')
 app.register_blueprint(backup_bp, url_prefix='/api/backup')
+app.register_blueprint(config_bp, url_prefix='/api/config')
+app.register_blueprint(ai_feedback_bp, url_prefix='/api/ai-feedback')
 
 # 健康检查
 @app.route('/api/health', methods=['GET'])

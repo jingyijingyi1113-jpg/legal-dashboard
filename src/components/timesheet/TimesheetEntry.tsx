@@ -5,7 +5,7 @@ import { useTimesheet } from '@/contexts/TimesheetContext';
 import { getTeamTemplateByName, getChildOptions, DEFAULT_TEMPLATE } from '@/config/teamTemplates';
 import type { TemplateField, FieldOption, TimesheetEntry as TimesheetEntryType, LeaveRecord, TimesheetTemplate } from '@/types/timesheet';
 import { AIAssistant } from './AIAssistant';
-import { timesheetApi } from '@/api';
+import { timesheetApi, aiFeedbackApi } from '@/api';
 
 // 自定义下拉选择组件
 interface CustomSelectProps {
@@ -258,6 +258,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [aiSessionId, setAiSessionId] = useState<string | null>(null); // AI会话追踪
   
   // 跨月提醒状态
   const [showCrossMonthReminder, setShowCrossMonthReminder] = useState(false);
@@ -550,8 +551,11 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
   };
 
   // AI助手填充表单
-  const handleAIFillForm = (data: Record<string, string | number>) => {
+  const handleAIFillForm = (data: Record<string, string | number>, sessionId?: string) => {
     setFormData(prev => ({ ...prev, ...data }));
+    if (sessionId) {
+      setAiSessionId(sessionId);
+    }
   };
 
   // 提交表单（保存草稿或更新）
@@ -580,6 +584,8 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
         return;
       }
       
+      let timesheetId: string | undefined;
+      
       if (editingId) {
         const result = await updateEntry(editingId, {
           date,
@@ -588,6 +594,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
           description: formData.description as string,
         });
         if (result.success) {
+          timesheetId = editingId;
           setEditingId(null);
           resetForm();
         }
@@ -599,8 +606,19 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
           description: formData.description as string,
         });
         if (result.success) {
+          timesheetId = result.data?.id;
           resetForm();
         }
+      }
+      
+      // 如果有AI会话，提交最终结果用于精准度计算
+      if (aiSessionId && timesheetId) {
+        try {
+          await aiFeedbackApi.submit(aiSessionId, formData, timesheetId);
+        } catch (error) {
+          console.error('Failed to submit AI feedback:', error);
+        }
+        setAiSessionId(null);
       }
     } finally {
       setSubmitting(false);
@@ -616,6 +634,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
     setFormData(initialData);
     setDate(new Date().toISOString().split('T')[0]);
     setEditingId(null);
+    setAiSessionId(null);
   };
 
   // 删除记录
@@ -853,7 +872,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
             const { dependsOn } = field.conditionalRequired;
             const parentField = template.fields.find(f => f.key === dependsOn);
             if (parentField) {
-              return `选择 Investment Related 时需填写`;
+              return `选择 ${parentField.label} 时需填写`;
             }
           }
           return '无需填写';
@@ -876,7 +895,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                 </svg>
               </div>
               <textarea
-                placeholder={isConditionalDisabled ? getDisabledPlaceholder() : field.placeholder}
+                placeholder={field.placeholder}
                 value={value as string}
                 onChange={(e) => handleFieldChange(field.key, e.target.value)}
                 required={required}
@@ -1143,12 +1162,14 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
               <div className="mx-6 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
 
               <div className="relative px-6 py-5">
-                {/* AI 工时助手 */}
-                <AIAssistant 
-                  fields={template.fields} 
-                  teamName={user?.team} 
-                  onFillForm={handleAIFillForm} 
-                />
+                {/* AI 工时助手 - 根据用户权限显示 */}
+                {user?.canUseAi && (
+                  <AIAssistant 
+                    fields={template.fields} 
+                    teamName={user?.team} 
+                    onFillForm={handleAIFillForm} 
+                  />
+                )}
                 
                 <form onSubmit={handleSubmit} className="space-y-5">
                   <div className="space-y-2">

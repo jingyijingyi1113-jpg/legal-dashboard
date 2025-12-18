@@ -393,6 +393,7 @@ interface MonthlyData {
 // localStorage 存储键 - 只保存筛选条件，不保存原始数据
 const DASHBOARD_FILTERS_KEY = 'dashboard_filters';
 const DASHBOARD_SOURCE_KEY = 'dashboard_data_source';
+const DASHBOARD_EXCEL_DATA_KEY = 'dashboard_excel_data'; // 存储导入的 Excel 数据
 
 export function DashboardPage() {
   // 从 localStorage 恢复数据源类型
@@ -449,10 +450,31 @@ export function DashboardPage() {
     setDataSource('excel');
     localStorage.removeItem(DASHBOARD_FILTERS_KEY);
     localStorage.removeItem(DASHBOARD_SOURCE_KEY);
+    sessionStorage.removeItem(DASHBOARD_EXCEL_DATA_KEY);
   };
   
   // 回到顶部按钮状态
   const [showScrollTop, setShowScrollTop] = useState(false);
+  
+  // 页面加载时从 sessionStorage 恢复导入的 Excel 数据
+  useEffect(() => {
+    if (hasRestoredData.current) return;
+    hasRestoredData.current = true;
+    
+    try {
+      const storedExcelData = sessionStorage.getItem(DASHBOARD_EXCEL_DATA_KEY);
+      if (storedExcelData && dataSource === 'excel') {
+        const parsedData = JSON.parse(storedExcelData);
+        if (Array.isArray(parsedData) && parsedData.length > 0) {
+          setRawData(parsedData);
+          processTimeData(parsedData);
+          console.log('已从 sessionStorage 恢复 Excel 数据:', parsedData.length, '条');
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to restore Excel data from sessionStorage:', err);
+    }
+  }, []);
   
   // 监听滚动事件
   useEffect(() => {
@@ -529,8 +551,8 @@ export function DashboardPage() {
     // 按团队筛选
     if (filters.team && filters.team !== 'all') {
       timesheetData = timesheetData.filter(row => row['团队'] === filters.team);
-    } else if (user?.role === 'manager' && user?.team) {
-      // 管理者只能看自己团队
+    } else if ((user?.role === 'manager' || user?.role === 'exporter') && user?.team) {
+      // 管理者/数据导出者只能看自己团队
       timesheetData = timesheetData.filter(row => row['团队'] === user.team);
     }
     
@@ -617,8 +639,8 @@ export function DashboardPage() {
         // 按团队筛选
         if (filters.team && filters.team !== 'all') {
           timesheetData = timesheetData.filter(row => row['团队'] === filters.team);
-        } else if (user?.role === 'manager' && user?.team) {
-          // 管理者只能看自己团队
+        } else if ((user?.role === 'manager' || user?.role === 'exporter') && user?.team) {
+          // 管理者/数据导出者只能看自己团队
           timesheetData = timesheetData.filter(row => row['团队'] === user.team);
         }
         
@@ -665,8 +687,8 @@ export function DashboardPage() {
           });
         }
       } else {
-        // 没有筛选条件时，如果是管理者角色，只显示其负责团队的数据
-        if (user?.role === 'manager' && user?.team) {
+        // 没有筛选条件时，如果是管理者/数据导出者角色，只显示其负责团队的数据
+        if ((user?.role === 'manager' || user?.role === 'exporter') && user?.team) {
           timesheetData = timesheetData.filter(row => row['团队'] === user.team);
         }
       }
@@ -678,10 +700,10 @@ export function DashboardPage() {
     }
   }, [entries, dataSource, user, timesheetFilters]);
 
-  // 获取已提交工时记录数量（管理者只看到自己团队的）
+  // 获取已提交工时记录数量（管理者/数据导出者只看到自己团队的）
   const submittedCount = useMemo(() => {
     const allSubmitted = getSubmittedEntries();
-    if (user?.role === 'manager' && user?.team) {
+    if ((user?.role === 'manager' || user?.role === 'exporter') && user?.team) {
       return allSubmitted.filter(e => e.teamName === user.team).length;
     }
     return allSubmitted.length;
@@ -838,6 +860,12 @@ export function DashboardPage() {
         const json = XLSX.utils.sheet_to_json(worksheet) as any[];
         setRawData(json);
         processTimeData(json);
+        // 保存导入的 Excel 数据到 sessionStorage（切换页面时保留）
+        try {
+          sessionStorage.setItem(DASHBOARD_EXCEL_DATA_KEY, JSON.stringify(json));
+        } catch (err) {
+          console.warn('Failed to save Excel data to sessionStorage:', err);
+        }
       };
       reader.readAsArrayBuffer(file);
     }
@@ -1061,7 +1089,7 @@ export function DashboardPage() {
       // 按团队筛选
       if (filters.team && filters.team !== 'all') {
         timesheetData = timesheetData.filter((row: any) => row['团队'] === filters.team);
-      } else if (user?.role === 'manager' && user?.team) {
+      } else if ((user?.role === 'manager' || user?.role === 'exporter') && user?.team) {
         timesheetData = timesheetData.filter((row: any) => row['团队'] === user.team);
       }
       
@@ -1592,6 +1620,7 @@ export function DashboardPage() {
         onOpenChange={setLoadDialogOpen}
         userTeam={user?.team}
         userRole={user?.role}
+        userGroup={user?.group}
         onConfirm={loadFromTimesheetWithFilters}
       />
       

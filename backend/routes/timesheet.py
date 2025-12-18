@@ -268,9 +268,10 @@ def get_team_entries():
     if user['role'] == 'admin':
         entries = TimesheetEntry.find_all(start_date, end_date)
     else:
-        # 非管理员只能查看自己中心的数据
-        center = center or user['center']
-        entries = TimesheetEntry.find_by_team(center, team, start_date, end_date)
+        # 非管理员只能查看自己团队的数据
+        # 使用 team 字段筛选（对应数据中的 teamName）
+        team_name = team or user['team']
+        entries = TimesheetEntry.find_by_team_name(team_name, start_date, end_date)
     
     return jsonify({'success': True, 'data': entries})
 

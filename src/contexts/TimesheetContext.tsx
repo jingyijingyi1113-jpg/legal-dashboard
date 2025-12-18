@@ -28,7 +28,7 @@ interface TimesheetContextType {
   loading: boolean;
   useApi: boolean;
   // CRUD操作
-  addEntry: (data: TimesheetFormData) => Promise<{ success: boolean; message: string }>;
+  addEntry: (data: TimesheetFormData) => Promise<{ success: boolean; message: string; data?: { id: string } }>;
   updateEntry: (id: string, data: TimesheetFormData) => Promise<{ success: boolean; message: string }>;
   deleteEntry: (id: string) => Promise<{ success: boolean; message: string }>;
   // 批量删除
@@ -71,10 +71,10 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
   // 从 API 加载数据
   const loadFromApi = async () => {
     try {
-      // 管理员获取所有用户数据，普通用户只获取自己的数据
-      const isAdmin = user?.role === 'admin' || user?.role === 'manager';
-      const response = isAdmin 
-        ? await timesheetApi.getTeamEntries({})  // 管理员获取所有团队数据
+      // 管理员、经理、数据导出者获取所有用户数据，普通用户只获取自己的数据
+      const canAccessAllData = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'exporter';
+      const response = canAccessAllData 
+        ? await timesheetApi.getTeamEntries({})  // 获取所有团队数据
         : await timesheetApi.getEntries();       // 普通用户获取自己的数据
       
       if (response.success && response.data) {
@@ -167,7 +167,7 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
   };
 
   // 添加工时记录（草稿状态）
-  const addEntry = async (data: TimesheetFormData): Promise<{ success: boolean; message: string }> => {
+  const addEntry = async (data: TimesheetFormData): Promise<{ success: boolean; message: string; data?: { id: string } }> => {
     if (!user) {
       return { success: false, message: '请先登录' };
     }
@@ -210,9 +210,9 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
           },
         });
         if (response.success) {
-          // 刷新数据
-          await refreshEntries();
-          return { success: true, message: '草稿保存成功' };
+          // 直接更新本地状态，避免重新获取全部数据
+          setEntries(prev => [newEntry, ...prev]);
+          return { success: true, message: '草稿保存成功', data: { id: entryId } };
         }
       } catch (error: any) {
         console.log('API 保存失败，使用本地存储:', error.message);
@@ -221,7 +221,7 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
 
     // 本地保存
     saveEntries([newEntry, ...entries]);
-    return { success: true, message: '草稿保存成功' };
+    return { success: true, message: '草稿保存成功', data: { id: entryId } };
   };
 
   // 更新工时记录
@@ -243,7 +243,19 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
           },
         });
         if (response.success) {
-          await refreshEntries();
+          // 直接更新本地状态，避免重新获取全部数据
+          setEntries(prev => {
+            const updated = [...prev];
+            updated[entryIndex] = {
+              ...updated[entryIndex],
+              date: data.date,
+              hours: data.hours,
+              data: data.data,
+              description: data.description,
+              updatedAt: new Date().toISOString(),
+            };
+            return updated;
+          });
           return { success: true, message: '工时记录更新成功' };
         }
       } catch (error: any) {
@@ -273,7 +285,8 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
       try {
         const response = await timesheetApi.deleteEntry(id);
         if (response.success) {
-          await refreshEntries();
+          // 直接更新本地状态，避免重新获取全部数据
+          setEntries(prev => prev.filter(e => e.id !== id));
           return { success: true, message: '工时记录删除成功' };
         }
       } catch (error: any) {

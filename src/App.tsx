@@ -9,10 +9,14 @@ import { LoginPage } from './components/auth/LoginPage';
 import { RegisterPage } from './components/auth/RegisterPage';
 import { PermissionManagementPage } from './components/admin/PermissionManagementPage';
 import { DataManagementPage } from './components/admin/DataManagementPage';
+import { AIStatisticsPage } from './components/admin/AIStatisticsPage';
 
 function AppContent() {
   const { isAuthenticated, loading, user } = useAuth();
-  const [activeMenu, setActiveMenu] = useState<string>('timesheet');
+  const [activeMenu, setActiveMenu] = useState<string>(() => {
+    // 从 localStorage 恢复菜单状态
+    return localStorage.getItem('activeMenu') || 'timesheet';
+  });
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -31,8 +35,13 @@ function AppContent() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // 保存菜单状态到 localStorage
+  useEffect(() => {
+    localStorage.setItem('activeMenu', activeMenu);
+  }, [activeMenu]);
+
   // 检查用户是否有权限访问看板
-  const canAccessDashboard = user?.role === 'admin' || user?.role === 'manager';
+  const canAccessDashboard = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'exporter';
 
   // 处理菜单切换（移动端自动关闭侧边栏）
   const handleMenuChange = (menu: string) => {
@@ -130,6 +139,7 @@ function AppContent() {
         {activeMenu === 'timesheet' && <TimesheetPage />}
         {activeMenu === 'permissions' && <PermissionManagementPage />}
         {activeMenu === 'dataManagement' && <DataManagementPage />}
+        {activeMenu === 'aiStatistics' && <AIStatisticsPage />}
       </main>
     </div>
   );

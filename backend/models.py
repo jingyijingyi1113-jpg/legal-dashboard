@@ -43,6 +43,43 @@ def init_db():
         cursor.execute('ALTER TABLE users ADD COLUMN user_group TEXT')
     except sqlite3.OperationalError:
         pass
+    try:
+        cursor.execute('ALTER TABLE users ADD COLUMN ai_enabled INTEGER DEFAULT 0')
+    except sqlite3.OperationalError:
+        pass
+    
+    # 系统配置表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS system_config (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # 初始化AI功能默认配置
+    cursor.execute('''
+        INSERT OR IGNORE INTO system_config (key, value) VALUES ('ai_mode', 'off')
+    ''')
+    
+    # AI反馈追踪表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS ai_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            session_id TEXT NOT NULL,
+            user_input TEXT NOT NULL,
+            ai_result TEXT NOT NULL,
+            final_result TEXT,
+            field_count INTEGER DEFAULT 0,
+            matched_count INTEGER DEFAULT 0,
+            accuracy REAL DEFAULT 0,
+            timesheet_id TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            submitted_at TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
     
     # 部门表
     cursor.execute('''
@@ -246,7 +283,7 @@ class User:
     def get_all():
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute('SELECT id, username, real_name, email, team, center, role, region, user_group, created_at FROM users')
+        cursor.execute('SELECT id, username, real_name, email, team, center, role, region, user_group, ai_enabled, created_at FROM users')
         rows = cursor.fetchall()
         conn.close()
         return [dict(row) for row in rows]
@@ -558,6 +595,38 @@ class TimesheetEntry:
         return entries
     
     @staticmethod
+    def find_by_team_name(team_name, start_date=None, end_date=None):
+        """根据团队名称获取工时记录（manager用）"""
+        conn = get_db()
+        cursor = conn.cursor()
+        query = '''
+            SELECT te.*, 
+                   COALESCE(u.real_name, te.username) as real_name, 
+                   COALESCE(u.team, json_extract(te.data, '$.teamName')) as team, 
+                   COALESCE(u.center, json_extract(te.data, '$.teamId')) as center 
+            FROM timesheet_entries te
+            LEFT JOIN users u ON te.user_id = u.id
+            WHERE (u.team = ? OR json_extract(te.data, '$.teamName') = ?)
+        '''
+        params = [team_name, team_name]
+        if start_date:
+            query += ' AND te.date >= ?'
+            params.append(start_date)
+        if end_date:
+            query += ' AND te.date <= ?'
+            params.append(end_date)
+        query += ' ORDER BY te.date DESC, te.created_at DESC'
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
+        entries = []
+        for row in rows:
+            entry = dict(row)
+            entry['data'] = json.loads(entry['data']) if entry['data'] else {}
+            entries.append(entry)
+        return entries
+    
+    @staticmethod
     def find_all(start_date=None, end_date=None):
         """获取所有工时记录（管理员用）"""
         conn = get_db()
@@ -780,6 +849,213 @@ class UserTemplate:
         cursor.execute('DELETE FROM user_templates WHERE id = ?', (template_id,))
         conn.commit()
         conn.close()
+
+# 系统配置模型操作
+class SystemConfig:
+    @staticmethod
+    def get(key, default=None):
+        """获取配置值"""
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT value FROM system_config WHERE key = ?', (key,))
+        row = cursor.fetchone()
+        conn.close()
+        return row['value'] if row else default
+    
+    @staticmethod
+    def set(key, value):
+        """设置配置值"""
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO system_config (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+        ''', (key, value))
+        conn.commit()
+        conn.close()
+    
+    @staticmethod
+    def get_all():
+        """获取所有配置"""
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT key, value, updated_at FROM system_config')
+        rows = cursor.fetchall()
+        conn.close()
+        return {row['key']: row['value'] for row in rows}
+
+
+# AI反馈追踪模型
+class AIFeedback:
+    @staticmethod
+    def create(user_id, session_id, user_input, ai_result):
+        """创建AI反馈记录"""
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO ai_feedback (user_id, session_id, user_input, ai_result)
+            VALUES (?, ?, ?, ?)
+        ''', (user_id, session_id, user_input, json.dumps(ai_result, ensure_ascii=False)))
+        feedback_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return feedback_id
+    
+    @staticmethod
+    def update_final_result(session_id, final_result, timesheet_id=None):
+        """更新最终结果并计算精准度"""
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # 获取原始AI结果
+        cursor.execute('SELECT ai_result FROM ai_feedback WHERE session_id = ? ORDER BY id DESC LIMIT 1', (session_id,))
+        row = cursor.fetchone()
+        
+        if row:
+            ai_result = json.loads(row['ai_result'])
+            
+            # 计算匹配度
+            field_count = 0
+            matched_count = 0
+            
+            for key, ai_value in ai_result.items():
+                if key in ['description']:  # 跳过描述字段的精确匹配
+                    continue
+                field_count += 1
+                final_value = final_result.get(key)
+                if final_value is not None:
+                    # 数值类型比较
+                    if isinstance(ai_value, (int, float)) and isinstance(final_value, (int, float)):
+                        if abs(float(ai_value) - float(final_value)) < 0.01:
+                            matched_count += 1
+                    # 字符串比较
+                    elif str(ai_value).strip() == str(final_value).strip():
+                        matched_count += 1
+            
+            accuracy = (matched_count / field_count * 100) if field_count > 0 else 0
+            
+            cursor.execute('''
+                UPDATE ai_feedback 
+                SET final_result = ?, field_count = ?, matched_count = ?, accuracy = ?, 
+                    timesheet_id = ?, submitted_at = CURRENT_TIMESTAMP
+                WHERE session_id = ?
+            ''', (json.dumps(final_result, ensure_ascii=False), field_count, matched_count, accuracy, timesheet_id, session_id))
+            
+            conn.commit()
+        
+        conn.close()
+    
+    @staticmethod
+    def get_statistics(start_date=None, end_date=None, user_id=None):
+        """获取AI精准度统计"""
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        query = '''
+            SELECT 
+                COUNT(*) as total_sessions,
+                AVG(accuracy) as avg_accuracy,
+                SUM(field_count) as total_fields,
+                SUM(matched_count) as total_matched,
+                COUNT(CASE WHEN accuracy >= 80 THEN 1 END) as high_accuracy_count,
+                COUNT(CASE WHEN accuracy >= 50 AND accuracy < 80 THEN 1 END) as medium_accuracy_count,
+                COUNT(CASE WHEN accuracy < 50 THEN 1 END) as low_accuracy_count
+            FROM ai_feedback
+            WHERE submitted_at IS NOT NULL
+        '''
+        params = []
+        
+        if start_date:
+            query += ' AND DATE(created_at) >= ?'
+            params.append(start_date)
+        if end_date:
+            query += ' AND DATE(created_at) <= ?'
+            params.append(end_date)
+        if user_id:
+            query += ' AND user_id = ?'
+            params.append(user_id)
+        
+        cursor.execute(query, params)
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                'totalSessions': row['total_sessions'] or 0,
+                'avgAccuracy': round(row['avg_accuracy'] or 0, 2),
+                'totalFields': row['total_fields'] or 0,
+                'totalMatched': row['total_matched'] or 0,
+                'highAccuracyCount': row['high_accuracy_count'] or 0,
+                'mediumAccuracyCount': row['medium_accuracy_count'] or 0,
+                'lowAccuracyCount': row['low_accuracy_count'] or 0
+            }
+        return None
+    
+    @staticmethod
+    def get_daily_statistics(days=30):
+        """获取每日AI精准度统计"""
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                DATE(created_at) as date,
+                COUNT(*) as sessions,
+                AVG(accuracy) as avg_accuracy,
+                SUM(field_count) as total_fields,
+                SUM(matched_count) as total_matched
+            FROM ai_feedback
+            WHERE submitted_at IS NOT NULL
+              AND created_at >= DATE('now', ?)
+            GROUP BY DATE(created_at)
+            ORDER BY date DESC
+        ''', (f'-{days} days',))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [{
+            'date': row['date'],
+            'sessions': row['sessions'],
+            'avgAccuracy': round(row['avg_accuracy'] or 0, 2),
+            'totalFields': row['total_fields'] or 0,
+            'totalMatched': row['total_matched'] or 0
+        } for row in rows]
+    
+    @staticmethod
+    def get_recent_feedbacks(limit=50):
+        """获取最近的反馈记录"""
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT af.*, u.username, u.real_name
+            FROM ai_feedback af
+            LEFT JOIN users u ON af.user_id = u.id
+            WHERE af.submitted_at IS NOT NULL
+            ORDER BY af.created_at DESC
+            LIMIT ?
+        ''', (limit,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [{
+            'id': row['id'],
+            'userId': row['user_id'],
+            'username': row['username'],
+            'realName': row['real_name'],
+            'sessionId': row['session_id'],
+            'userInput': row['user_input'],
+            'aiResult': json.loads(row['ai_result']) if row['ai_result'] else {},
+            'finalResult': json.loads(row['final_result']) if row['final_result'] else {},
+            'fieldCount': row['field_count'],
+            'matchedCount': row['matched_count'],
+            'accuracy': row['accuracy'],
+            'createdAt': row['created_at'],
+            'submittedAt': row['submitted_at']
+        } for row in rows]
+
 
 if __name__ == '__main__':
     init_db()

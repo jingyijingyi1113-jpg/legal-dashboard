@@ -7,7 +7,7 @@ const API_BASE_URL = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL |
 // 创建 axios 实例
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 60000,  // 60秒超时，适应大文件备份操作
   headers: {
     'Content-Type': 'application/json',
   },
@@ -83,6 +83,8 @@ export interface User {
   role: string;
   region?: string;
   group?: string;
+  aiEnabled?: boolean;
+  canUseAi?: boolean;
 }
 
 // 部门类型
@@ -570,6 +572,96 @@ export const backupApi = {
   },
 };
 
+// ==================== 系统配置 API ====================
+
+export type AiMode = 'off' | 'selective' | 'all';
+
+export const configApi = {
+  // 获取AI配置
+  getAiConfig: (): Promise<ApiResponse<{
+    aiMode: AiMode;
+    userAiEnabled: boolean;
+    canUseAi: boolean;
+  }>> => {
+    return apiClient.get('/api/config/ai-config');
+  },
+
+  // 更新AI配置（仅管理员）
+  updateAiConfig: (aiMode: AiMode): Promise<ApiResponse<{ aiMode: AiMode }>> => {
+    return apiClient.put('/api/config/ai-config', { aiMode });
+  },
+
+  // 更新用户AI权限（仅管理员）
+  updateUserAiEnabled: (userId: number, aiEnabled: boolean): Promise<ApiResponse<{ aiEnabled: boolean }>> => {
+    return apiClient.put(`/api/config/users/${userId}/ai-enabled`, { aiEnabled });
+  },
+};
+
+// ==================== AI 反馈追踪 API ====================
+
+export interface AIFeedbackStats {
+  totalSessions: number;
+  avgAccuracy: number;
+  totalFields: number;
+  totalMatched: number;
+  highAccuracyCount: number;
+  mediumAccuracyCount: number;
+  lowAccuracyCount: number;
+}
+
+export interface AIFeedbackDaily {
+  date: string;
+  sessions: number;
+  avgAccuracy: number;
+  totalFields: number;
+  totalMatched: number;
+}
+
+export interface AIFeedbackRecord {
+  id: number;
+  userId: number;
+  username: string;
+  realName: string;
+  sessionId: string;
+  userInput: string;
+  aiResult: Record<string, unknown>;
+  finalResult: Record<string, unknown>;
+  fieldCount: number;
+  matchedCount: number;
+  accuracy: number;
+  createdAt: string;
+  submittedAt: string;
+}
+
+export const aiFeedbackApi = {
+  // 记录AI填充结果
+  record: (sessionId: string, userInput: string, aiResult: Record<string, unknown>): Promise<ApiResponse<{ feedbackId: number }>> => {
+    return apiClient.post('/api/ai-feedback/record', { sessionId, userInput, aiResult });
+  },
+
+  // 提交最终结果
+  submit: (sessionId: string, finalResult: Record<string, unknown>, timesheetId?: string): Promise<ApiResponse<void>> => {
+    return apiClient.post('/api/ai-feedback/submit', { sessionId, finalResult, timesheetId });
+  },
+
+  // 获取统计数据（仅管理员）
+  getStatistics: (startDate?: string, endDate?: string, userId?: number): Promise<ApiResponse<{
+    summary: AIFeedbackStats;
+    daily: AIFeedbackDaily[];
+  }>> => {
+    const params = new URLSearchParams();
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    if (userId) params.append('userId', String(userId));
+    return apiClient.get(`/api/ai-feedback/statistics?${params.toString()}`);
+  },
+
+  // 获取最近反馈记录（仅管理员）
+  getRecent: (limit = 50): Promise<ApiResponse<AIFeedbackRecord[]>> => {
+    return apiClient.get(`/api/ai-feedback/recent?limit=${limit}`);
+  },
+};
+
 // 导出 axios 实例供特殊情况使用
 export { apiClient };
 
@@ -580,4 +672,6 @@ export default {
   template: templateApi,
   user: userApi,
   organization: organizationApi,
+  config: configApi,
+  aiFeedback: aiFeedbackApi,
 };

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,14 +10,27 @@ import type { UserRole, UserRegion } from '@/types/user';
 import { RoleLabels, RoleColors, RegionLabels, RegionColors } from '@/types/user';
 import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
+import { configApi, type AiMode } from '@/api/index';
 
 const ROLES: UserRole[] = ['admin', 'user', 'manager', 'exporter'];
 const REGIONS: UserRegion[] = ['CN', 'HK', 'OTHER'];
 
+const AI_MODE_LABELS: Record<AiMode, string> = {
+  off: '关闭',
+  selective: '选择性开放',
+  all: '全量开放',
+};
+
+const AI_MODE_COLORS: Record<AiMode, string> = {
+  off: 'bg-slate-100 text-slate-600',
+  selective: 'bg-amber-100 text-amber-700',
+  all: 'bg-emerald-100 text-emerald-700',
+};
+
 type TabType = 'users' | 'teams' | 'groups' | 'departments';
 
 export function PermissionManagementPage() {
-  const { user: currentUser, users, addUser, deleteUser, updateUserRole, updateUserRegion, updateUserField, importUsers } = useAuth();
+  const { user: currentUser, users, addUser, deleteUser, updateUserRole, updateUserRegion, updateUserField, importUsers, refreshUsers, refreshCurrentUser } = useAuth();
   const {
     departments,
     teams,
@@ -71,8 +84,67 @@ export function PermissionManagementPage() {
   const [showDeleteGroupConfirm, setShowDeleteGroupConfirm] = useState<string | null>(null);
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
 
+  // AI配置状态
+  const [aiMode, setAiMode] = useState<AiMode>('off');
+  const [editingAiMode, setEditingAiMode] = useState(false);
+  const [aiModeLoading, setAiModeLoading] = useState(false);
+
   // 获取动态团队列表
   const TEAMS = getTeamNames();
+
+  // 加载AI配置
+  useEffect(() => {
+    const loadAiConfig = async () => {
+      try {
+        const response = await configApi.getAiConfig();
+        if (response.success && response.data) {
+          setAiMode(response.data.aiMode);
+        }
+      } catch (error) {
+        console.error('Failed to load AI config:', error);
+      }
+    };
+    loadAiConfig();
+  }, []);
+
+  // 更新AI模式
+  const handleUpdateAiMode = async (mode: AiMode) => {
+    setAiModeLoading(true);
+    try {
+      const response = await configApi.updateAiConfig(mode);
+      if (response.success) {
+        setAiMode(mode);
+        showMessage('success', `AI模式已切换为: ${AI_MODE_LABELS[mode]}`);
+      } else {
+        showMessage('error', response.message || '更新失败');
+      }
+    } catch (error) {
+      showMessage('error', '更新AI配置失败');
+    } finally {
+      setAiModeLoading(false);
+      setEditingAiMode(false);
+    }
+  };
+
+  // 更新用户AI权限
+  const handleUpdateUserAiEnabled = async (userId: string, aiEnabled: boolean) => {
+    try {
+      const response = await configApi.updateUserAiEnabled(parseInt(userId), aiEnabled);
+      if (response.success) {
+        // 刷新用户列表（不刷新页面）
+        await refreshUsers();
+        // 如果修改的是当前登录用户，刷新当前用户状态
+        if (currentUser && currentUser.id === userId) {
+          await refreshCurrentUser();
+        }
+        showMessage('success', aiEnabled ? 'AI权限已开启' : 'AI权限已关闭');
+      } else {
+        showMessage('error', response.message || '更新失败');
+      }
+    } catch (error) {
+      showMessage('error', '更新用户AI权限失败');
+    }
+  };
 
   // 新用户表单
   const [newUserForm, setNewUserForm] = useState({
@@ -83,6 +155,7 @@ export function PermissionManagementPage() {
     role: 'user' as UserRole,
     region: 'CN' as UserRegion,
     team: '',
+    group: '',
   });
 
   // 显示消息
@@ -108,7 +181,7 @@ export function PermissionManagementPage() {
     if (result.success) {
       showMessage('success', result.message);
       setShowAddUserModal(false);
-      setNewUserForm({ username: '', password: '', name: '', email: '', role: 'user', region: 'CN', team: '' });
+      setNewUserForm({ username: '', password: '', name: '', email: '', role: 'user', region: 'CN', team: '', group: '' });
     } else {
       showMessage('error', result.message);
     }
@@ -504,6 +577,150 @@ export function PermissionManagementPage() {
           </Card>
         </div>
 
+        {/* AI功能配置 */}
+        <Card className="card-premium animate-fade-in-up">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/25">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" />
+                    <circle cx="7.5" cy="14.5" r="1.5" />
+                    <circle cx="16.5" cy="14.5" r="1.5" />
+                  </svg>
+                </div>
+                <div>
+                  <CardTitle className="text-base font-semibold text-neutral-900">AI 工时助手配置</CardTitle>
+                  <p className="text-xs text-slate-500 mt-0.5">控制AI功能的开放范围</p>
+                </div>
+              </div>
+              <Popover open={editingAiMode} onOpenChange={setEditingAiMode}>
+                <PopoverTrigger asChild>
+                  <button
+                    disabled={aiModeLoading}
+                    className={cn(
+                      "px-4 py-2 rounded-xl text-sm font-medium cursor-pointer hover:opacity-80 transition-all flex items-center gap-2",
+                      AI_MODE_COLORS[aiMode],
+                      aiModeLoading && "opacity-50 cursor-not-allowed"
+                    )}
+                  >
+                    {aiModeLoading ? (
+                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    ) : (
+                      <>
+                        {aiMode === 'off' && (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                          </svg>
+                        )}
+                        {aiMode === 'selective' && (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                          </svg>
+                        )}
+                        {aiMode === 'all' && (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                            <polyline points="22 4 12 14.01 9 11.01" />
+                          </svg>
+                        )}
+                      </>
+                    )}
+                    {AI_MODE_LABELS[aiMode]}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-2 bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-xl rounded-xl" align="end">
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => handleUpdateAiMode('off')}
+                      className={cn(
+                        "w-full text-left px-3 py-2.5 text-sm rounded-lg transition-all flex items-center gap-3",
+                        aiMode === 'off' ? "bg-slate-100 text-slate-700 font-medium" : "text-slate-600 hover:bg-slate-50"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+                          <circle cx="12" cy="12" r="10" />
+                          <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                        </svg>
+                      </div>
+                      <div>
+                        <div className="font-medium">关闭</div>
+                        <div className="text-xs text-slate-400">所有人不可用</div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => handleUpdateAiMode('selective')}
+                      className={cn(
+                        "w-full text-left px-3 py-2.5 text-sm rounded-lg transition-all flex items-center gap-3",
+                        aiMode === 'selective' ? "bg-amber-50 text-amber-700 font-medium" : "text-slate-600 hover:bg-slate-50"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600">
+                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                          <circle cx="9" cy="7" r="4" />
+                          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                        </svg>
+                      </div>
+                      <div>
+                        <div className="font-medium">选择性开放</div>
+                        <div className="text-xs text-slate-400">仅指定用户可用</div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => handleUpdateAiMode('all')}
+                      className={cn(
+                        "w-full text-left px-3 py-2.5 text-sm rounded-lg transition-all flex items-center gap-3",
+                        aiMode === 'all' ? "bg-emerald-50 text-emerald-700 font-medium" : "text-slate-600 hover:bg-slate-50"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600">
+                          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                          <polyline points="22 4 12 14.01 9 11.01" />
+                        </svg>
+                      </div>
+                      <div>
+                        <div className="font-medium">全量开放</div>
+                        <div className="text-xs text-slate-400">所有人可用</div>
+                      </div>
+                    </button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </CardHeader>
+          {aiMode === 'selective' && (
+            <CardContent className="pt-0">
+              <div className="bg-amber-50/50 rounded-xl p-4 border border-amber-100">
+                <div className="flex items-start gap-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500 mt-0.5 flex-shrink-0">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  <div className="text-sm text-amber-700">
+                    <p className="font-medium mb-1">选择性开放模式</p>
+                    <p className="text-amber-600">在下方用户列表中，点击"AI"列的开关来控制每个用户的AI功能权限。</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          )}
+        </Card>
+
         {/* Tabs */}
         <div className="flex gap-2 animate-fade-in-up">
           <button
@@ -587,6 +804,9 @@ export function PermissionManagementPage() {
                       <th className="text-left py-3 px-2 text-[11px] font-medium text-slate-500 uppercase tracking-wider">小组</th>
                       <th className="text-left py-3 px-2 text-[11px] font-medium text-slate-500 uppercase tracking-wider">地区</th>
                       <th className="text-left py-3 px-2 text-[11px] font-medium text-slate-500 uppercase tracking-wider">角色</th>
+                      {aiMode === 'selective' && (
+                        <th className="text-center py-3 px-2 text-[11px] font-medium text-slate-500 uppercase tracking-wider">AI</th>
+                      )}
                       <th className="text-left py-3 px-2 text-[11px] font-medium text-slate-500 uppercase tracking-wider">创建时间</th>
                       <th className="text-right py-3 px-2 text-[11px] font-medium text-slate-500 uppercase tracking-wider">操作</th>
                     </tr>
@@ -818,6 +1038,24 @@ export function PermissionManagementPage() {
                             </span>
                           )}
                         </td>
+                        {aiMode === 'selective' && (
+                          <td className="py-2.5 px-2 text-center">
+                            <button
+                              onClick={() => handleUpdateUserAiEnabled(u.id, !u.aiEnabled)}
+                              className={cn(
+                                "w-10 h-5 rounded-full relative transition-all duration-200",
+                                u.aiEnabled ? "bg-violet-500" : "bg-slate-200"
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-all duration-200",
+                                  u.aiEnabled ? "left-5" : "left-0.5"
+                                )}
+                              />
+                            </button>
+                          </td>
+                        )}
                         <td className="py-2.5 px-2 text-slate-500 text-xs">
                           {new Date(u.createdAt).toLocaleDateString()}
                         </td>
@@ -1186,7 +1424,7 @@ export function PermissionManagementPage() {
                 <div className="relative">
                   <select 
                     value={newUserForm.team} 
-                    onChange={(e) => setNewUserForm({ ...newUserForm, team: e.target.value })} 
+                    onChange={(e) => setNewUserForm({ ...newUserForm, team: e.target.value, group: '' })} 
                     className="w-full h-12 px-4 pr-10 rounded-xl border-2 border-slate-200 bg-slate-50/50 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 appearance-none cursor-pointer text-slate-700" 
                     required
                   >
@@ -1200,6 +1438,42 @@ export function PermissionManagementPage() {
                   </div>
                 </div>
               </div>
+
+              {/* 小组选择 - 仅投资法务中心显示 */}
+              {newUserForm.team === '投资法务中心' && (
+                <div className="mb-4">
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-600 mb-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                    所属小组
+                  </label>
+                  <div className="relative">
+                    <select 
+                      value={newUserForm.group} 
+                      onChange={(e) => setNewUserForm({ ...newUserForm, group: e.target.value })} 
+                      className="w-full h-12 px-4 pr-10 rounded-xl border-2 border-slate-200 bg-slate-50/50 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 appearance-none cursor-pointer text-slate-700"
+                    >
+                      <option value="">请选择小组</option>
+                      <option value="1组">1组</option>
+                      <option value="2组">2组</option>
+                      <option value="3组">3组</option>
+                      <option value="4组">4组</option>
+                      <option value="5组">5组</option>
+                      <option value="6组">6组</option>
+                      <option value="全部">全部</option>
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              )}
               
               {/* Two-column for region and role */}
               <div className="grid grid-cols-2 gap-4 mb-6">

@@ -24,7 +24,7 @@ const menuItems = [
         <polyline points="12 6 12 12 16 14"/>
       </svg>
     ),
-    roles: ['admin', 'user', 'manager', 'exporter'],
+    roles: ['admin', 'user', 'manager'],
   },
   {
     id: 'dashboard',
@@ -37,7 +37,7 @@ const menuItems = [
         <path d="M8 17v-3"/>
       </svg>
     ),
-    roles: ['admin', 'manager'],
+    roles: ['admin', 'manager', 'exporter'],
   },
   {
     id: 'dataManagement',
@@ -50,7 +50,7 @@ const menuItems = [
         <path d="M3 12v7c0 1.66 4 3 9 3s9-1.34 9-3v-7"/>
       </svg>
     ),
-    roles: ['admin'],
+    roles: ['admin', 'exporter'],
   },
   {
     id: 'permissions',
@@ -59,6 +59,18 @@ const menuItems = [
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
         <path d="M9 12l2 2 4-4"/>
+      </svg>
+    ),
+    roles: ['admin'],
+  },
+  {
+    id: 'aiStatistics',
+    label: 'AI精准度',
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/>
+        <circle cx="7.5" cy="14.5" r="1.5"/>
+        <circle cx="16.5" cy="14.5" r="1.5"/>
       </svg>
     ),
     roles: ['admin'],

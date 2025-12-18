@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useTimesheet } from '@/contexts/TimesheetContext';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { timesheetApi, backupApi, type BackupFile } from '@/api';
 import type { TimesheetEntry, TemplateField, FieldOption } from '@/types/timesheet';
 import { getTeamTemplateByName, getChildOptions } from '@/config/teamTemplates';
@@ -1116,6 +1117,10 @@ function ImportModal({ isOpen, onClose, onConfirm, previewData, fileName }: Impo
 export function DataManagementPage() {
   const { entries, deleteEntries, updateEntry, importEntries, refreshEntries } = useTimesheet();
   const { teams } = useOrganization();
+  const { user } = useAuth();
+
+  // 判断是否为 exporter 角色
+  const isExporter = user?.role === 'exporter';
 
   // 自动刷新状态
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -1335,6 +1340,21 @@ export function DataManagementPage() {
   // 筛选后的数据
   const filteredEntries = useMemo(() => {
     return entries.filter(entry => {
+      // exporter 角色只能看到所属团队/小组的数据
+      if (isExporter && user) {
+        // 必须匹配用户所属团队
+        if (user.team && entry.teamName !== user.team) {
+          return false;
+        }
+        // 如果用户有小组，还需要匹配小组
+        if (user.group) {
+          const entryGroup = entry.groupName || entry.data?.sourcePath;
+          if (entryGroup !== user.group) {
+            return false;
+          }
+        }
+      }
+
       // 按中心筛选
       if (selectedTeam !== 'all' && entry.teamName !== selectedTeam) {
         return false;
@@ -1380,7 +1400,7 @@ export function DataManagementPage() {
 
       return true;
     });
-  }, [entries, selectedTeam, selectedGroup, selectedYear, selectedMonth, searchKeyword]);
+  }, [entries, selectedTeam, selectedGroup, selectedYear, selectedMonth, searchKeyword, isExporter, user]);
 
   // 分页后的数据
   const paginatedEntries = useMemo(() => {
@@ -1700,38 +1720,40 @@ export function DataManagementPage() {
               {isRefreshing ? '刷新中...' : '刷新数据'}
             </button>
             
-            {/* 备份管理按钮 */}
-            <button
-              onClick={() => setShowBackupPanel(!showBackupPanel)}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition-all",
-                showBackupPanel
-                  ? "bg-amber-600 text-white shadow-md"
-                  : "bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
-              )}
-            >
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                width="16" 
-                height="16" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2" 
-                strokeLinecap="round" 
-                strokeLinejoin="round"
+            {/* 备份管理按钮 - 仅管理员可见 */}
+            {!isExporter && (
+              <button
+                onClick={() => setShowBackupPanel(!showBackupPanel)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition-all",
+                  showBackupPanel
+                    ? "bg-amber-600 text-white shadow-md"
+                    : "bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
+                )}
               >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              备份管理
-            </button>
+                <svg 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  width="16" 
+                  height="16" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                >
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                备份管理
+              </button>
+            )}
           </div>
         </div>
 
-        {/* 备份管理面板 */}
-        {showBackupPanel && (
+        {/* 备份管理面板 - 仅管理员可见 */}
+        {!isExporter && showBackupPanel && (
           <div className="bg-white rounded-2xl shadow-sm border border-amber-200 p-5 mb-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">

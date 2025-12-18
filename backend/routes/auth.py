@@ -6,7 +6,7 @@ import datetime
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from models import User
+from models import User, SystemConfig
 from config import SECRET_KEY
 
 auth_bp = Blueprint('auth', __name__)
@@ -45,6 +45,32 @@ def token_required(f):
         payload = verify_token(token)
         if not payload:
             return jsonify({'success': False, 'message': '令牌无效或已过期'}), 401
+        
+        request.user_id = payload['user_id']
+        request.username = payload['username']
+        return f(*args, **kwargs)
+    return decorated
+
+def admin_required(f):
+    """管理员权限验证装饰器"""
+    from functools import wraps
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token:
+            return jsonify({'success': False, 'message': '缺少认证令牌'}), 401
+        
+        if token.startswith('Bearer '):
+            token = token[7:]
+        
+        payload = verify_token(token)
+        if not payload:
+            return jsonify({'success': False, 'message': '令牌无效或已过期'}), 401
+        
+        # 检查用户角色
+        user = User.find_by_id(payload['user_id'])
+        if not user or user['role'] != 'admin':
+            return jsonify({'success': False, 'message': '需要管理员权限'}), 403
         
         request.user_id = payload['user_id']
         request.username = payload['username']
@@ -118,6 +144,12 @@ def login():
         return jsonify({'success': False, 'message': '密码错误'}), 401
     
     token = generate_token(user['id'], username)
+    
+    # 计算AI权限
+    ai_mode = SystemConfig.get('ai_mode', 'off')
+    user_ai_enabled = bool(user.get('ai_enabled', 0))
+    can_use_ai = ai_mode == 'all' or (ai_mode == 'selective' and user_ai_enabled)
+    
     return jsonify({
         'success': True,
         'message': '登录成功',
@@ -132,7 +164,9 @@ def login():
                 'center': user['center'],
                 'role': user['role'],
                 'region': user.get('region', 'CN'),
-                'group': user.get('user_group')
+                'group': user.get('user_group'),
+                'aiEnabled': user_ai_enabled,
+                'canUseAi': can_use_ai
             }
         }
     })
@@ -145,6 +179,11 @@ def get_current_user():
     if not user:
         return jsonify({'success': False, 'message': '用户不存在'}), 404
     
+    # 计算AI权限
+    ai_mode = SystemConfig.get('ai_mode', 'off')
+    user_ai_enabled = bool(user.get('ai_enabled', 0))
+    can_use_ai = ai_mode == 'all' or (ai_mode == 'selective' and user_ai_enabled)
+    
     return jsonify({
         'success': True,
         'data': {
@@ -156,7 +195,9 @@ def get_current_user():
             'center': user['center'],
             'role': user['role'],
             'region': user.get('region', 'CN'),
-            'group': user.get('user_group')
+            'group': user.get('user_group'),
+            'aiEnabled': user_ai_enabled,
+            'canUseAi': can_use_ai
         }
     })
 
@@ -202,6 +243,7 @@ def get_all_users():
             'role': u['role'],
             'region': u.get('region', 'CN'),
             'group': u.get('user_group'),
+            'aiEnabled': bool(u.get('ai_enabled', 0)),
             'createdAt': u['created_at']
         } for u in users]
     })

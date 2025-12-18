@@ -1,14 +1,18 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import type { TemplateField, FieldOption } from '@/types/timesheet';
+import { aiFeedbackApi } from '@/api/index';
 
 // API基础URL - 生产环境使用相对路径
 const API_BASE_URL = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || 'http://localhost:5001');
 
+// 生成唯一会话ID
+const generateSessionId = () => `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
 interface AIAssistantProps {
   fields: TemplateField[];
   teamName?: string;  // 用户所属团队名称
-  onFillForm: (data: Record<string, string | number>) => void;
+  onFillForm: (data: Record<string, string | number>, sessionId?: string) => void;
 }
 
 // 语音识别类型声明
@@ -66,8 +70,18 @@ export function AIAssistant({ fields, teamName, onFillForm }: AIAssistantProps) 
     { role: 'assistant', content: '你好！我是工时录入助手。你可以用自然语言描述你的工作，我会帮你自动填写表单。\n\n例如："今天做了2小时合同审核" 或 "花了3小时处理日常法务工作"' }
   ]);
   const [speechSupported, setSpeechSupported] = useState(false);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // 记录AI反馈
+  const recordAiFeedback = useCallback(async (sessionId: string, userInput: string, aiResult: Record<string, unknown>) => {
+    try {
+      await aiFeedbackApi.record(sessionId, userInput, aiResult);
+    } catch (error) {
+      console.error('Failed to record AI feedback:', error);
+    }
+  }, []);
 
   // 检查语音识别支持
   useEffect(() => {
@@ -341,9 +355,16 @@ export function AIAssistant({ fields, teamName, onFillForm }: AIAssistantProps) 
       
       setMessages(prev => [...prev, { role: 'assistant', content: response }]);
       
-      // 如果解析出内容，填充表单
+      // 如果解析出内容，填充表单并记录AI反馈
       if (Object.keys(parsed).length > 0) {
-        onFillForm(parsed);
+        const sessionId = generateSessionId();
+        setCurrentSessionId(sessionId);
+        
+        // 记录AI填充结果
+        await recordAiFeedback(sessionId, userMessage, parsed);
+        
+        // 填充表单，传递sessionId
+        onFillForm(parsed, sessionId);
       }
     } catch (error) {
       console.error('处理失败:', error);

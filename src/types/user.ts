@@ -46,6 +46,8 @@ export interface User {
   team?: string;
   group?: string; // 小组（团队下的子分组）
   department?: string;
+  aiEnabled?: boolean; // AI功能是否启用
+  canUseAi?: boolean; // 是否可以使用AI（综合判断结果）
   createdAt: string;
   updatedAt: string;
 }

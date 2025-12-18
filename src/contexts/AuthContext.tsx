@@ -100,6 +100,8 @@ interface AuthContextType {
   updateUserRegion: (userId: string, region: UserRegion) => Promise<{ success: boolean; message: string }>;
   updateUserField: (userId: string, field: 'username' | 'email' | 'team' | 'group', value: string) => Promise<{ success: boolean; message: string }>;
   importUsers: (users: Omit<User, 'id' | 'createdAt' | 'updatedAt'>[]) => Promise<{ success: boolean; message: string; imported: number; failed: number }>;
+  refreshUsers: () => Promise<void>;
+  refreshCurrentUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -148,7 +150,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 email: apiUser.email || '',
                 role: apiUser.role as UserRole,
                 team: apiUser.team,
+                group: apiUser.group || (apiUser as any).user_group,
                 department: apiUser.center,
+                aiEnabled: apiUser.aiEnabled,
+                canUseAi: apiUser.canUseAi,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               };
@@ -170,6 +175,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                       team: u.team,
                       group: u.group,
                       department: u.center,
+                      aiEnabled: u.aiEnabled,
                       createdAt: u.createdAt || new Date().toISOString(),
                       updatedAt: u.updatedAt || new Date().toISOString(),
                     }));
@@ -269,25 +275,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (USE_API) {
       try {
         const response = await userApi.getAllUsers();
+        console.log('API返回的用户数据:', response.data);
         if (response.success && response.data) {
-          const apiUsers = response.data.map((apiUser: any) => ({
-            id: String(apiUser.id),
-            username: apiUser.username,
-            name: apiUser.name || apiUser.realName || apiUser.username,
-            email: apiUser.email || '',
-            role: apiUser.role as UserRole,
-            region: (apiUser.region || 'CN') as UserRegion,
-            team: apiUser.team,
-            group: apiUser.group,
-            department: apiUser.center,
-            createdAt: apiUser.createdAt || new Date().toISOString(),
-            updatedAt: apiUser.updatedAt || new Date().toISOString(),
-          }));
+          const apiUsers = response.data.map((apiUser: any) => {
+            const mappedUser = {
+              id: String(apiUser.id),
+              username: apiUser.username,
+              name: apiUser.name || apiUser.realName || apiUser.username,
+              email: apiUser.email || '',
+              role: apiUser.role as UserRole,
+              region: (apiUser.region || 'CN') as UserRegion,
+              team: apiUser.team,
+              group: apiUser.group,
+              department: apiUser.center,
+              aiEnabled: apiUser.aiEnabled,
+              createdAt: apiUser.createdAt || new Date().toISOString(),
+              updatedAt: apiUser.updatedAt || new Date().toISOString(),
+            };
+            console.log('单个用户映射:', apiUser.username, 'aiEnabled:', apiUser.aiEnabled, '->', mappedUser.aiEnabled);
+            return mappedUser;
+          });
+          console.log('映射后的用户数据:', apiUsers);
           setUsers(apiUsers);
           localStore.setItem(STORAGE_KEYS.USERS, JSON.stringify(apiUsers));
         }
       } catch (error) {
         console.log('获取用户列表失败:', error);
+      }
+    }
+  };
+
+  // 刷新当前用户状态（用于AI权限等更新后）
+  const refreshCurrentUser = async () => {
+    if (USE_API) {
+      try {
+        const response = await authApi.getCurrentUser();
+        if (response.success && response.data) {
+          const apiUser = response.data;
+          const localUser: User = {
+            id: String(apiUser.id),
+            username: apiUser.username,
+            name: apiUser.realName,
+            email: apiUser.email || '',
+            role: apiUser.role as UserRole,
+            team: apiUser.team,
+            group: apiUser.group || (apiUser as any).user_group,
+            department: apiUser.center,
+            aiEnabled: apiUser.aiEnabled,
+            canUseAi: apiUser.canUseAi,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          setUser(localUser);
+          sessionStore.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(localUser));
+        }
+      } catch (error) {
+        console.log('刷新当前用户失败:', error);
       }
     }
   };
@@ -312,7 +355,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             email: apiUser.email || '',
             role: apiUser.role as UserRole,
             team: apiUser.team,
+            group: apiUser.group || (apiUser as any).user_group,
             department: apiUser.center,
+            aiEnabled: apiUser.aiEnabled,
+            canUseAi: apiUser.canUseAi,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           };
@@ -780,6 +826,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         updateUserRegion,
         updateUserField,
         importUsers,
+        refreshUsers: loadAllUsers,
+        refreshCurrentUser,
       }}
     >
       {children}

@@ -316,17 +316,50 @@ function TemplateCard({ template }: TemplateCardProps) {
     return false;
   };
 
+  // 检查字段是否应该被禁用
+  const isFieldDisabled = (field: TemplateField): boolean => {
+    // 如果有父字段且父字段未选择，则禁用
+    if (field.parentField && !formData[field.parentField]) {
+      return true;
+    }
+    // 如果有条件必填，检查依赖字段是否已选择
+    if (field.conditionalRequired) {
+      const { dependsOn } = field.conditionalRequired;
+      if (!formData[dependsOn]) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // 获取禁用提示信息
+  const getDisabledHint = (field: TemplateField): string | null => {
+    if (field.parentField && !formData[field.parentField]) {
+      const parentField = template.fields.find(f => f.key === field.parentField);
+      return `请先选择${parentField?.label || '上级分类'}`;
+    }
+    if (field.conditionalRequired) {
+      const { dependsOn } = field.conditionalRequired;
+      if (!formData[dependsOn]) {
+        const dependField = template.fields.find(f => f.key === dependsOn);
+        return `选择 ${dependField?.label || dependsOn} 时需填写`;
+      }
+    }
+    return null;
+  };
+
   // 渲染表单字段
   const renderField = (field: TemplateField) => {
     const value = formData[field.key] ?? '';
     const icon = fieldIcons[field.key];
     const required = isFieldRequired(field);
+    const isDisabled = isFieldDisabled(field);
+    const disabledHint = getDisabledHint(field);
     
     switch (field.type) {
       case 'select':
       case 'cascader': {
         const options = getFieldOptions(field);
-        const isDisabled = field.parentField && !formData[field.parentField];
         
         return (
           <div key={field.key} className="space-y-1.5">
@@ -341,15 +374,15 @@ function TemplateCard({ template }: TemplateCardProps) {
               onChange={(val) => handleFieldChange(field.key, val)}
               options={options}
               placeholder={field.placeholder || `请选择${field.label}`}
-              disabled={!!isDisabled}
+              disabled={isDisabled}
               icon={icon}
             />
-            {field.parentField && !formData[field.parentField] && (
+            {isDisabled && disabledHint && (
               <p className="text-[10px] text-amber-600 flex items-center gap-1">
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                请先选择上级分类
+                {disabledHint}
               </p>
             )}
           </div>
@@ -392,24 +425,31 @@ function TemplateCard({ template }: TemplateCardProps) {
           <div key={field.key} className="space-y-1.5">
             <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
               {field.label}
-              {field.required ? (
+              {required ? (
                 <span className="text-rose-500 text-[10px]">*</span>
               ) : (
                 <span className="text-slate-400 text-[10px]">（可选）</span>
               )}
             </label>
             <div className="relative">
-              <div className="absolute left-3 top-3 text-slate-400">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h7" />
-                </svg>
+              <div className={`absolute left-3 top-3 ${isDisabled ? 'text-slate-300' : 'text-slate-400'}`}>
+                {icon || (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h7" />
+                  </svg>
+                )}
               </div>
               <textarea
                 placeholder={field.placeholder}
                 value={value as string}
                 onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                disabled={isDisabled}
                 rows={2}
-                className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 resize-none"
+                className={`w-full pl-9 pr-3 py-2 rounded-lg border text-sm placeholder:text-slate-400 resize-none
+                  ${isDisabled 
+                    ? 'bg-slate-50 border-slate-100 cursor-not-allowed opacity-60 text-slate-400' 
+                    : 'bg-white border-slate-200 text-slate-800 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50'
+                  }`}
               />
             </div>
           </div>

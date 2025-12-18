@@ -39,6 +39,7 @@ interface LoadTimesheetDialogProps {
   onOpenChange: (open: boolean) => void;
   userTeam?: string;
   userRole?: string;
+  userGroup?: string;  // 用户所属小组（投资法务中心专用）
   onConfirm: (filters: {
     team?: string;
     group?: string;
@@ -55,14 +56,19 @@ export function LoadTimesheetDialog({
   onOpenChange,
   userTeam,
   userRole,
+  userGroup,
   onConfirm,
 }: LoadTimesheetDialogProps) {
   const isAdmin = userRole === 'admin';
   const isInvestmentLegalManager = userRole === 'manager' && userTeam === '投资法务中心';
   const isOtherManager = userRole === 'manager' && userTeam !== '投资法务中心';
   
+  // 投资法务中心管理者：如果 userGroup 是具体小组（如1组），则锁定该小组；如果是"全部"，则可以选择
+  const isGroupLocked = isInvestmentLegalManager && userGroup && userGroup !== '全部';
+  
   const [selectedTeam, setSelectedTeam] = useState<string>(userTeam || '');
-  const [selectedGroup, setSelectedGroup] = useState<string>('all');
+  // 如果用户有固定小组，默认选中该小组
+  const [selectedGroup, setSelectedGroup] = useState<string>(isGroupLocked ? userGroup! : 'all');
   const [period, setPeriod] = useState<Period>('monthly');
   const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
   const [selectedPeriodValue, setSelectedPeriodValue] = useState<string | null>(null);
@@ -93,12 +99,22 @@ export function LoadTimesheetDialog({
   }));
 
   const showTeamSelector = isAdmin;
-  const showGroupSelector = isInvestmentLegalManager || (isAdmin && selectedTeam === '投资法务中心');
+  // 管理员选择投资法务中心时显示小组选择器，投资法务中心管理者且小组为"全部"时也显示
+  const showGroupSelector = (isAdmin && selectedTeam === '投资法务中心') || (isInvestmentLegalManager && !isGroupLocked);
 
   const handleConfirm = () => {
+    // 确定要传递的小组值
+    let groupValue: string | undefined;
+    if (isGroupLocked) {
+      // 如果用户小组被锁定，强制使用用户的小组
+      groupValue = userGroup;
+    } else if (showGroupSelector && selectedGroup !== 'all') {
+      groupValue = selectedGroup;
+    }
+    
     onConfirm({
       team: isAdmin ? selectedTeam : userTeam,
-      group: showGroupSelector && selectedGroup !== 'all' ? selectedGroup : undefined,
+      group: groupValue,
       period,
       year: period !== 'custom' ? selectedYear : undefined,
       periodValue: period !== 'custom' && period !== 'annually' ? selectedPeriodValue || undefined : undefined,
@@ -224,7 +240,16 @@ export function LoadTimesheetDialog({
           )}
 
           {/* 小组选择 - 蓝色主题 */}
-          {showGroupSelector && (
+          {/* 如果小组被锁定，显示锁定的小组；否则显示选择器 */}
+          {isGroupLocked ? (
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-slate-500">小组</label>
+              <div className="flex items-center gap-2 px-4 py-3 bg-slate-100 rounded-xl border border-slate-200">
+                <span className="text-sm font-medium text-slate-700">{userGroup}</span>
+                <span className="text-xs text-slate-400">（仅可查看本组数据）</span>
+              </div>
+            </div>
+          ) : showGroupSelector && (
             <div className="space-y-2">
               <label className="text-xs font-medium text-slate-500">小组</label>
               <div className="flex gap-1.5 flex-wrap">
