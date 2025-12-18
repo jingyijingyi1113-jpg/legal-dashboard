@@ -706,34 +706,37 @@ class TimesheetEntry:
     
     @staticmethod
     def batch_create(entries_list):
-        """批量创建工时记录"""
+        """批量创建工时记录（如果ID已存在则更新）"""
         conn = get_db()
         cursor = conn.cursor()
         now = datetime.now().isoformat()
         
-        # 准备批量插入数据
-        values = []
+        inserted = 0
         for entry in entries_list:
-            values.append((
-                entry['id'],
-                entry['user_id'],
-                entry['username'],
-                entry['date'],
-                entry.get('hours', 0),
-                entry.get('status', 'submitted'),
-                json.dumps(entry.get('data', {}), ensure_ascii=False),
-                entry.get('user_group'),
-                now,
-                now,
-                now if entry.get('status') == 'submitted' else None
-            ))
+            try:
+                # 使用 INSERT OR REPLACE 处理重复ID
+                cursor.execute('''
+                    INSERT OR REPLACE INTO timesheet_entries 
+                    (id, user_id, username, date, hours, status, data, user_group, created_at, updated_at, submitted_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    entry['id'],
+                    entry['user_id'],
+                    entry['username'],
+                    entry['date'],
+                    entry.get('hours', 0),
+                    entry.get('status', 'submitted'),
+                    json.dumps(entry.get('data', {}), ensure_ascii=False),
+                    entry.get('user_group'),
+                    now,
+                    now,
+                    now if entry.get('status') == 'submitted' else None
+                ))
+                inserted += 1
+            except Exception as e:
+                print(f"[DEBUG] 插入记录失败: {entry.get('id')}, 错误: {e}")
+                continue
         
-        cursor.executemany('''
-            INSERT INTO timesheet_entries (id, user_id, username, date, hours, status, data, user_group, created_at, updated_at, submitted_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', values)
-        
-        inserted = cursor.rowcount
         conn.commit()
         conn.close()
         return inserted

@@ -915,8 +915,13 @@ function ImportModal({ isOpen, onClose, onConfirm, previewData, fileName }: Impo
         };
       });
 
-    onConfirm(entriesToImport);
-    setImporting(false);
+    try {
+      await onConfirm(entriesToImport);
+    } catch (error) {
+      console.error('导入失败:', error);
+    } finally {
+      setImporting(false);
+    }
   };
 
   return (
