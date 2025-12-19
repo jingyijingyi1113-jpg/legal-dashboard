@@ -1,5 +1,6 @@
 
 import { useMemo, useState, useEffect, useTransition, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Bar, BarChart, CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis,
   YAxis, Line, LineChart
@@ -2617,6 +2618,7 @@ const CorporateFinanceCenterAnalysis = ({ data }: { data: any[] }) => {
 };
 
 export const ProjectDimensionTab = ({ data }: { data: any[] }) => {
+  const { t } = useTranslation();
   const [activeTeamTab, setActiveTeamTab] = useState('investment-legal');
   
   // 无数据时的展示
@@ -2627,8 +2629,8 @@ export const ProjectDimensionTab = ({ data }: { data: any[] }) => {
           <svg className="w-16 h-16 mx-auto mb-4 text-neutral-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
-          <p className="text-lg font-medium">请先导入工时数据</p>
-          <p className="text-sm text-neutral-400 mt-1">导入数据后可查看项目维度分析</p>
+          <p className="text-lg font-medium">{t('dashboard.empty.title')}</p>
+          <p className="text-sm text-neutral-400 mt-1">{t('dashboard.empty.subtitle')}</p>
         </div>
       </div>
     );

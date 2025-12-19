@@ -343,7 +343,9 @@
     },
     "empty": {
       "title": "请先导入工时数据",
-      "subtitle": "导入数据后可查看工时统计分析"
+      "subtitle": "导入数据后可查看工时统计分析",
+      "teamSubtitle": "导入数据后可查看分团队工时分析",
+      "anomalySubtitle": "导入数据后可查看异常监测分析"
     }
   }
 }
