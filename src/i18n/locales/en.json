@@ -346,6 +346,12 @@
       "subtitle": "Import data to view statistics analysis",
       "teamSubtitle": "Import data to view team analysis",
       "anomalySubtitle": "Import data to view anomaly detection analysis"
+    },
+    "teams": {
+      "investmentLegal": "Investment Legal Center",
+      "corporateFinance": "Corporate & International Finance Center",
+      "businessManagement": "Business Management & Compliance Center",
+      "all": "All Teams"
     }
   }
 }

@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { format, setMonth, setYear } from "date-fns";
+import { enUS, zhCN } from 'date-fns/locale';
 
 interface MonthPickerProps {
     value?: Date;
@@ -10,8 +12,11 @@ interface MonthPickerProps {
 }
 
 export function MonthPicker({ value, onChange, variant = 'default' }: MonthPickerProps) {
+    const { t, i18n } = useTranslation();
     const [open, setOpen] = useState(false);
     const [viewDate, setViewDate] = useState(value || new Date());
+    
+    const locale = i18n.language === 'zh' ? zhCN : enUS;
 
     const handleMonthSelect = (month: number) => {
         const newDate = setMonth(viewDate, month);
@@ -70,7 +75,7 @@ export function MonthPicker({ value, onChange, variant = 'default' }: MonthPicke
                     </button>
                 </PopoverTrigger>
                 <PopoverContent 
-                    className="w-[280px] p-0 border-0 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden animate-duration-75"
+                    className="z-[10001] w-[280px] p-0 border-0 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden animate-duration-75"
                     align="start"
                     sideOffset={8}
                 >
@@ -115,19 +120,19 @@ export function MonthPicker({ value, onChange, variant = 'default' }: MonthPicke
                                             isCurrentMonth && !isSelected && "text-neutral-900 font-semibold"
                                         )}
                                     >
-                                        {format(setMonth(new Date(), month), "MMM")}
-                                        {isCurrentMonth && !isSelected && (
-                                            <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-neutral-400" />
-                                        )}
-                                    </button>
-                                );
-                            })}
-                        </div>
+                                    {format(setMonth(new Date(), month), "MMM", { locale })}
+                                    {isCurrentMonth && !isSelected && (
+                                        <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-neutral-400" />
+                                    )}
+                                </button>
+                            );
+                        })}
                     </div>
-                </PopoverContent>
-            </Popover>
-        );
-    }
+                </div>
+            </PopoverContent>
+        </Popover>
+    );
+}
 
     // 默认风格
     return (
@@ -153,11 +158,11 @@ export function MonthPicker({ value, onChange, variant = 'default' }: MonthPicke
                     <svg className="w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    {value ? format(value, "yyyy-MM") : <span>选择月份</span>}
+                    {value ? format(value, "yyyy-MM") : <span>{t('dashboard.selector.selectMonth')}</span>}
                 </button>
             </PopoverTrigger>
             <PopoverContent 
-                className="w-[280px] p-0 border-0 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden animate-duration-75"
+                className="z-[10001] w-[280px] p-0 border-0 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl overflow-hidden animate-duration-75"
                 align="start"
                 sideOffset={8}
             >
@@ -202,7 +207,7 @@ export function MonthPicker({ value, onChange, variant = 'default' }: MonthPicke
                                         isCurrentMonth && !isSelected && "text-neutral-900 font-semibold"
                                     )}
                                 >
-                                    {format(setMonth(new Date(), month), "MMM")}
+                                    {format(setMonth(new Date(), month), "MMM", { locale })}
                                     {isCurrentMonth && !isSelected && (
                                         <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-neutral-400" />
                                     )}

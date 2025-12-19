@@ -2886,11 +2886,17 @@ const MinimalMonthSelector = ({
   selectedMonth: string | null;
   onSelect: (year: string, month: string) => void;
 }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [viewYear, setViewYear] = useState(selectedYear ? parseInt(selectedYear) : new Date().getFullYear());
 
   const months = Array.from({ length: 12 }, (_, i) => i);
-  const monthLabels = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+  const monthLabels = [
+    t('dashboard.selector.months.1'), t('dashboard.selector.months.2'), t('dashboard.selector.months.3'),
+    t('dashboard.selector.months.4'), t('dashboard.selector.months.5'), t('dashboard.selector.months.6'),
+    t('dashboard.selector.months.7'), t('dashboard.selector.months.8'), t('dashboard.selector.months.9'),
+    t('dashboard.selector.months.10'), t('dashboard.selector.months.11'), t('dashboard.selector.months.12')
+  ];
 
   const handleMonthSelect = (month: number) => {
     onSelect(viewYear.toString(), month.toString());
@@ -2995,17 +3001,18 @@ const MinimalQuarterSelector = ({
   selectedQuarter: string | null;
   onSelect: (quarter: string) => void;
 }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const quarters = [
-    { value: '0', label: '第一季度' },
-    { value: '1', label: '第二季度' },
-    { value: '2', label: '第三季度' },
-    { value: '3', label: '第四季度' },
+    { value: '0', label: t('dashboard.selector.q1') },
+    { value: '1', label: t('dashboard.selector.q2') },
+    { value: '2', label: t('dashboard.selector.q3') },
+    { value: '3', label: t('dashboard.selector.q4') },
   ];
 
   const selectedLabel = selectedQuarter !== null 
     ? quarters.find(q => q.value === selectedQuarter)?.label 
-    : '选择季度';
+    : t('dashboard.selector.selectQuarter');
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -3078,15 +3085,16 @@ const MinimalSemiannualSelector = ({
   selectedSemiannual: string | null;
   onSelect: (semiannual: string) => void;
 }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const semiannuals = [
-    { value: '0', label: '上半年' },
-    { value: '1', label: '下半年' },
+    { value: '0', label: t('dashboard.selector.h1') },
+    { value: '1', label: t('dashboard.selector.h2') },
   ];
 
   const selectedLabel = selectedSemiannual !== null 
     ? semiannuals.find(s => s.value === selectedSemiannual)?.label 
-    : '选择半年度';
+    : t('dashboard.selector.selectHalfYear');
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -3161,18 +3169,19 @@ const PeriodFilter = ({
     availableYears,
     periodOptions
 }: any) => {
+    const { t } = useTranslation();
     const periodLabels: Record<Period, string> = {
-        monthly: '月度',
-        quarterly: '季度',
-        semiannually: '半年度',
-        annually: '年度',
-        custom: '自定义'
+        monthly: t('dashboard.period.monthly'),
+        quarterly: t('dashboard.period.quarterly'),
+        semiannually: t('dashboard.period.semiannually'),
+        annually: t('dashboard.period.annually'),
+        custom: t('dashboard.period.custom')
     };
 
     return (
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
             {/* Period 标签 */}
-            <span className="text-xs font-medium tracking-widest text-neutral-400 uppercase">Period</span>
+            <span className="text-xs font-medium tracking-widest text-neutral-400 uppercase">{t('dashboard.period.label')}</span>
             
             {/* 周期类型切换 - 增大点击区域 */}
             <div className="flex items-center gap-0.5 p-1 bg-neutral-100/80 rounded-full">
@@ -3248,7 +3257,7 @@ const PeriodFilter = ({
                 /* 自定义日期范围 */
                 <div className="flex items-center gap-3">
                     <MonthPicker value={customStartDate} onChange={setCustomStartDate} variant="minimal" />
-                    <span className="text-neutral-300 text-sm">至</span>
+                    <span className="text-neutral-300 text-sm">{t('dashboard.period.to')}</span>
                     <MonthPicker value={customEndDate} onChange={setCustomEndDate} variant="minimal" />
                 </div>
             )}
@@ -6915,13 +6924,13 @@ export function TeamDimensionTab({ data, onDataUpdate, dataSourceType }: { data:
               value="investment-legal"
               className="relative h-9 rounded-md border-0 bg-transparent px-4 py-2 font-normal text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all data-[state=active]:bg-blue-50 data-[state=active]:text-blue-600 data-[state=active]:shadow-none text-sm"
             >
-              投资法务中心
+              {t('dashboard.teams.investmentLegal')}
             </TabsTrigger>
             <TabsTrigger 
               value="corporate-finance"
               className="relative h-9 rounded-md border-0 bg-transparent px-4 py-2 font-normal text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all data-[state=active]:bg-blue-50 data-[state=active]:text-blue-600 data-[state=active]:shadow-none text-sm"
             >
-              公司及国际金融事务中心
+              {t('dashboard.teams.corporateFinance')}
             </TabsTrigger>
           </TabsList>
         </div>

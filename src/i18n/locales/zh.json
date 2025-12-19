@@ -346,6 +346,12 @@
       "subtitle": "导入数据后可查看工时统计分析",
       "teamSubtitle": "导入数据后可查看分团队工时分析",
       "anomalySubtitle": "导入数据后可查看异常监测分析"
+    },
+    "teams": {
+      "investmentLegal": "投资法务中心",
+      "corporateFinance": "公司及国际金融事务中心",
+      "businessManagement": "业务管理及合规检测中心",
+      "all": "全部团队"
     }
   }
 }
