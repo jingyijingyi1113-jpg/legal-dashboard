@@ -56,6 +56,7 @@ export function PermissionManagementPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sendingReminder, setSendingReminder] = useState(false);
+  const [showReminderConfirm, setShowReminderConfirm] = useState<{ type: 'all' } | { type: 'single'; email: string; name: string } | null>(null);
 
   // 用户管理状态
   const [showAddUserModal, setShowAddUserModal] = useState(false);
@@ -202,6 +203,7 @@ export function PermissionManagementPage() {
 
   const handleSendReminder = async () => {
     setSendingReminder(true);
+    setShowReminderConfirm(null);
     try {
       const response = await backupApi.sendReminder();
       showMessage(response.success ? 'success' : 'error', response.success ? '工时提醒邮件已发送给所有用户' : (response.message || '发送失败'));
@@ -214,6 +216,7 @@ export function PermissionManagementPage() {
 
   const handleSendReminderToUser = async (email: string, name: string) => {
     setSendingReminder(true);
+    setShowReminderConfirm(null);
     try {
       const response = await backupApi.sendReminder(email);
       showMessage(response.success ? 'success' : 'error', response.success ? `工时提醒邮件已发送给 ${name}` : (response.message || '发送失败'));
@@ -806,7 +809,7 @@ export function PermissionManagementPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={handleSendReminder}
+                    onClick={() => setShowReminderConfirm({ type: 'all' })}
                     disabled={sendingReminder}
                     className="h-8 px-3 text-xs bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100 hover:text-blue-700"
                   >
@@ -1119,7 +1122,7 @@ export function PermissionManagementPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleSendReminderToUser(u.email, u.name)}
+                                onClick={() => setShowReminderConfirm({ type: 'single', email: u.email, name: u.name })}
                                 disabled={sendingReminder}
                                 className="h-7 w-7 p-0 text-slate-400 hover:text-blue-500 hover:bg-blue-50"
                                 title={`发送工时提醒给 ${u.name}`}
@@ -1642,6 +1645,44 @@ export function PermissionManagementPage() {
               <div className="flex gap-3">
                 <Button onClick={() => setShowDeleteUserConfirm(null)} variant="ghost" className="flex-1 h-10 rounded-xl border border-slate-200">取消</Button>
                 <Button onClick={() => handleDeleteUser(showDeleteUserConfirm)} className="flex-1 h-10 rounded-xl bg-red-500 hover:bg-red-600 text-white">删除</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 发送工时提醒确认弹窗 */}
+      {showReminderConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowReminderConfirm(null)} />
+          <div className="relative z-10 w-full max-w-sm mx-4 bg-white rounded-2xl shadow-2xl animate-fade-in-up p-6">
+            <div className="text-center">
+              <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                  <polyline points="22,6 12,13 2,6"></polyline>
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-slate-800 mb-2">确认发送</h3>
+              <p className="text-slate-500 text-sm mb-6">
+                {showReminderConfirm.type === 'all' 
+                  ? '确定要向所有用户发送工时填写提醒邮件吗？' 
+                  : `确定要向 ${showReminderConfirm.name} 发送工时填写提醒邮件吗？`}
+              </p>
+              <div className="flex gap-3">
+                <Button onClick={() => setShowReminderConfirm(null)} variant="ghost" className="flex-1 h-10 rounded-xl border border-slate-200">取消</Button>
+                <Button 
+                  onClick={() => {
+                    if (showReminderConfirm.type === 'all') {
+                      handleSendReminder();
+                    } else {
+                      handleSendReminderToUser(showReminderConfirm.email, showReminderConfirm.name);
+                    }
+                  }} 
+                  className="flex-1 h-10 rounded-xl bg-blue-500 hover:bg-blue-600 text-white"
+                >
+                  发送
+                </Button>
               </div>
             </div>
           </div>
