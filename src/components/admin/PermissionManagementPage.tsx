@@ -10,7 +10,7 @@ import type { UserRole, UserRegion } from '@/types/user';
 import { RoleLabels, RoleColors, RegionLabels, RegionColors } from '@/types/user';
 import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
-import { configApi, type AiMode } from '@/api/index';
+import { configApi, backupApi, type AiMode } from '@/api/index';
 
 const ROLES: UserRole[] = ['admin', 'user', 'manager', 'exporter'];
 const REGIONS: UserRegion[] = ['CN', 'HK', 'OTHER'];
@@ -55,6 +55,7 @@ export function PermissionManagementPage() {
   const [activeTab, setActiveTab] = useState<TabType>('users');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sendingReminder, setSendingReminder] = useState(false);
 
   // 用户管理状态
   const [showAddUserModal, setShowAddUserModal] = useState(false);
@@ -197,6 +198,18 @@ export function PermissionManagementPage() {
     const result = await updateUserRole(userId, role);
     showMessage(result.success ? 'success' : 'error', result.message);
     setEditingRole(null);
+  };
+
+  const handleSendReminder = async () => {
+    setSendingReminder(true);
+    try {
+      const response = await backupApi.sendReminder();
+      showMessage(response.success ? 'success' : 'error', response.success ? '工时提醒邮件已发送' : (response.message || '发送失败'));
+    } catch (error) {
+      showMessage('error', '发送失败，请稍后重试');
+    } finally {
+      setSendingReminder(false);
+    }
   };
 
   const handleUpdateRegion = async (userId: string, region: UserRegion) => {
@@ -773,9 +786,38 @@ export function PermissionManagementPage() {
         <Card className="card-premium animate-fade-in-up">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base font-semibold text-neutral-900">
-                {activeTab === 'users' ? '用户列表' : activeTab === 'teams' ? '团队列表' : activeTab === 'groups' ? '小组列表' : '部门列表'}
-              </CardTitle>
+              <div className="flex items-center gap-3">
+                <CardTitle className="text-base font-semibold text-neutral-900">
+                  {activeTab === 'users' ? '用户列表' : activeTab === 'teams' ? '团队列表' : activeTab === 'groups' ? '小组列表' : '部门列表'}
+                </CardTitle>
+                {activeTab === 'users' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSendReminder}
+                    disabled={sendingReminder}
+                    className="h-8 px-3 text-xs bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100 hover:text-blue-700"
+                  >
+                    {sendingReminder ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-1.5 h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        发送中...
+                      </>
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1.5">
+                          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                          <polyline points="22,6 12,13 2,6"></polyline>
+                        </svg>
+                        发送工时提醒
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
               <div className="relative">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                   <circle cx="11" cy="11" r="8" />

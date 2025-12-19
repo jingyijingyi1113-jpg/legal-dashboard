@@ -560,6 +560,11 @@ export const backupApi = {
     return apiClient.post('/api/backup/send-email');
   },
 
+  // 发送工时提醒邮件
+  sendReminder: (): Promise<ApiResponse> => {
+    return apiClient.post('/api/backup/send-reminder');
+  },
+
   // 获取邮件配置状态
   getEmailConfig: (): Promise<ApiResponse<{
     enabled: boolean;
