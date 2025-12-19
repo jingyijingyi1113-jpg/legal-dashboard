@@ -867,9 +867,9 @@ const DealCategoryPieChartSection = ({ filteredData, totalHours, onDataUpdate }:
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Click on slices or legend to view details
             </div>
-            <div className="flex flex-col lg:flex-row items-center gap-4">
-                <div className="w-full lg:w-1/2">
-                    <ResponsiveContainer width="100%" height={220}>
+            <div className="flex flex-col lg:flex-row items-center gap-6">
+                <div className="w-full lg:w-[55%]">
+                    <ResponsiveContainer width="100%" height={330}>
                         <PieChart>
                             <defs>
                                 {DEAL_COLORS.map((color, index) => (
@@ -887,8 +887,8 @@ const DealCategoryPieChartSection = ({ filteredData, totalHours, onDataUpdate }:
                                 cx="50%"
                                 cy="50%"
                                 labelLine={false}
-                                innerRadius={40}
-                                outerRadius={80}
+                                innerRadius={65}
+                                outerRadius={120}
                                 paddingAngle={3}
                                 dataKey="value"
                                 onClick={handlePieClick}

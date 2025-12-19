@@ -204,7 +204,19 @@ export function PermissionManagementPage() {
     setSendingReminder(true);
     try {
       const response = await backupApi.sendReminder();
-      showMessage(response.success ? 'success' : 'error', response.success ? '工时提醒邮件已发送' : (response.message || '发送失败'));
+      showMessage(response.success ? 'success' : 'error', response.success ? '工时提醒邮件已发送给所有用户' : (response.message || '发送失败'));
+    } catch (error) {
+      showMessage('error', '发送失败，请稍后重试');
+    } finally {
+      setSendingReminder(false);
+    }
+  };
+
+  const handleSendReminderToUser = async (email: string, name: string) => {
+    setSendingReminder(true);
+    try {
+      const response = await backupApi.sendReminder(email);
+      showMessage(response.success ? 'success' : 'error', response.success ? `工时提醒邮件已发送给 ${name}` : (response.message || '发送失败'));
     } catch (error) {
       showMessage('error', '发送失败，请稍后重试');
     } finally {
@@ -1102,21 +1114,38 @@ export function PermissionManagementPage() {
                           {new Date(u.createdAt).toLocaleDateString()}
                         </td>
                         <td className="py-2.5 px-2 text-right">
-                          {u.username !== 'admin' && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setShowDeleteUserConfirm(u.id)}
-                              className="h-7 w-7 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="3 6 5 6 21 6" />
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                <line x1="10" y1="11" x2="10" y2="17" />
-                                <line x1="14" y1="11" x2="14" y2="17" />
-                              </svg>
-                            </Button>
-                          )}
+                          <div className="flex items-center justify-end gap-1">
+                            {u.email && u.username !== 'admin' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleSendReminderToUser(u.email, u.name)}
+                                disabled={sendingReminder}
+                                className="h-7 w-7 p-0 text-slate-400 hover:text-blue-500 hover:bg-blue-50"
+                                title={`发送工时提醒给 ${u.name}`}
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                                  <polyline points="22,6 12,13 2,6"></polyline>
+                                </svg>
+                              </Button>
+                            )}
+                            {u.username !== 'admin' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setShowDeleteUserConfirm(u.id)}
+                                className="h-7 w-7 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="3 6 5 6 21 6" />
+                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                  <line x1="10" y1="11" x2="10" y2="17" />
+                                  <line x1="14" y1="11" x2="14" y2="17" />
+                                </svg>
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}

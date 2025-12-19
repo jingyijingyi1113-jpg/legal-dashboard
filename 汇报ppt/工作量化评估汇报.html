@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工作量化评估汇报 - 管理例会</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* 导航控制 - 右下角 */
+        .nav-controls {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            display: flex;
+            gap: 12px;
+            z-index: 1000;
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            padding: 12px 20px;
+            border-radius: 40px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .nav-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .nav-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 25px rgba(102, 126, 234, 0.6);
+        }
+
+        .nav-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .slide-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.3);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .dot.active {
+            background: #667eea;
+            transform: scale(1.3);
+            box-shadow: 0 0 12px rgba(102, 126, 234, 0.8);
+        }
+
+        /* 幻灯片容器 */
+        .slides-container {
+            width: 100%;
+            height: 100vh;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .slide {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 50px 60px;
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .slide.active {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .slide.prev {
+            transform: translateX(-100%);
+        }
+
+        /* 标题样式 */
+        .slide-title {
+            font-size: 2.6rem;
+            font-weight: 700;
+            color: white;
+            text-align: center;
+            margin-bottom: 15px;
+            text-shadow: 0 0 40px rgba(102, 126, 234, 0.5);
+        }
+
+        .slide-subtitle {
+            font-size: 1.2rem;
+            color: rgba(255,255,255,0.7);
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        .pain-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            padding: 8px 20px;
+            border-radius: 30px;
+            font-size: 1rem;
+            color: white;
+            margin-bottom: 25px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.4); }
+            50% { box-shadow: 0 0 0 15px rgba(255, 107, 107, 0); }
+        }
+
+        /* 流程步骤样式 - 可点击 */
+        .steps-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            max-width: 1100px;
+        }
+
+        .step-item {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 15px;
+            padding: 18px 28px;
+            min-width: 120px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            opacity: 0;
+            transform: translateY(30px);
+            animation: fadeInUp 0.6s forwards;
+        }
+
+        .step-item:nth-child(1) { animation-delay: 0.1s; }
+        .step-item:nth-child(3) { animation-delay: 0.2s; }
+        .step-item:nth-child(5) { animation-delay: 0.3s; }
+        .step-item:nth-child(7) { animation-delay: 0.4s; }
+        .step-item:nth-child(9) { animation-delay: 0.5s; }
+        .step-item:nth-child(11) { animation-delay: 0.6s; }
+        .step-item:nth-child(13) { animation-delay: 0.7s; }
+
+        @keyframes fadeInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .step-item:hover {
+            background: rgba(102, 126, 234, 0.3);
+            border-color: rgba(102, 126, 234, 0.6);
+            transform: translateY(-5px) scale(1.05);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+
+        .step-number {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .step-label {
+            color: rgba(255,255,255,0.9);
+            font-size: 0.95rem;
+        }
+
+        .step-arrow {
+            color: rgba(255,255,255,0.4);
+            font-size: 1.3rem;
+        }
+
+        .time-summary {
+            margin-top: 25px;
+            background: linear-gradient(135deg, rgba(255,107,107,0.2), rgba(238,90,36,0.2));
+            border: 2px solid #ff6b6b;
+            border-radius: 12px;
+            padding: 12px 25px;
+            color: white;
+            font-size: 1rem;
+        }
+
+        .time-summary strong {
+            color: #ff6b6b;
+            font-size: 1.1rem;
+        }
+
+        .click-hint {
+            margin-top: 20px;
+            color: rgba(255,255,255,0.5);
+            font-size: 0.9rem;
+        }
+
+        /* 第二页 - 业管侧流程 */
+        .process-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            max-width: 1000px;
+        }
+
+        .process-card {
+            background: rgba(255,255,255,0.08);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 18px;
+            padding: 22px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            opacity: 0;
+            transform: scale(0.9);
+            animation: scaleIn 0.6s forwards;
+        }
+
+        .process-card:nth-child(1) { animation-delay: 0.1s; }
+        .process-card:nth-child(2) { animation-delay: 0.2s; }
+        .process-card:nth-child(3) { animation-delay: 0.3s; }
+        .process-card:nth-child(4) { animation-delay: 0.4s; }
+
+        @keyframes scaleIn {
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .process-card:hover {
+            background: rgba(102, 126, 234, 0.2);
+            border-color: rgba(102, 126, 234, 0.5);
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.25);
+        }
+
+        .process-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .process-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+        }
+
+        .process-icon.blue { background: linear-gradient(135deg, #667eea, #764ba2); }
+        .process-icon.orange { background: linear-gradient(135deg, #f093fb, #f5576c); }
+        .process-icon.green { background: linear-gradient(135deg, #4facfe, #00f2fe); }
+        .process-icon.purple { background: linear-gradient(135deg, #a18cd1, #fbc2eb); }
+
+        .process-title {
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .process-desc {
+            color: rgba(255,255,255,0.7);
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .highlight-box {
+            margin-top: 25px;
+            background: linear-gradient(135deg, rgba(255,107,107,0.15), rgba(238,90,36,0.15));
+            border-left: 4px solid #ff6b6b;
+            padding: 18px 22px;
+            border-radius: 0 12px 12px 0;
+            max-width: 550px;
+        }
+
+        .highlight-box p {
+            color: rgba(255,255,255,0.9);
+            font-size: 1.05rem;
+        }
+
+        .highlight-box strong {
+            color: #ff6b6b;
+        }
+
+        /* 第三页 - Before/After 对比 */
+        .comparison-container {
+            display: flex;
+            gap: 35px;
+            max-width: 1200px;
+        }
+
+        .comparison-side {
+            flex: 1;
+            border-radius: 22px;
+            padding: 28px;
+            opacity: 0;
+            transform: translateX(-50px);
+            animation: slideIn 0.8s forwards;
+            min-width: 420px;
+        }
+
+        .comparison-side.after {
+            transform: translateX(50px);
+            animation-delay: 0.3s;
+        }
+
+        @keyframes slideIn {
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .comparison-side.before {
+            background: linear-gradient(135deg, rgba(255,107,107,0.15), rgba(238,90,36,0.1));
+            border: 2px solid rgba(255,107,107,0.4);
+        }
+
+        .comparison-side.after {
+            background: linear-gradient(135deg, rgba(46,213,115,0.15), rgba(0,184,148,0.1));
+            border: 2px solid rgba(46,213,115,0.4);
+        }
+
+        .comparison-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 22px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .comparison-header .icon {
+            font-size: 1.8rem;
+        }
+
+        .comparison-header h3 {
+            font-size: 1.4rem;
+            color: white;
+        }
+
+        .comparison-side.before .comparison-header h3 { color: #ff6b6b; }
+        .comparison-side.after .comparison-header h3 { color: #2ed573; }
+
+        .comparison-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .comparison-item:last-child {
+            border-bottom: none;
+        }
+
+        .comparison-item .label {
+            width: 100px;
+            min-width: 100px;
+            color: rgba(255,255,255,0.6);
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+
+        .comparison-item .value {
+            flex: 1;
+            color: white;
+            font-size: 1.05rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: nowrap;
+        }
+
+        .comparison-side.before .value { color: #ff6b6b; }
+        .comparison-side.after .value { color: #2ed573; }
+
+        .improvement-tag {
+            background: rgba(46,213,115,0.2);
+            color: #2ed573;
+            padding: 3px 10px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            margin-left: 8px;
+        }
+
+        .core-value {
+            margin-top: 35px;
+            background: linear-gradient(135deg, rgba(102,126,234,0.2), rgba(118,75,162,0.2));
+            border: 2px solid rgba(102,126,234,0.4);
+            border-radius: 14px;
+            padding: 18px 35px;
+            text-align: center;
+        }
+
+        .core-value p {
+            color: white;
+            font-size: 1.15rem;
+        }
+
+        .core-value span {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        /* 第四页 - 过渡页 */
+        .transition-slide {
+            text-align: center;
+        }
+
+        .transition-slide .slide-title {
+            font-size: 3.2rem;
+            background: linear-gradient(135deg, #667eea, #764ba2, #f093fb);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 25px;
+        }
+
+        .transition-slide .slide-subtitle {
+            font-size: 1.4rem;
+            color: rgba(255,255,255,0.8);
+        }
+
+        .demo-hint {
+            margin-top: 45px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            background: rgba(255,255,255,0.1);
+            padding: 18px 32px;
+            border-radius: 40px;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .demo-hint span {
+            color: rgba(255,255,255,0.9);
+            font-size: 1.05rem;
+        }
+
+        /* 第五页 - 系统功能 */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 18px;
+            max-width: 1050px;
+            margin-bottom: 35px;
+        }
+
+        .feature-card {
+            background: rgba(255,255,255,0.08);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 18px;
+            padding: 25px 18px;
+            text-align: center;
+            transition: all 0.3s ease;
+            opacity: 0;
+            transform: translateY(30px);
+            animation: fadeInUp 0.6s forwards;
+        }
+
+        .feature-card:nth-child(1) { animation-delay: 0.1s; }
+        .feature-card:nth-child(2) { animation-delay: 0.2s; }
+        .feature-card:nth-child(3) { animation-delay: 0.3s; }
+        .feature-card:nth-child(4) { animation-delay: 0.4s; }
+        .feature-card:nth-child(5) { animation-delay: 0.5s; }
+
+        .feature-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.3);
+            border-color: rgba(102,126,234,0.5);
+        }
+
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 12px;
+        }
+
+        .feature-title {
+            color: white;
+            font-size: 1.05rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .feature-desc {
+            color: rgba(255,255,255,0.7);
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .result-banner {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 18px;
+            padding: 26px 45px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 35px;
+            max-width: 800px;
+            opacity: 0;
+            animation: fadeInUp 0.8s 0.6s forwards;
+        }
+
+        .result-item {
+            text-align: center;
+        }
+
+        .result-value {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: white;
+        }
+
+        .result-label {
+            color: rgba(255,255,255,0.8);
+            font-size: 0.9rem;
+            margin-top: 4px;
+        }
+
+        .result-divider {
+            width: 2px;
+            height: 55px;
+            background: rgba(255,255,255,0.3);
+        }
+
+        /* 键盘提示 */
+        .keyboard-hint {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            padding: 10px 18px;
+            border-radius: 10px;
+            color: rgba(255,255,255,0.6);
+            font-size: 0.8rem;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .keyboard-hint kbd {
+            background: rgba(255,255,255,0.2);
+            padding: 2px 7px;
+            border-radius: 4px;
+            margin: 0 2px;
+        }
+
+        /* 页码 */
+        .page-number {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255,255,255,0.5);
+            font-size: 0.95rem;
+        }
+
+        /* 图片弹窗 - 优化版 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(10px);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal.show {
+            display: flex;
+            opacity: 1;
+        }
+
+        .modal-content {
+            max-width: 90%;
+            max-height: 90%;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 20px;
+            padding: 25px;
+            position: relative;
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+            box-shadow: 0 25px 80px rgba(0,0,0,0.5);
+        }
+
+        .modal.show .modal-content {
+            transform: scale(1);
+        }
+
+        .modal-content img {
+            max-width: 100%;
+            max-height: 75vh;
+            object-fit: contain;
+            border-radius: 10px;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: -50px;
+            right: 0;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            color: #fff;
+            font-size: 1.5rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .modal-close:hover {
+            background: rgba(255,107,107,0.3);
+            border-color: #ff6b6b;
+        }
+
+        .modal-title {
+            text-align: center;
+            margin-bottom: 18px;
+            color: white;
+            font-size: 1.2rem;
+            font-weight: 500;
+        }
+
+        .modal-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .modal-nav:hover {
+            background: rgba(102, 126, 234, 0.4);
+            border-color: #667eea;
+        }
+
+        .modal-nav.prev { left: -70px; }
+        .modal-nav.next { right: -70px; }
+    </style>
+</head>
+<body>
+    <div class="page-number">
+        <span id="currentPage">1</span> / <span id="totalPages">4</span>
+    </div>
+
+    <div class="keyboard-hint">
+        按 <kbd>←</kbd> <kbd>→</kbd> 或 <kbd>空格</kbd> 切换页面
+    </div>
+
+    <div class="slides-container">
+        <!-- 第一页：员工侧痛点 -->
+        <div class="slide active" id="slide1">
+            <h1 class="slide-title">当前机制运行痛点</h1>
+            <div class="pain-badge">🔴 痛点 · 员工侧</div>
+            <p class="slide-subtitle">填写繁琐，上传流程复杂，用户体验差</p>
+            
+            <div class="steps-container">
+                <div class="step-item" onclick="openStepModal(1, '打开部门微盘文件夹', 'image1.png')">
+                    <div class="step-number">1</div>
+                    <div class="step-label">打开部门微盘</div>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step-item" onclick="openStepModal(2, '打开中心微盘文件夹', 'image2.png')">
+                    <div class="step-number">2</div>
+                    <div class="step-label">打开中心微盘</div>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step-item" onclick="openStepModal(3, '打开小组微盘文件夹', 'image3.png')">
+                    <div class="step-number">3</div>
+                    <div class="step-label">打开小组微盘</div>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step-item" onclick="openStepModal(4, '打开个人微盘文件夹', 'image4.png')">
+                    <div class="step-number">4</div>
+                    <div class="step-label">打开个人微盘</div>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step-item" onclick="openStepModal(5, '打开对应年份微盘文件夹', 'image5.png')">
+                    <div class="step-number">5</div>
+                    <div class="step-label">打开年份文件夹</div>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step-item" onclick="openStepModal(6, '打开对应月份微盘文件夹', 'image6.png')">
+                    <div class="step-number">6</div>
+                    <div class="step-label">打开月份文件夹</div>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step-item" onclick="openStepModal(7, 'Timesheet填写', 'image7.png')">
+                    <div class="step-number">7</div>
+                    <div class="step-label">填写表格</div>
+                </div>
+            </div>
+
+            <div class="time-summary">
+                <div style="margin-bottom: 8px;">📂 <strong>触达链路长</strong>：7步才能打开表格，降低填写及时性</div>
+                <div style="margin-bottom: 8px;">⏰ <strong>时间累积效应</strong>：拖延导致回忆成本增加，进一步降低填写效率</div>
+                <div>📊 <strong>实际数据</strong>：据1-11月工时统计，人均每周耗时约 <strong style="color:#ff6b6b;font-size:1.3rem;">45分钟</strong></div>
+            </div>
+            <div class="click-hint">💡 点击步骤查看详细截图</div>
+        </div>
+
+        <!-- 第二页：业管侧痛点 -->
+        <div class="slide" id="slide2">
+            <h1 class="slide-title">当前机制运行痛点</h1>
+            <div class="pain-badge">🔴 痛点 · 业管侧</div>
+            <p class="slide-subtitle">数据处理流程极度耗时，每月需重复相同清洗步骤</p>
+
+            <div class="process-grid">
+                <div class="process-card" onclick="openProcessModal(1, '流程一：收集数据', 'image10.png')">
+                    <div class="process-header">
+                        <div class="process-icon blue">📥</div>
+                        <div class="process-title">流程一：收集数据</div>
+                    </div>
+                    <div class="process-desc">
+                        检查三个中心60+同事是否完整上传工时，通过python预设程序+智能文档检查
+                    </div>
+                </div>
+
+                <div class="process-card" onclick="openProcessModal(2, '流程二：数据清洗', 'image11.png')">
+                    <div class="process-header">
+                        <div class="process-icon orange">🔍</div>
+                        <div class="process-title">流程二：数据清洗</div>
+                    </div>
+                    <div class="process-desc">
+                        检查必填字段完整性、字段规范统一性；人工修正不规范数据；剔除异常值
+                    </div>
+                </div>
+
+                <div class="process-card" onclick="openProcessModal(3, '流程三：数据统计', 'image12.png')">
+                    <div class="process-header">
+                        <div class="process-icon green">📊</div>
+                        <div class="process-title">流程三：数据统计</div>
+                    </div>
+                    <div class="process-desc">
+                        4张基础信息表 + 10余张计算分析表，需保持多表勾稽关系
+                    </div>
+                </div>
+
+                <div class="process-card" onclick="openProcessModal(4, '流程四：整理数据看板', 'image15.png')">
+                    <div class="process-header">
+                        <div class="process-icon purple">📈</div>
+                        <div class="process-title">流程四：整理数据看板</div>
+                    </div>
+                    <div class="process-desc">
+                        核对25+数据看板，确保数据源准确性，底表拼接与统计分析
+                    </div>
+                </div>
+            </div>
+
+            <div class="highlight-box">
+                <p>💡 投入情况：业管侧每月需投入 <strong>2.5 人力</strong>，耗时 <strong>3-5 天</strong></p>
+            </div>
+            <div class="click-hint">💡 点击流程卡片查看详细截图</div>
+        </div>
+
+        <!-- 第三页：Before/After 对比 -->
+        <div class="slide" id="slide3">
+            <h1 class="slide-title">效率对比：Before vs After</h1>
+            
+            <div class="comparison-container">
+                <div class="comparison-side before">
+                    <div class="comparison-header">
+                        <span class="icon">❌</span>
+                        <h3>Before（手工模式）</h3>
+                    </div>
+                    <div class="comparison-item">
+                        <span class="label">🕐 填报时间</span>
+                        <span class="value">约45分钟/周</span>
+                    </div>
+                    <div class="comparison-item">
+                        <span class="label">📊 统计耗时</span>
+                        <span class="value">2.5人力 3-5天</span>
+                    </div>
+                    <div class="comparison-item">
+                        <span class="label">🔍 数据质量</span>
+                        <span class="value">人工核验，易出错</span>
+                    </div>
+                    <div class="comparison-item">
+                        <span class="label">📁 追溯能力</span>
+                        <span class="value">翻找Excel文件</span>
+                    </div>
+                    <div class="comparison-item">
+                        <span class="label">🔄 数据格式</span>
+                        <span class="value">格式不统一，标签混乱</span>
+                    </div>
+                </div>
+
+                <div class="comparison-side after">
+                    <div class="comparison-header">
+                        <span class="icon">✅</span>
+                        <h3>After（系统化）</h3>
+                    </div>
+                    <div class="comparison-item">
+                        <span class="label">🕐 填报时间</span>
+                        <span class="value">大幅缩短<span class="improvement-tag">效率提升</span></span>
+                    </div>
+                    <div class="comparison-item">
+                        <span class="label">📊 统计耗时</span>
+                        <span class="value">1人力 0.5天<span class="improvement-tag">效率提升约19倍</span></span>
+                    </div>
+                    <div class="comparison-item">
+                        <span class="label">🔍 数据质量</span>
+                        <span class="value">系统校验，100%完整</span>
+                    </div>
+                    <div class="comparison-item">
+                        <span class="label">📁 追溯能力</span>
+                        <span class="value">一键查询，历史可追溯</span>
+                    </div>
+                    <div class="comparison-item">
+                        <span class="label">🔄 数据格式</span>
+                        <span class="value">标准化录入，格式统一</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="core-value">
+                <p>🎯 <span>核心价值</span>：解放人力 · 提升数据质量 · 规范化管理</p>
+            </div>
+        </div>
+
+        <!-- 第四页：系统化解决方案 + 系统功能 -->
+        <div class="slide" id="slide4">
+            <h1 class="slide-title">系统化解决方案</h1>
+            <p class="slide-subtitle">以 CTD 为试点的系统化能力探索 · Codebuddy Pilot 驱动开发</p>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🕒</div>
+                    <div class="feature-title">在线填报</div>
+                    <div class="feature-desc">自动化填写，提升效率，从源头解决数据质量问题</div>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <div class="feature-title">自动统计</div>
+                    <div class="feature-desc">免去人工整理，自动汇总并生成报表，消除人工误差</div>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">💾</div>
+                    <div class="feature-title">数据存储</div>
+                    <div class="feature-desc">实时数据库存储，支持随时调取与历史追溯</div>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🛡️</div>
+                    <div class="feature-title">权限管理</div>
+                    <div class="feature-desc">分级管理（管理员/管理者/普通用户），保障数据安全</div>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🤖</div>
+                    <div class="feature-title">AI 助手</div>
+                    <div class="feature-desc">接入混元大模型，智能化辅助填写（持续优化中）</div>
+                </div>
+            </div>
+
+            <div class="result-banner">
+                <div class="result-item">
+                    <div class="result-value">↑19倍</div>
+                    <div class="result-label">效率提升</div>
+                </div>
+                <div class="result-divider"></div>
+                <div class="result-item">
+                    <div class="result-value">100%</div>
+                    <div class="result-label">数据完整性</div>
+                </div>
+                <div class="result-divider"></div>
+                <div class="result-item">
+                    <div class="result-value">0.5天</div>
+                    <div class="result-label">月度统计周期</div>
+                </div>
+            </div>
+
+            <div class="demo-hint" onclick="window.open('https://www.ctdms.woa.com', '_blank')" style="cursor: pointer; margin-top: 25px;">
+                <span style="font-size: 1.5rem;">💻</span>
+                <span>系统展示 Demo</span>
+                <span style="font-size: 0.9rem; color: rgba(255,255,255,0.6); margin-left: 10px;">www.ctdms.woa.com</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 图片弹窗 -->
+    <div class="modal" id="imageModal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModal()">×</button>
+            <button class="modal-nav prev" onclick="navModal(-1)">◀</button>
+            <button class="modal-nav next" onclick="navModal(1)">▶</button>
+            <div class="modal-title" id="modalTitle"></div>
+            <img id="modalImage" src="" alt="">
+        </div>
+    </div>
+
+    <!-- 导航控制 - 右下角 -->
+    <div class="nav-controls">
+        <button class="nav-btn" id="prevBtn" disabled>◀</button>
+        <div class="slide-indicator">
+            <div class="dot active" data-slide="1"></div>
+            <div class="dot" data-slide="2"></div>
+            <div class="dot" data-slide="3"></div>
+            <div class="dot" data-slide="4"></div>
+        </div>
+        <button class="nav-btn" id="nextBtn">▶</button>
+    </div>
+
+    <script>
+        let currentSlide = 1;
+        const totalSlides = 4;
+
+        // 步骤数据
+        const stepData = [
+            { step: 1, label: '打开部门微盘文件夹', image: 'image1.png' },
+            { step: 2, label: '打开中心微盘文件夹', image: 'image2.png' },
+            { step: 3, label: '打开小组微盘文件夹', image: 'image3.png' },
+            { step: 4, label: '打开个人微盘文件夹', image: 'image4.png' },
+            { step: 5, label: '打开对应年份微盘文件夹', image: 'image5.png' },
+            { step: 6, label: '打开对应月份微盘文件夹', image: 'image6.png' },
+            { step: 7, label: 'Timesheet填写', image: 'image7.png' }
+        ];
+
+        const processData = [
+            { 
+                step: 1, 
+                label: '流程一：收集数据', 
+                subSteps: [
+                    { label: '1. 用Python底表拼接', image: 'image9.webp' },
+                    { label: '2. 检查工时上传情况', image: 'image8.png' }
+                ]
+            },
+            { 
+                step: 2, 
+                label: '流程二：数据清洗', 
+                subSteps: [
+                    { label: '1. 字段缺失', image: 'image10.png' },
+                    { label: '2. 标签不统一', image: 'image11.png' },
+                    { label: '3. 字段填写不符合规范', image: 'image12.png' }
+                ]
+            },
+            { 
+                step: 3, 
+                label: '流程三：数据统计', 
+                subSteps: [
+                    { label: '1. 4张基础信息表', image: 'image13.png' },
+                    { label: '2. 10余张计算分析表', image: 'image14.png' }
+                ]
+            },
+            { step: 4, label: '流程四：整理数据看板', image: 'image15.png' }
+        ];
+
+        let currentModalData = [];
+        let currentModalIndex = 0;
+        let currentSubSteps = null; // 用于流程一的子步骤
+
+        function updateSlide(newSlide) {
+            if (newSlide < 1 || newSlide > totalSlides) return;
+
+            document.querySelectorAll('.slide').forEach((slide, index) => {
+                slide.classList.remove('active', 'prev');
+                if (index + 1 === newSlide) {
+                    slide.classList.add('active');
+                } else if (index + 1 < newSlide) {
+                    slide.classList.add('prev');
+                }
+            });
+
+            document.querySelectorAll('.dot').forEach((dot, index) => {
+                dot.classList.toggle('active', index + 1 === newSlide);
+            });
+
+            document.getElementById('prevBtn').disabled = newSlide === 1;
+            document.getElementById('nextBtn').disabled = newSlide === totalSlides;
+            document.getElementById('currentPage').textContent = newSlide;
+
+            currentSlide = newSlide;
+        }
+
+        // 按钮点击
+        document.getElementById('prevBtn').addEventListener('click', () => updateSlide(currentSlide - 1));
+        document.getElementById('nextBtn').addEventListener('click', () => updateSlide(currentSlide + 1));
+
+        // 指示器点击
+        document.querySelectorAll('.dot').forEach(dot => {
+            dot.addEventListener('click', () => updateSlide(parseInt(dot.dataset.slide)));
+        });
+
+        // 键盘控制
+        document.addEventListener('keydown', (e) => {
+            if (document.getElementById('imageModal').classList.contains('show')) {
+                if (e.key === 'Escape') closeModal();
+                else if (e.key === 'ArrowLeft') navModal(-1);
+                else if (e.key === 'ArrowRight') navModal(1);
+                return;
+            }
+            
+            if (e.key === 'ArrowRight' || e.key === ' ') {
+                e.preventDefault();
+                updateSlide(currentSlide + 1);
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                updateSlide(currentSlide - 1);
+            }
+        });
+
+        // 触摸滑动
+        let touchStartX = 0;
+        document.addEventListener('touchstart', (e) => touchStartX = e.changedTouches[0].screenX);
+        document.addEventListener('touchend', (e) => {
+            if (document.getElementById('imageModal').classList.contains('show')) return;
+            const diff = touchStartX - e.changedTouches[0].screenX;
+            if (diff > 50) updateSlide(currentSlide + 1);
+            else if (diff < -50) updateSlide(currentSlide - 1);
+        });
+
+        // 步骤弹窗
+        function openStepModal(step, label, image) {
+            currentModalData = stepData;
+            currentModalIndex = step - 1;
+            showModal(`第${step}步：${label}`, image);
+        }
+
+        // 流程弹窗
+        function openProcessModal(step, label, image) {
+            const process = processData.find(p => p.step === step);
+            
+            // 如果有子步骤（流程一、流程二）
+            if (process && process.subSteps) {
+                currentSubSteps = process.subSteps;
+                currentModalIndex = 0;
+                currentModalData = null; // 标记为子步骤模式
+                showModal(process.subSteps[0].label, process.subSteps[0].image);
+            } else {
+                currentSubSteps = null;
+                currentModalData = processData.filter(p => !p.subSteps); // 只包含没有子步骤的流程
+                currentModalIndex = currentModalData.findIndex(p => p.step === step);
+                showModal(label, image);
+            }
+        }
+
+        function showModal(title, image) {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalImage').src = image;
+            document.getElementById('imageModal').classList.add('show');
+            updateNavButtons();
+        }
+
+        function closeModal() {
+            document.getElementById('imageModal').classList.remove('show');
+        }
+
+        function navModal(direction) {
+            const newIndex = currentModalIndex + direction;
+            
+            // 子步骤模式（流程一）
+            if (currentSubSteps) {
+                if (newIndex >= 0 && newIndex < currentSubSteps.length) {
+                    currentModalIndex = newIndex;
+                    const subStep = currentSubSteps[currentModalIndex];
+                    document.getElementById('modalTitle').textContent = subStep.label;
+                    document.getElementById('modalImage').src = subStep.image;
+                    updateNavButtons();
+                }
+                return;
+            }
+            
+            // 普通模式
+            if (newIndex >= 0 && newIndex < currentModalData.length) {
+                currentModalIndex = newIndex;
+                const item = currentModalData[currentModalIndex];
+                const title = currentModalData === stepData 
+                    ? `第${item.step}步：${item.label}` 
+                    : item.label;
+                document.getElementById('modalTitle').textContent = title;
+                document.getElementById('modalImage').src = item.image;
+                updateNavButtons();
+            }
+        }
+
+        function updateNavButtons() {
+            const dataLength = currentSubSteps ? currentSubSteps.length : currentModalData.length;
+            document.querySelector('.modal-nav.prev').style.visibility = currentModalIndex > 0 ? 'visible' : 'hidden';
+            document.querySelector('.modal-nav.next').style.visibility = currentModalIndex < dataLength - 1 ? 'visible' : 'hidden';
+        }
+
+        // 点击背景关闭弹窗
+        document.getElementById('imageModal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('imageModal')) closeModal();
+        });
+    </script>
+</body>
+</html>

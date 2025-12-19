@@ -706,36 +706,42 @@ class TimesheetEntry:
     
     @staticmethod
     def batch_create(entries_list):
-        """批量创建工时记录（如果ID已存在则更新）"""
+        """批量创建工时记录（如果ID已存在则更新）- 优化版"""
+        if not entries_list:
+            return 0
+            
         conn = get_db()
         cursor = conn.cursor()
         now = datetime.now().isoformat()
         
-        inserted = 0
+        # 准备批量数据
+        values = []
         for entry in entries_list:
-            try:
-                # 使用 INSERT OR REPLACE 处理重复ID
-                cursor.execute('''
-                    INSERT OR REPLACE INTO timesheet_entries 
-                    (id, user_id, username, date, hours, status, data, user_group, created_at, updated_at, submitted_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    entry['id'],
-                    entry['user_id'],
-                    entry['username'],
-                    entry['date'],
-                    entry.get('hours', 0),
-                    entry.get('status', 'submitted'),
-                    json.dumps(entry.get('data', {}), ensure_ascii=False),
-                    entry.get('user_group'),
-                    now,
-                    now,
-                    now if entry.get('status') == 'submitted' else None
-                ))
-                inserted += 1
-            except Exception as e:
-                print(f"[DEBUG] 插入记录失败: {entry.get('id')}, 错误: {e}")
-                continue
+            values.append((
+                entry['id'],
+                entry['user_id'],
+                entry['username'],
+                entry['date'],
+                entry.get('hours', 0),
+                entry.get('status', 'submitted'),
+                json.dumps(entry.get('data', {}), ensure_ascii=False),
+                entry.get('user_group'),
+                now,
+                now,
+                now if entry.get('status') == 'submitted' else None
+            ))
+        
+        # 使用 executemany 批量插入，INSERT OR REPLACE 处理重复ID
+        try:
+            cursor.executemany('''
+                INSERT OR REPLACE INTO timesheet_entries 
+                (id, user_id, username, date, hours, status, data, user_group, created_at, updated_at, submitted_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', values)
+            inserted = len(values)
+        except Exception as e:
+            print(f"[DEBUG] 批量插入失败: {e}")
+            inserted = 0
         
         conn.commit()
         conn.close()

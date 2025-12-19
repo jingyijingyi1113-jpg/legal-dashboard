@@ -445,7 +445,7 @@ def send_timesheet_reminder():
 
 您好！
 
-{last_month_name} 工时填写周期已开始，请您在本周内完成上月工时的填写和提交。
+{last_month_name} 工时填写周期已结束，请您在本周内完成上月工时的填写和提交。
 
 📌 填写入口：https://www.ctdms.woa.com
 📌 截止时间：本周五 18:00 前
@@ -468,6 +468,49 @@ def send_timesheet_reminder():
         print(f"[{datetime.now()}] 工时提醒邮件发送完成: {result}")
     else:
         print(f"[{datetime.now()}] 工时提醒邮件发送失败: {result}")
+    
+    return success, result
+
+def send_timesheet_reminder_to_email(email):
+    """发送工时填写提醒邮件给指定用户"""
+    print(f"[{datetime.now()}] 开始发送工时提醒邮件给 {email}...")
+    
+    # 构建邮件内容
+    now = datetime.now()
+    # 计算上个月
+    if now.month == 1:
+        last_month = datetime(now.year - 1, 12, 1)
+    else:
+        last_month = datetime(now.year, now.month - 1, 1)
+    last_month_name = last_month.strftime('%Y年%m月')
+    
+    subject = f"【工时提醒】请及时填写 {last_month_name} 工时记录"
+    
+    body = f"""您好！
+
+{last_month_name} 工时填写周期已结束，请您在本周内完成上月工时的填写和提交。
+
+📌 填写入口：https://www.ctdms.woa.com
+📌 截止时间：本周五 18:00 前
+
+温馨提示：
+1. 请确保工时数据的准确性和完整性
+2. 如有疑问，请联系业管同事
+
+感谢您的配合！
+
+---
+此邮件由 CTD 工时管理系统自动发送，请勿回复。
+发送时间：{now.strftime('%Y-%m-%d %H:%M:%S')}
+"""
+    
+    # 发送邮件
+    success, result = send_simple_email([email], subject, body)
+    
+    if success:
+        print(f"[{datetime.now()}] 工时提醒邮件发送给 {email} 完成")
+    else:
+        print(f"[{datetime.now()}] 工时提醒邮件发送给 {email} 失败: {result}")
     
     return success, result
 
@@ -634,7 +677,7 @@ def get_email_config():
 @backup_bp.route('/send-reminder', methods=['POST'])
 @token_required
 def send_reminder_email():
-    """手动发送工时填写提醒邮件"""
+    """手动发送工时填写提醒邮件（支持指定用户）"""
     user = User.find_by_id(request.user_id)
     if user['role'] != 'admin':
         return jsonify({'success': False, 'message': '权限不足'}), 403
@@ -642,19 +685,33 @@ def send_reminder_email():
     if not EMAIL_ENABLED:
         return jsonify({'success': False, 'message': '邮件功能未启用，请配置环境变量'}), 400
     
-    # 获取用户数量预览
-    users = get_all_user_emails()
-    if not users:
-        return jsonify({'success': False, 'message': '没有找到有效的用户邮箱'}), 400
+    # 检查是否指定了特定邮箱
+    data = request.get_json() or {}
+    target_email = data.get('email')
     
-    # 在后台线程执行，避免超时
-    thread = threading.Thread(target=send_timesheet_reminder)
-    thread.start()
-    
-    return jsonify({
-        'success': True,
-        'message': f'工时提醒邮件发送任务已启动，将发送给 {len(users)} 位用户，请稍后查看日志'
-    })
+    if target_email:
+        # 发送给指定用户
+        def send_to_single():
+            send_timesheet_reminder_to_email(target_email)
+        thread = threading.Thread(target=send_to_single)
+        thread.start()
+        return jsonify({
+            'success': True,
+            'message': f'工时提醒邮件已发送给 {target_email}'
+        })
+    else:
+        # 发送给所有用户
+        users = get_all_user_emails()
+        if not users:
+            return jsonify({'success': False, 'message': '没有找到有效的用户邮箱'}), 400
+        
+        thread = threading.Thread(target=send_timesheet_reminder)
+        thread.start()
+        
+        return jsonify({
+            'success': True,
+            'message': f'工时提醒邮件发送任务已启动，将发送给 {len(users)} 位用户'
+        })
 
 @backup_bp.route('/reminder-preview', methods=['GET'])
 @token_required

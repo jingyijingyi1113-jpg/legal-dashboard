@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工作量化评估汇报 - 管理例会</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        @page {
+            size: 16in 9in;
+            margin: 0;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #1a1a2e;
+        }
+
+        .slide {
+            width: 16in;
+            height: 9in;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 80px;
+            page-break-after: always;
+            position: relative;
+        }
+
+        .slide:last-child {
+            page-break-after: avoid;
+        }
+
+        /* 页码 */
+        .page-number {
+            position: absolute;
+            bottom: 30px;
+            right: 40px;
+            color: rgba(255,255,255,0.4);
+            font-size: 14px;
+        }
+
+        /* 标题样式 */
+        .slide-title {
+            font-size: 52px;
+            font-weight: 700;
+            color: white;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .slide-subtitle {
+            font-size: 22px;
+            color: rgba(255,255,255,0.7);
+            margin-bottom: 50px;
+            text-align: center;
+        }
+
+        .pain-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            padding: 10px 25px;
+            border-radius: 30px;
+            font-size: 18px;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        /* 流程步骤样式 */
+        .steps-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            max-width: 1200px;
+        }
+
+        .step-item {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 15px;
+            padding: 20px 30px;
+            min-width: 130px;
+            text-align: center;
+        }
+
+        .step-number {
+            font-size: 32px;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 8px;
+        }
+
+        .step-label {
+            color: rgba(255,255,255,0.9);
+            font-size: 16px;
+        }
+
+        .step-arrow {
+            color: rgba(255,255,255,0.4);
+            font-size: 24px;
+        }
+
+        .time-summary {
+            margin-top: 40px;
+            background: linear-gradient(135deg, rgba(255,107,107,0.2), rgba(238,90,36,0.2));
+            border: 2px solid #ff6b6b;
+            border-radius: 15px;
+            padding: 20px 35px;
+            color: white;
+            font-size: 18px;
+            max-width: 900px;
+        }
+
+        .time-summary strong {
+            color: #ff6b6b;
+            font-size: 20px;
+        }
+
+        /* 第二页 - 业管侧流程 */
+        .process-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 25px;
+            max-width: 1100px;
+        }
+
+        .process-card {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 18px;
+            padding: 25px;
+        }
+
+        .process-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .process-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .process-icon.blue { background: linear-gradient(135deg, #667eea, #764ba2); }
+        .process-icon.orange { background: linear-gradient(135deg, #f093fb, #f5576c); }
+        .process-icon.green { background: linear-gradient(135deg, #4facfe, #00f2fe); }
+        .process-icon.purple { background: linear-gradient(135deg, #a18cd1, #fbc2eb); }
+
+        .process-title {
+            color: white;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .process-desc {
+            color: rgba(255,255,255,0.7);
+            font-size: 16px;
+            line-height: 1.6;
+        }
+
+        .highlight-box {
+            margin-top: 35px;
+            background: linear-gradient(135deg, rgba(255,107,107,0.15), rgba(238,90,36,0.15));
+            border-left: 5px solid #ff6b6b;
+            padding: 20px 30px;
+            border-radius: 0 15px 15px 0;
+        }
+
+        .highlight-box p {
+            color: rgba(255,255,255,0.9);
+            font-size: 20px;
+        }
+
+        .highlight-box strong {
+            color: #ff6b6b;
+        }
+
+        /* 第三页 - Before/After 对比 */
+        .comparison-container {
+            display: flex;
+            gap: 40px;
+            max-width: 1300px;
+        }
+
+        .comparison-side {
+            flex: 1;
+            border-radius: 22px;
+            padding: 30px;
+            min-width: 480px;
+        }
+
+        .comparison-side.before {
+            background: linear-gradient(135deg, rgba(255,107,107,0.15), rgba(238,90,36,0.1));
+            border: 2px solid rgba(255,107,107,0.4);
+        }
+
+        .comparison-side.after {
+            background: linear-gradient(135deg, rgba(46,213,115,0.15), rgba(0,184,148,0.1));
+            border: 2px solid rgba(46,213,115,0.4);
+        }
+
+        .comparison-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .comparison-header .icon {
+            font-size: 32px;
+        }
+
+        .comparison-header h3 {
+            font-size: 26px;
+            color: white;
+        }
+
+        .comparison-side.before .comparison-header h3 { color: #ff6b6b; }
+        .comparison-side.after .comparison-header h3 { color: #2ed573; }
+
+        .comparison-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .comparison-item:last-child {
+            border-bottom: none;
+        }
+
+        .comparison-item .label {
+            width: 120px;
+            min-width: 120px;
+            color: rgba(255,255,255,0.6);
+            font-size: 16px;
+        }
+
+        .comparison-item .value {
+            flex: 1;
+            color: white;
+            font-size: 18px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .comparison-side.before .value { color: #ff6b6b; }
+        .comparison-side.after .value { color: #2ed573; }
+
+        .improvement-tag {
+            background: rgba(46,213,115,0.2);
+            color: #2ed573;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        .core-value {
+            margin-top: 40px;
+            background: linear-gradient(135deg, rgba(102,126,234,0.2), rgba(118,75,162,0.2));
+            border: 2px solid rgba(102,126,234,0.4);
+            border-radius: 15px;
+            padding: 20px 40px;
+            text-align: center;
+        }
+
+        .core-value p {
+            color: white;
+            font-size: 22px;
+        }
+
+        .core-value span {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        /* 第四页 - 系统功能 */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 20px;
+            max-width: 1150px;
+            margin-bottom: 40px;
+        }
+
+        .feature-card {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 18px;
+            padding: 28px 20px;
+            text-align: center;
+        }
+
+        .feature-icon {
+            font-size: 42px;
+            margin-bottom: 15px;
+        }
+
+        .feature-title {
+            color: white;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .feature-desc {
+            color: rgba(255,255,255,0.7);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .result-banner {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 18px;
+            padding: 30px 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
+            max-width: 850px;
+        }
+
+        .result-item {
+            text-align: center;
+        }
+
+        .result-value {
+            font-size: 40px;
+            font-weight: 700;
+            color: white;
+        }
+
+        .result-label {
+            color: rgba(255,255,255,0.8);
+            font-size: 16px;
+            margin-top: 5px;
+        }
+
+        .result-divider {
+            width: 2px;
+            height: 60px;
+            background: rgba(255,255,255,0.3);
+        }
+
+        .demo-hint {
+            margin-top: 30px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: rgba(255,255,255,0.1);
+            padding: 18px 35px;
+            border-radius: 40px;
+        }
+
+        .demo-hint span {
+            color: rgba(255,255,255,0.9);
+            font-size: 18px;
+        }
+
+        .demo-hint .url {
+            font-size: 16px;
+            color: rgba(255,255,255,0.6);
+        }
+    </style>
+</head>
+<body>
+    <!-- 第一页：员工侧痛点 -->
+    <div class="slide">
+        <h1 class="slide-title">当前机制运行痛点</h1>
+        <div class="pain-badge">🔴 痛点 · 员工侧</div>
+        <p class="slide-subtitle">填写繁琐，上传流程复杂，用户体验差</p>
+        
+        <div class="steps-container">
+            <div class="step-item">
+                <div class="step-number">1</div>
+                <div class="step-label">打开部门微盘</div>
+            </div>
+            <div class="step-arrow">→</div>
+            <div class="step-item">
+                <div class="step-number">2</div>
+                <div class="step-label">打开中心微盘</div>
+            </div>
+            <div class="step-arrow">→</div>
+            <div class="step-item">
+                <div class="step-number">3</div>
+                <div class="step-label">打开小组微盘</div>
+            </div>
+            <div class="step-arrow">→</div>
+            <div class="step-item">
+                <div class="step-number">4</div>
+                <div class="step-label">打开个人微盘</div>
+            </div>
+            <div class="step-arrow">→</div>
+            <div class="step-item">
+                <div class="step-number">5</div>
+                <div class="step-label">打开年份文件夹</div>
+            </div>
+            <div class="step-arrow">→</div>
+            <div class="step-item">
+                <div class="step-number">6</div>
+                <div class="step-label">打开月份文件夹</div>
+            </div>
+            <div class="step-arrow">→</div>
+            <div class="step-item">
+                <div class="step-number">7</div>
+                <div class="step-label">填写表格</div>
+            </div>
+        </div>
+
+        <div class="time-summary">
+            <div style="margin-bottom: 10px;">📂 <strong>触达链路长</strong>：7步才能打开表格，降低填写及时性</div>
+            <div style="margin-bottom: 10px;">⏰ <strong>时间累积效应</strong>：拖延导致回忆成本增加，进一步降低填写效率</div>
+            <div>📊 <strong>实际数据</strong>：据1-11月工时统计，人均每周耗时约 <strong style="color:#ff6b6b;font-size:24px;">45分钟</strong></div>
+        </div>
+        <div class="page-number">1 / 4</div>
+    </div>
+
+    <!-- 第二页：业管侧痛点 -->
+    <div class="slide">
+        <h1 class="slide-title">当前机制运行痛点</h1>
+        <div class="pain-badge">🔴 痛点 · 业管侧</div>
+        <p class="slide-subtitle">数据处理流程极度耗时，每月需重复相同清洗步骤</p>
+
+        <div class="process-grid">
+            <div class="process-card">
+                <div class="process-header">
+                    <div class="process-icon blue">📥</div>
+                    <div class="process-title">流程一：收集数据</div>
+                </div>
+                <div class="process-desc">
+                    检查三个中心60+同事是否完整上传工时，通过python预设程序+智能文档检查
+                </div>
+            </div>
+
+            <div class="process-card">
+                <div class="process-header">
+                    <div class="process-icon orange">🔍</div>
+                    <div class="process-title">流程二：数据清洗</div>
+                </div>
+                <div class="process-desc">
+                    检查必填字段完整性、字段规范统一性；人工修正不规范数据；剔除异常值
+                </div>
+            </div>
+
+            <div class="process-card">
+                <div class="process-header">
+                    <div class="process-icon green">📊</div>
+                    <div class="process-title">流程三：数据统计</div>
+                </div>
+                <div class="process-desc">
+                    4张基础信息表 + 10余张计算分析表，需保持多表勾稽关系
+                </div>
+            </div>
+
+            <div class="process-card">
+                <div class="process-header">
+                    <div class="process-icon purple">📈</div>
+                    <div class="process-title">流程四：整理数据看板</div>
+                </div>
+                <div class="process-desc">
+                    核对25+数据看板，确保数据源准确性，底表拼接与统计分析
+                </div>
+            </div>
+        </div>
+
+        <div class="highlight-box">
+            <p>💡 投入情况：业管侧每月需投入 <strong>2.5 人力</strong>，耗时 <strong>3-5 天</strong></p>
+        </div>
+        <div class="page-number">2 / 4</div>
+    </div>
+
+    <!-- 第三页：Before/After 对比 -->
+    <div class="slide">
+        <h1 class="slide-title">效率对比：Before vs After</h1>
+        
+        <div class="comparison-container">
+            <div class="comparison-side before">
+                <div class="comparison-header">
+                    <span class="icon">❌</span>
+                    <h3>Before（手工模式）</h3>
+                </div>
+                <div class="comparison-item">
+                    <span class="label">🕐 填报时间</span>
+                    <span class="value">约45分钟/周</span>
+                </div>
+                <div class="comparison-item">
+                    <span class="label">📊 统计耗时</span>
+                    <span class="value">2.5人力 3-5天</span>
+                </div>
+                <div class="comparison-item">
+                    <span class="label">🔍 数据质量</span>
+                    <span class="value">人工核验，易出错</span>
+                </div>
+                <div class="comparison-item">
+                    <span class="label">📁 追溯能力</span>
+                    <span class="value">翻找Excel文件</span>
+                </div>
+                <div class="comparison-item">
+                    <span class="label">🔄 数据格式</span>
+                    <span class="value">格式不统一，标签混乱</span>
+                </div>
+            </div>
+
+            <div class="comparison-side after">
+                <div class="comparison-header">
+                    <span class="icon">✅</span>
+                    <h3>After（系统化）</h3>
+                </div>
+                <div class="comparison-item">
+                    <span class="label">🕐 填报时间</span>
+                    <span class="value">大幅缩短 <span class="improvement-tag">效率提升</span></span>
+                </div>
+                <div class="comparison-item">
+                    <span class="label">📊 统计耗时</span>
+                    <span class="value">1人力 0.5天 <span class="improvement-tag">效率提升约19倍</span></span>
+                </div>
+                <div class="comparison-item">
+                    <span class="label">🔍 数据质量</span>
+                    <span class="value">系统校验，100%完整</span>
+                </div>
+                <div class="comparison-item">
+                    <span class="label">📁 追溯能力</span>
+                    <span class="value">一键查询，历史可追溯</span>
+                </div>
+                <div class="comparison-item">
+                    <span class="label">🔄 数据格式</span>
+                    <span class="value">标准化录入，格式统一</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="core-value">
+            <p>🎯 <span>核心价值</span>：解放人力 · 提升数据质量 · 规范化管理</p>
+        </div>
+        <div class="page-number">3 / 4</div>
+    </div>
+
+    <!-- 第四页：系统化解决方案 + 系统功能 -->
+    <div class="slide">
+        <h1 class="slide-title">系统化解决方案</h1>
+        <p class="slide-subtitle">以 CTD 为试点的系统化能力探索 · Codebuddy Pilot 驱动开发</p>
+
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">🕒</div>
+                <div class="feature-title">在线填报</div>
+                <div class="feature-desc">自动化填写，提升效率，从源头解决数据质量问题</div>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">📊</div>
+                <div class="feature-title">自动统计</div>
+                <div class="feature-desc">免去人工整理，自动汇总并生成报表，消除人工误差</div>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">💾</div>
+                <div class="feature-title">数据存储</div>
+                <div class="feature-desc">实时数据库存储，支持随时调取与历史追溯</div>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">🛡️</div>
+                <div class="feature-title">权限管理</div>
+                <div class="feature-desc">分级管理（管理员/管理者/普通用户），保障数据安全</div>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">🤖</div>
+                <div class="feature-title">AI 助手</div>
+                <div class="feature-desc">接入混元大模型，智能化辅助填写（持续优化中）</div>
+            </div>
+        </div>
+
+        <div class="result-banner">
+            <div class="result-item">
+                <div class="result-value">↑19倍</div>
+                <div class="result-label">效率提升</div>
+            </div>
+            <div class="result-divider"></div>
+            <div class="result-item">
+                <div class="result-value">100%</div>
+                <div class="result-label">数据完整性</div>
+            </div>
+            <div class="result-divider"></div>
+            <div class="result-item">
+                <div class="result-value">0.5天</div>
+                <div class="result-label">月度统计周期</div>
+            </div>
+        </div>
+
+        <div class="demo-hint">
+            <span style="font-size: 28px;">💻</span>
+            <span>系统展示 Demo</span>
+            <span class="url">www.ctdms.woa.com</span>
+        </div>
+        <div class="page-number">4 / 4</div>
+    </div>
+</body>
+</html>
