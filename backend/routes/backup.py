@@ -432,15 +432,20 @@ def send_timesheet_reminder():
     
     # 构建邮件内容
     now = datetime.now()
-    month_name = now.strftime('%Y年%m月')
+    # 计算上个月
+    if now.month == 1:
+        last_month = datetime(now.year - 1, 12, 1)
+    else:
+        last_month = datetime(now.year, now.month - 1, 1)
+    last_month_name = last_month.strftime('%Y年%m月')
     
-    subject = f"【工时提醒】请及时填写 {month_name} 工时记录"
+    subject = f"【工时提醒】请及时填写 {last_month_name} 工时记录"
     
     body = f"""各位同事：
 
 您好！
 
-本月工时填写周期已开始，请您在本周内完成上月工时的填写和提交。
+{last_month_name} 工时填写周期已开始，请您在本周内完成上月工时的填写和提交。
 
 📌 填写入口：https://www.ctdms.woa.com
 📌 截止时间：本周五 18:00 前
