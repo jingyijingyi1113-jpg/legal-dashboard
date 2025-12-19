@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import { cn } from '@/lib/utils';
 
 interface LoginPageProps {
@@ -9,6 +11,7 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onSwitchToRegister }: LoginPageProps) {
+  const { t } = useTranslation();
   const { login } = useAuth();
   const [formData, setFormData] = useState({
     username: '',
@@ -29,7 +32,7 @@ export function LoginPage({ onSwitchToRegister }: LoginPageProps) {
         setError(result.message);
       }
     } catch (err) {
-      setError('登录失败，请重试');
+      setError(t('common.error'));
     } finally {
       setLoading(false);
     }
@@ -37,6 +40,11 @@ export function LoginPage({ onSwitchToRegister }: LoginPageProps) {
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-[#f8fafc]">
+      {/* Language Switcher - Top Right */}
+      <div className="absolute top-6 right-6 z-20">
+        <LanguageSwitcher variant="icon" />
+      </div>
+
       {/* Animated gradient background */}
       <div className="absolute inset-0">
         <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50/50 to-indigo-50/30" />
@@ -72,12 +80,12 @@ export function LoginPage({ onSwitchToRegister }: LoginPageProps) {
               </div>
             </div>
             
-            <h1 className="text-[26px] font-bold bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 bg-clip-text text-transparent tracking-tight">
-              任务记录与分析
+            <h1 className="text-[26px] font-bold bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 bg-clip-text text-transparent tracking-tight whitespace-nowrap">
+              {t('auth.loginTitle')}
             </h1>
           </div>
           
-          <p className="text-slate-500 text-[15px] font-medium">登录以继续使用系统</p>
+          <p className="text-slate-500 text-[15px] font-medium">{t('auth.loginSubtitle')}</p>
         </div>
 
         {/* Login form card with glass morphism */}
@@ -97,7 +105,7 @@ export function LoginPage({ onSwitchToRegister }: LoginPageProps) {
                     <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
                     <circle cx="12" cy="7" r="4"/>
                   </svg>
-                  用户名
+                  {t('auth.username')}
                 </label>
                 <div className={cn(
                   "relative rounded-xl transition-all duration-300",
@@ -105,7 +113,7 @@ export function LoginPage({ onSwitchToRegister }: LoginPageProps) {
                 )}>
                   <Input
                     type="text"
-                    placeholder="请输入用户名"
+                    placeholder={t('auth.username')}
                     value={formData.username}
                     onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                     onFocus={() => setFocusedField('username')}
@@ -123,7 +131,7 @@ export function LoginPage({ onSwitchToRegister }: LoginPageProps) {
                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                     <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                   </svg>
-                  密码
+                  {t('auth.password')}
                 </label>
                 <div className={cn(
                   "relative rounded-xl transition-all duration-300",
@@ -131,7 +139,7 @@ export function LoginPage({ onSwitchToRegister }: LoginPageProps) {
                 )}>
                   <Input
                     type="password"
-                    placeholder="请输入密码"
+                    placeholder={t('auth.password')}
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     onFocus={() => setFocusedField('password')}
@@ -179,11 +187,11 @@ export function LoginPage({ onSwitchToRegister }: LoginPageProps) {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    登录中...
+                    {t('auth.loggingIn')}
                   </span>
                 ) : (
                   <span className="relative flex items-center justify-center gap-2">
-                    登录
+                    {t('auth.loginButton')}
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M5 12h14"/>
                       <path d="m12 5 7 7-7 7"/>
@@ -198,17 +206,14 @@ export function LoginPage({ onSwitchToRegister }: LoginPageProps) {
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-slate-200/60" />
               </div>
-              <div className="relative flex justify-center text-xs">
-                <span className="px-4 bg-white text-slate-400 font-medium">或</span>
-              </div>
             </div>
 
             {/* Register link */}
             <div className="text-center">
               <p className="text-[15px] text-slate-500">
-                还没有账号？
+                {t('auth.noAccount')}
                 <span className="ml-1.5 text-blue-600 font-semibold">
-                  请联系 ivyjyding
+                  ivyjyding
                 </span>
               </p>
             </div>

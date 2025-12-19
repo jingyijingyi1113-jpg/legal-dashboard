@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from "@/components/ui/button";
 import { useAuth } from '@/contexts/AuthContext';
 import { useTimesheet } from '@/contexts/TimesheetContext';
@@ -16,9 +17,10 @@ interface CustomSelectProps {
   disabled?: boolean;
   required?: boolean;
   icon?: React.ReactNode;
+  t: (key: string) => string;
 }
 
-function CustomSelect({ value, onChange, options, placeholder, disabled, required, icon }: CustomSelectProps) {
+function CustomSelect({ value, onChange, options, placeholder, disabled, required, icon, t }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [dropUp, setDropUp] = useState(false);
@@ -119,7 +121,7 @@ function CustomSelect({ value, onChange, options, placeholder, disabled, require
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="搜索选项..."
+                placeholder={t('common.searchOptions')}
                 className="w-full h-9 pl-9 pr-3 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
               />
             </div>
@@ -132,7 +134,7 @@ function CustomSelect({ value, onChange, options, placeholder, disabled, require
                 <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                无匹配选项
+                {t('common.noMatchOptions')}
               </div>
             ) : (
               filteredOptions.map((option, index) => (
@@ -251,6 +253,7 @@ interface TimesheetEntryProps {
 }
 
 export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }: TimesheetEntryProps) {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { entries, addEntry, updateEntry, deleteEntry, submitEntries, getStats, leaveRecords, addLeaveRecord, updateLeaveRecord, deleteLeaveRecord } = useTimesheet();
   const [formData, setFormData] = useState<Record<string, string | number>>({});
@@ -301,9 +304,9 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
         setUserTemplates(templates);
       }
     } catch (error) {
-      console.error('加载模版失败:', error);
+      console.error(t('timesheet.template.loadFailed'), error);
     }
-  }, [user]);
+  }, [user, t]);
 
   useEffect(() => {
     loadUserTemplates();
@@ -315,13 +318,13 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
     
     if (!user) {
       console.error('[DEBUG] 用户未登录');
-      alert('请先登录');
+      alert(t('auth.login'));
       return;
     }
     
     if (!newTemplateName.trim()) {
       console.error('[DEBUG] 模版名称为空');
-      alert('请输入模版名称');
+      alert(t('timesheet.template.enterName'));
       return;
     }
     
@@ -357,11 +360,11 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
         console.log('[DEBUG] 模版保存成功');
       } else {
         console.error('[DEBUG] 保存失败:', response);
-        alert('保存失败: ' + (response.message || '未知错误'));
+        alert(t('timesheet.template.saveFailed') + ': ' + (response.message || ''));
       }
     } catch (error: any) {
       console.error('[DEBUG] 保存模版异常:', error);
-      alert('保存模版失败: ' + (error?.message || '网络错误'));
+      alert(t('timesheet.template.saveFailed') + ': ' + (error?.message || ''));
     } finally {
       setTemplateLoading(false);
     }
@@ -382,7 +385,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
         setUserTemplates(prev => prev.filter(t => t.id !== tplId));
       }
     } catch (error) {
-      console.error('删除模版失败:', error);
+      console.error(t('timesheet.template.deleteFailed'), error);
     }
   };
 
@@ -568,7 +571,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
       const required = isFieldRequired(field);
       const value = formData[field.key];
       if (required && (value === '' || value === undefined || value === null)) {
-        alert(`请填写必填项：${field.label}`);
+        alert(t('timesheet.form.fieldRequired', { field: field.label }));
         return;
       }
     }
@@ -579,7 +582,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
       
       // 验证小时数必须大于0
       if (hours <= 0) {
-        alert('小时数必须大于0');
+        alert(t('timesheet.form.hoursRequired'));
         setSubmitting(false);
         return;
       }
@@ -759,6 +762,34 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
     return false;
   };
 
+  // 获取字段的翻译后 placeholder
+  const getFieldPlaceholder = (field: TemplateField): string => {
+    // 根据 field.key 返回对应的翻译 key
+    const placeholderMap: Record<string, string> = {
+      category: 'timesheet.form.selectCategory',
+      task: 'timesheet.form.selectTask',
+      tag: 'timesheet.form.selectTag',
+      keyTask: 'timesheet.form.selectKeyTask',
+      workType: 'timesheet.form.selectWorkType',
+      hours: 'timesheet.form.enterHours',
+      description: 'timesheet.form.describeWork',
+      virtualGroup: 'timesheet.form.selectVirtualGroup',
+      internalClient: 'timesheet.form.selectInternalClient',
+      bscTag: 'timesheet.form.confirmBscAffairs',
+      bscItem: 'timesheet.form.selectCorrespondingItem',
+      workCategory: 'timesheet.form.selectWorkCategory',
+      dealName: 'timesheet.form.enterProjectName',
+      dealCategory: 'timesheet.form.selectAffairsCategory',
+    };
+    
+    const key = placeholderMap[field.key];
+    if (key) {
+      return t(key);
+    }
+    // 默认使用通用的 selectPlaceholder
+    return t('timesheet.form.selectPlaceholder', { field: field.label });
+  };
+
   // 渲染表单字段
   const renderField = (field: TemplateField) => {
     const value = formData[field.key] ?? '';
@@ -793,24 +824,25 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                 <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-rose-100 text-rose-500 text-xs pt-[3px]">*</span>
               )}
               {!required && (
-                <span className="text-xs font-normal text-slate-400">（可选）</span>
+                <span className="text-xs font-normal text-slate-400">（{t('common.optional')}）</span>
               )}
             </label>
             <CustomSelect
               value={isDisabled ? '' : value as string}
               onChange={(val) => handleFieldChange(field.key, val)}
               options={options}
-              placeholder={isConditionalDisabled ? '选择BSC时需填写' : (field.placeholder || `请选择${field.label}`)}
+              placeholder={isConditionalDisabled ? t('timesheet.form.selectBscRequired') : getFieldPlaceholder(field)}
               disabled={isDisabled}
               required={required}
               icon={icon}
+              t={t}
             />
             {field.parentField && !formData[field.parentField] && (
               <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                请先选择上级分类
+                {t('common.selectParentFirst')}
               </p>
             )}
           </div>
@@ -837,14 +869,14 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                 step="any"
                 min={field.min || 0}
                 max={field.max || 24}
-                placeholder={field.placeholder}
+                placeholder={getFieldPlaceholder(field)}
                 value={value}
                 onChange={(e) => handleFieldChange(field.key, e.target.value)}
                 required={field.required}
                 className="w-full h-12 pl-12 pr-16 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-800 placeholder:text-xs placeholder:text-slate-400 focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 hover:border-blue-300 hover:shadow-md hover:shadow-blue-100/50 transition-all duration-200"
               />
               <div className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-400 select-none">
-                小时
+                {t('timesheet.form.hoursUnit')}
               </div>
             </div>
           </div>
@@ -872,10 +904,10 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
             const { dependsOn } = field.conditionalRequired;
             const parentField = template.fields.find(f => f.key === dependsOn);
             if (parentField) {
-              return `选择 ${parentField.label} 时需填写`;
+              return t('timesheet.form.requiredWhenSelected', { field: parentField.label });
             }
           }
-          return '无需填写';
+          return t('timesheet.form.notRequired');
         };
         
         return (
@@ -885,7 +917,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
               {required ? (
                 <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-rose-100 text-rose-500 text-xs pt-[3px]">*</span>
               ) : (
-                <span className="text-xs font-normal text-slate-400">（可选）</span>
+                <span className="text-xs font-normal text-slate-400">（{t('common.optional')}）</span>
               )}
             </label>
             <div className="relative group">
@@ -895,7 +927,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                 </svg>
               </div>
               <textarea
-                placeholder={field.placeholder}
+                placeholder={isConditionalDisabled ? getDisabledPlaceholder() : getFieldPlaceholder(field)}
                 value={value as string}
                 onChange={(e) => handleFieldChange(field.key, e.target.value)}
                 required={required}
@@ -946,7 +978,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
       <div className="grid gap-4 md:grid-cols-4">
         <div className="bg-white rounded-xl border border-slate-200/60 shadow-lg shadow-slate-200/50 p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-neutral-600">今日工时</span>
+            <span className="text-sm font-medium text-neutral-600">{t('timesheet.stats.todayHours')}</span>
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500">
               <circle cx="12" cy="12" r="10"/>
               <polyline points="12 6 12 12 16 14"/>
@@ -956,7 +988,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
         </div>
         <div className="bg-white rounded-xl border border-slate-200/60 shadow-lg shadow-slate-200/50 p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-neutral-600">本周工时</span>
+            <span className="text-sm font-medium text-neutral-600">{t('timesheet.stats.weekHours')}</span>
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
               <line x1="16" y1="2" x2="16" y2="6"/>
@@ -968,7 +1000,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
         </div>
         <div className="bg-white rounded-xl border border-slate-200/60 shadow-lg shadow-slate-200/50 p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-neutral-600">本月工时</span>
+            <span className="text-sm font-medium text-neutral-600">{t('timesheet.stats.monthHours')}</span>
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
             </svg>
@@ -977,7 +1009,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
         </div>
         <div className="bg-white rounded-xl border border-slate-200/60 shadow-lg shadow-slate-200/50 p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-neutral-600">记录条数</span>
+            <span className="text-sm font-medium text-neutral-600">{t('timesheet.stats.totalEntries')}</span>
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-violet-500">
               <line x1="8" y1="6" x2="21" y2="6"/>
               <line x1="8" y1="12" x2="21" y2="12"/>
@@ -1004,11 +1036,11 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
             </div>
             
             <div className="flex-1">
-              <h4 className="text-base font-bold text-amber-800 mb-1">跨月工时提醒</h4>
+              <h4 className="text-base font-bold text-amber-800 mb-1">{t('timesheet.crossMonth.title')}</h4>
               <p className="text-sm text-amber-700 mb-4">
-                当前是月初，您是否需要补录上个月的工时记录？
+                {t('timesheet.crossMonth.message')}
                 <span className="block text-xs text-amber-600 mt-1">
-                  选择"补录上月"将自动切换日期到上月最后一个工作日
+                  {t('timesheet.crossMonth.hint')}
                 </span>
               </p>
               
@@ -1021,7 +1053,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 17l-5-5m0 0l5-5m-5 5h12" />
                   </svg>
-                  是，补录上月
+                  {t('timesheet.crossMonth.recordLastMonth')}
                 </button>
                 <button
                   type="button"
@@ -1031,7 +1063,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  否，记录本月
+                  {t('timesheet.crossMonth.recordThisMonth')}
                 </button>
                 <button
                   type="button"
@@ -1041,7 +1073,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
-                  不再提醒
+                  {t('timesheet.crossMonth.dismiss')}
                 </button>
               </div>
             </div>
@@ -1072,8 +1104,8 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                       )}
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold text-slate-800">{editingId ? '修改工时' : '新增工时'}</h3>
-                      <p className="text-xs text-slate-500">{editingId ? '编辑已有的工时记录' : '记录您的工作时间'}</p>
+                      <h3 className="text-lg font-bold text-slate-800">{editingId ? t('timesheet.form.editEntry') : t('timesheet.form.newEntry')}</h3>
+                      <p className="text-xs text-slate-500">{editingId ? t('timesheet.form.editEntryDesc') : t('timesheet.form.newEntryDesc')}</p>
                     </div>
                   </div>
                   
@@ -1083,12 +1115,12 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                       type="button"
                       onClick={() => setShowTemplateMenu(!showTemplateMenu)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-700 transition-all"
-                      title="常用模版"
+                      title={t('timesheet.template.commonTemplates')}
                     >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
                       </svg>
-                      模版
+                      {t('timesheet.template.title')}
                       <svg className={`w-3 h-3 transition-transform ${showTemplateMenu ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
@@ -1099,7 +1131,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                       <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl border border-slate-200 shadow-xl shadow-slate-200/50 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                         <div className="p-2 border-b border-slate-100 bg-slate-50/50">
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-medium text-slate-500">常用模版</span>
+                            <span className="text-xs font-medium text-slate-500">{t('timesheet.template.commonTemplates')}</span>
                             <button
                               type="button"
                               onClick={() => {
@@ -1111,7 +1143,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                               </svg>
-                              保存当前
+                              {t('timesheet.template.saveCurrent')}
                             </button>
                           </div>
                         </div>
@@ -1122,8 +1154,8 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                               <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
                               </svg>
-                              <p className="text-xs text-slate-400">暂无保存的模版</p>
-                              <p className="text-xs text-slate-400 mt-1">填写表单后点击"保存当前"</p>
+                              <p className="text-xs text-slate-400">{t('timesheet.template.noTemplates')}</p>
+                              <p className="text-xs text-slate-400 mt-1">{t('timesheet.template.noTemplatesHint')}</p>
                             </div>
                           ) : (
                             userTemplates.map((tpl) => (
@@ -1143,7 +1175,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                                   type="button"
                                   onClick={(e) => handleDeleteTemplate(tpl.id, e)}
                                   className="ml-2 p-1 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
-                                  title="删除模版"
+                                  title={t('timesheet.template.deleteTemplate')}
                                 >
                                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1174,7 +1206,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                 <form onSubmit={handleSubmit} className="space-y-5">
                   <div className="space-y-2">
                     <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                      日期
+                      {t('timesheet.form.date')}
                       <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-rose-100 text-rose-500 text-xs pt-[3px]">*</span>
                     </label>
                     <div className="relative group">
@@ -1209,14 +1241,14 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
-                          保存中...
+                          {t('timesheet.form.saving')}
                         </span>
                       ) : (
                         <span className="relative flex items-center justify-center gap-2">
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
                           </svg>
-                          {editingId ? '更新草稿' : '保存草稿'}
+                          {editingId ? t('timesheet.form.updateDraft') : t('timesheet.form.saveDraft')}
                         </span>
                       )}
                     </Button>
@@ -1230,7 +1262,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                         <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
-                        取消编辑
+                        {t('timesheet.form.cancelEdit')}
                       </Button>
                     ) : (
                       <Button 
@@ -1242,7 +1274,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                         <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
-                        清除表单
+                        {t('timesheet.form.clearForm')}
                       </Button>
                     )}
                   </div>
@@ -1255,7 +1287,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <p className="text-xs text-slate-500">
-                    带 <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-rose-100 text-rose-500 text-[10px] pt-[2px] mx-0.5">*</span> 的字段为必填项
+                    {t('timesheet.form.requiredHint').split('*')[0]} <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-rose-100 text-rose-500 text-[10px] pt-[2px] mx-0.5">*</span> {t('timesheet.form.requiredHint').split('*')[1] || ''}
                   </p>
                 </div>
               </div>
@@ -1278,14 +1310,14 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                     <line x1="3" y1="12" x2="3.01" y2="12"/>
                     <line x1="3" y1="18" x2="3.01" y2="18"/>
                   </svg>
-                  草稿记录
+                  {t('timesheet.draft.title')}
                   {userDraftEntries.length > 0 && (
                     <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700">
-                      {userDraftEntries.length} 条
+                      {userDraftEntries.length} {t('common.records')}
                     </span>
                   )}
                   <span className="text-xs font-normal text-rose-500 ml-2">
-                    ⚠️ 请勾选记录并点击"提交"按钮完成保存
+                    {t('timesheet.draft.submitHint')}
                   </span>
                 </h3>
                 <div className="flex items-center gap-3">
@@ -1295,7 +1327,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                         onClick={toggleSelectAll}
                         className="text-xs text-blue-600 hover:text-blue-700 font-medium"
                       >
-                        {selectedIds.size === userDraftEntries.length ? '取消全选' : '全选'}
+                        {selectedIds.size === userDraftEntries.length ? t('timesheet.draft.deselectAll') : t('timesheet.draft.selectAll')}
                       </button>
                       <Button
                         size="sm"
@@ -1309,14 +1341,14 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                             </svg>
-                            提交中
+                            {t('timesheet.draft.submitting')}
                           </span>
                         ) : (
                           <span className="flex items-center gap-1">
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
-                            提交 {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
+                            {t('common.submit')} {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
                           </span>
                         )}
                       </Button>
@@ -1334,8 +1366,8 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                     <line x1="8" y1="2" x2="8" y2="6"/>
                     <line x1="3" y1="10" x2="21" y2="10"/>
                   </svg>
-                  <p className="text-sm">暂无草稿记录</p>
-                  <p className="text-xs mt-1">请在左侧填写并保存草稿</p>
+                  <p className="text-sm">{t('timesheet.draft.noDrafts')}</p>
+                  <p className="text-xs mt-1">{t('timesheet.draft.noDraftsHint')}</p>
                 </div>
               ) : (
                 <div className="space-y-2 h-full overflow-y-auto pr-2">
@@ -1378,7 +1410,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                               <>
                                 {/* 投资法务中心：Deal/Matter Name + Deal/Matter Category + 描述 */}
                                 <span className="text-sm font-semibold text-neutral-800 truncate max-w-[180px]" title={dealName}>
-                                  {dealName || '未填写'}
+                                  {dealName || t('timesheet.draft.notFilled')}
                                 </span>
                                 {category && (
                                   <span className="px-1.5 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-600 truncate max-w-[120px]" title={category}>
@@ -1398,7 +1430,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                               <>
                                 {/* 公司及国际金融事务中心：Internal Client + Virtual Group + 描述 */}
                                 <span className="text-sm font-semibold text-neutral-800 truncate max-w-[180px]" title={internalClient}>
-                                  {internalClient || '未填写'}
+                                  {internalClient || t('timesheet.draft.notFilled')}
                                 </span>
                                 {virtualGroup && (
                                   <span className="px-1.5 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-600 truncate max-w-[120px]" title={virtualGroup}>
@@ -1418,7 +1450,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                               <>
                                 {/* 其他中心：工作任务 + 事项分类 + Narrative */}
                                 <span className="text-sm font-semibold text-neutral-800 truncate max-w-[200px]">
-                                  {task || category || '未分类'}
+                                  {task || category || t('timesheet.draft.uncategorized')}
                                 </span>
                                 {category && task && (
                                   <span className="px-1.5 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-600 truncate max-w-[100px]">
@@ -1549,7 +1581,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                             size="sm"
                             onClick={() => handleCopy(entry)}
                             className="h-7 w-7 p-0 text-neutral-400 hover:text-blue-500 hover:bg-blue-50"
-                            title="复制"
+                            title={t('common.copy')}
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
@@ -1561,7 +1593,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                             size="sm"
                             onClick={() => handleEdit(entry)}
                             className={`h-7 w-7 p-0 ${isEditing ? 'text-blue-500 bg-blue-100' : 'text-neutral-400 hover:text-amber-500 hover:bg-amber-50'}`}
-                            title="编辑"
+                            title={t('common.edit')}
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -1573,7 +1605,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                             size="sm"
                             onClick={() => handleDelete(entry.id)}
                             className="h-7 w-7 p-0 text-neutral-400 hover:text-red-500 hover:bg-red-50"
-                            title="删除"
+                            title={t('common.delete')}
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                               <polyline points="3 6 5 6 21 6"/>
@@ -1600,10 +1632,10 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                     <line x1="8" y1="2" x2="8" y2="6"/>
                     <line x1="3" y1="10" x2="21" y2="10"/>
                   </svg>
-                  请假登记
+                  {t('timesheet.leave.title')}
                   {userLeaveRecords.length > 0 && (
                     <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-orange-100 text-orange-700">
-                      累计 {userLeaveRecords.reduce((sum, r) => sum + r.days, 0)} 天
+                      {t('timesheet.leave.totalDays', { days: userLeaveRecords.reduce((sum, r) => sum + r.days, 0) })}
                     </span>
                   )}
                 </h3>
@@ -1612,7 +1644,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
             <div className="p-4">
               <form onSubmit={handleLeaveSubmit} className="flex flex-wrap items-end gap-4">
                 <div className="flex-1 min-w-[120px]">
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">开始日期</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">{t('timesheet.leave.startDate')}</label>
                   <input
                     type="date"
                     value={leaveStartDate}
@@ -1622,7 +1654,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                   />
                 </div>
                 <div className="flex-1 min-w-[120px]">
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">结束日期</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">{t('timesheet.leave.endDate')}</label>
                   <input
                     type="date"
                     value={leaveEndDate}
@@ -1633,7 +1665,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                   />
                 </div>
                 <div className="w-[90px]">
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">天数</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">{t('timesheet.leave.days')}</label>
                   <div className="relative">
                     <input
                       type="number"
@@ -1646,7 +1678,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                       required
                       className="w-full h-10 px-3 pr-8 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-800 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-50 hover:border-orange-300 transition-all"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">天</span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">{t('timesheet.leave.daysUnit')}</span>
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -1661,7 +1693,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                       </svg>
                     ) : (
-                      editingLeaveId ? '更新' : '保存'
+                      editingLeaveId ? t('common.update') : t('common.save')
                     )}
                   </Button>
                   {editingLeaveId && (
@@ -1671,7 +1703,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                       onClick={resetLeaveForm}
                       className="h-10 px-3 text-sm"
                     >
-                      取消
+                      {t('common.cancel')}
                     </Button>
                   )}
                 </div>
@@ -1695,7 +1727,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                             ? record.startDate 
                             : `${record.startDate} ~ ${record.endDate}`}
                         </span>
-                        <span className="font-medium text-orange-600">{record.days}天</span>
+                        <span className="font-medium text-orange-600">{record.days}{t('timesheet.leave.daysUnit')}</span>
                         <button
                           onClick={() => handleEditLeave(record)}
                           className="text-slate-400 hover:text-amber-500 transition-colors"
@@ -1718,7 +1750,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                     ))}
                     {userLeaveRecords.length > 5 && (
                       <span className="inline-flex items-center px-3 py-1.5 text-sm text-slate-500">
-                        +{userLeaveRecords.length - 5} 条
+                        {t('timesheet.leave.moreRecords', { count: userLeaveRecords.length - 5 })}
                       </span>
                     )}
                   </div>
@@ -1741,8 +1773,8 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-slate-800">保存为模版</h3>
-                  <p className="text-xs text-slate-500">将当前填写的内容保存为常用模版</p>
+                  <h3 className="text-lg font-bold text-slate-800">{t('timesheet.template.saveAsTemplate')}</h3>
+                  <p className="text-xs text-slate-500">{t('timesheet.template.saveAsTemplateDesc')}</p>
                 </div>
               </div>
             </div>
@@ -1750,19 +1782,19 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
             <div className="p-6">
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">模版名称</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">{t('timesheet.template.templateName')}</label>
                   <input
                     type="text"
                     value={newTemplateName}
                     onChange={(e) => setNewTemplateName(e.target.value)}
-                    placeholder="例如：日常开发工作、会议记录..."
+                    placeholder={t('timesheet.template.templateNamePlaceholder')}
                     className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-white text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 transition-all"
                     autoFocus
                   />
                 </div>
                 
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                  <p className="text-xs text-slate-500 mb-2">将保存以下字段：</p>
+                  <p className="text-xs text-slate-500 mb-2">{t('timesheet.template.willSaveFields')}</p>
                   <div className="flex flex-wrap gap-1.5">
                     {template.fields.map(field => {
                       const value = formData[field.key];
@@ -1788,7 +1820,7 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                 }}
                 className="h-10 px-4 rounded-lg"
               >
-                取消
+                {t('common.cancel')}
               </Button>
               <Button
                 type="button"
@@ -1802,14 +1834,14 @@ export function TimesheetEntryForm({ onCopyEntry, copyData, onCopyDataConsumed }
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                     </svg>
-                    保存中...
+                    {t('timesheet.template.savingTemplate')}
                   </>
                 ) : (
                   <>
                     <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    保存模版
+                    {t('timesheet.template.saveTemplate')}
                   </>
                 )}
               </Button>

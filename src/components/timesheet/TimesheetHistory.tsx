@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,11 +12,13 @@ import type { TimesheetEntry, LeaveRecord } from '@/types/timesheet';
 const MinimalYearSelector = ({
   selectedYear,
   onSelect,
-  availableYears
+  availableYears,
+  t
 }: {
   selectedYear: number;
   onSelect: (year: number) => void;
   availableYears: number[];
+  t: (key: string, options?: any) => string;
 }) => {
   const [open, setOpen] = useState(false);
   
@@ -92,17 +95,18 @@ const MinimalYearSelector = ({
 const MinimalMonthSelector = ({
   selectedYear,
   selectedMonth,
-  onSelect
+  onSelect,
+  t
 }: {
   selectedYear: number;
   selectedMonth: number | 'all';
   onSelect: (year: number, month: number) => void;
+  t: (key: string, options?: any) => string;
 }) => {
   const [open, setOpen] = useState(false);
   const [viewYear, setViewYear] = useState(selectedYear);
 
   const months = Array.from({ length: 12 }, (_, i) => i + 1);
-  const monthLabels = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 
   const handleMonthSelect = (month: number) => {
     onSelect(viewYear, month);
@@ -125,7 +129,7 @@ const MinimalMonthSelector = ({
           )}
         >
           <span className="text-lg font-semibold tracking-tight text-neutral-800 tabular-nums">
-            {selectedMonth !== 'all' ? monthLabels[selectedMonth - 1] : '全年'}
+            {selectedMonth !== 'all' ? t(`timesheet.history.months.${selectedMonth}`) : t('timesheet.history.months.all')}
           </span>
           <span className="absolute -bottom-0.5 left-0 h-[1.5px] w-0 bg-neutral-800 transition-all duration-300 group-hover:w-full" />
           <svg 
@@ -182,7 +186,7 @@ const MinimalMonthSelector = ({
                     isCurrentMonth && !isSelected && "text-neutral-900 font-semibold"
                   )}
                 >
-                  {monthLabels[month - 1]}
+                  {t(`timesheet.history.months.${month}`)}
                   {isCurrentMonth && !isSelected && (
                     <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-neutral-400" />
                   )}
@@ -199,20 +203,17 @@ const MinimalMonthSelector = ({
 // 极简风格季度选择器
 const MinimalQuarterSelector = ({
   selectedQuarter,
-  onSelect
+  onSelect,
+  t
 }: {
   selectedQuarter: number;
   onSelect: (quarter: number) => void;
+  t: (key: string, options?: any) => string;
 }) => {
   const [open, setOpen] = useState(false);
-  const quarters = [
-    { value: 1, label: '第一季度' },
-    { value: 2, label: '第二季度' },
-    { value: 3, label: '第三季度' },
-    { value: 4, label: '第四季度' },
-  ];
+  const quarters = [1, 2, 3, 4];
 
-  const selectedLabel = quarters.find(q => q.value === selectedQuarter)?.label || '选择季度';
+  const selectedLabel = t(`timesheet.history.quarters.${selectedQuarter}`);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -245,12 +246,12 @@ const MinimalQuarterSelector = ({
       >
         <div className="bg-white p-2">
           {quarters.map((quarter) => {
-            const isSelected = selectedQuarter === quarter.value;
+            const isSelected = selectedQuarter === quarter;
             return (
               <button
-                key={quarter.value}
+                key={quarter}
                 onClick={() => {
-                  onSelect(quarter.value);
+                  onSelect(quarter);
                   setOpen(false);
                 }}
                 className={cn(
@@ -261,7 +262,7 @@ const MinimalQuarterSelector = ({
                     : "text-neutral-600 hover:text-neutral-900"
                 )}
               >
-                {quarter.label}
+                {t(`timesheet.history.quarters.${quarter}`)}
               </button>
             );
           })}
@@ -274,18 +275,17 @@ const MinimalQuarterSelector = ({
 // 极简风格半年度选择器
 const MinimalSemiannualSelector = ({
   selectedSemiannual,
-  onSelect
+  onSelect,
+  t
 }: {
   selectedSemiannual: number;
   onSelect: (semiannual: number) => void;
+  t: (key: string, options?: any) => string;
 }) => {
   const [open, setOpen] = useState(false);
-  const semiannuals = [
-    { value: 1, label: '上半年' },
-    { value: 2, label: '下半年' },
-  ];
+  const semiannuals = [1, 2];
 
-  const selectedLabel = semiannuals.find(s => s.value === selectedSemiannual)?.label || '选择半年度';
+  const selectedLabel = t(`timesheet.history.halfYears.${selectedSemiannual}`);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -318,12 +318,12 @@ const MinimalSemiannualSelector = ({
       >
         <div className="bg-white p-2">
           {semiannuals.map((semi) => {
-            const isSelected = selectedSemiannual === semi.value;
+            const isSelected = selectedSemiannual === semi;
             return (
               <button
-                key={semi.value}
+                key={semi}
                 onClick={() => {
-                  onSelect(semi.value);
+                  onSelect(semi);
                   setOpen(false);
                 }}
                 className={cn(
@@ -334,7 +334,7 @@ const MinimalSemiannualSelector = ({
                     : "text-neutral-600 hover:text-neutral-900"
                 )}
               >
-                {semi.label}
+                {t(`timesheet.history.halfYears.${semi}`)}
               </button>
             );
           })}
@@ -349,6 +349,7 @@ interface TimesheetHistoryProps {
 }
 
 export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { entries, leaveRecords, deleteEntry } = useTimesheet();
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -374,43 +375,27 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
   type PeriodType = 'month' | 'quarter' | 'halfYear' | 'year' | 'custom';
   const [periodType, setPeriodType] = useState<PeriodType>('month');
 
-  // 月份选项
-  const months = [
-    { value: 1, label: '1月' },
-    { value: 2, label: '2月' },
-    { value: 3, label: '3月' },
-    { value: 4, label: '4月' },
-    { value: 5, label: '5月' },
-    { value: 6, label: '6月' },
-    { value: 7, label: '7月' },
-    { value: 8, label: '8月' },
-    { value: 9, label: '9月' },
-    { value: 10, label: '10月' },
-    { value: 11, label: '11月' },
-    { value: 12, label: '12月' },
+  // 周期类型配置
+  const periodTypes: { value: PeriodType; labelKey: string }[] = [
+    { value: 'month', labelKey: 'timesheet.history.periodTypes.month' },
+    { value: 'quarter', labelKey: 'timesheet.history.periodTypes.quarter' },
+    { value: 'halfYear', labelKey: 'timesheet.history.periodTypes.halfYear' },
+    { value: 'year', labelKey: 'timesheet.history.periodTypes.year' },
+    { value: 'custom', labelKey: 'timesheet.history.periodTypes.custom' },
   ];
 
   // 季度选项
   const quarters = [
-    { value: 1, label: 'Q1', months: [1, 2, 3] },
-    { value: 2, label: 'Q2', months: [4, 5, 6] },
-    { value: 3, label: 'Q3', months: [7, 8, 9] },
-    { value: 4, label: 'Q4', months: [10, 11, 12] },
+    { value: 1, months: [1, 2, 3] },
+    { value: 2, months: [4, 5, 6] },
+    { value: 3, months: [7, 8, 9] },
+    { value: 4, months: [10, 11, 12] },
   ];
 
   // 半年度选项
   const halfYears = [
-    { value: 1, label: '上半年', months: [1, 2, 3, 4, 5, 6] },
-    { value: 2, label: '下半年', months: [7, 8, 9, 10, 11, 12] },
-  ];
-
-  // 周期类型配置
-  const periodTypes = [
-    { value: 'month' as PeriodType, label: '月度' },
-    { value: 'quarter' as PeriodType, label: '季度' },
-    { value: 'halfYear' as PeriodType, label: '半年度' },
-    { value: 'year' as PeriodType, label: '年度' },
-    { value: 'custom' as PeriodType, label: '自定义' },
+    { value: 1, months: [1, 2, 3, 4, 5, 6] },
+    { value: 2, months: [7, 8, 9, 10, 11, 12] },
   ];
 
   // 自定义日期范围
@@ -614,7 +599,7 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
 
   // 删除记录
   const handleDelete = async (id: string) => {
-    if (!confirm('确定要删除这条已提交的记录吗？此操作不可恢复。')) {
+    if (!confirm(t('timesheet.history.confirmDelete'))) {
       return;
     }
     setDeletingId(id);
@@ -631,7 +616,7 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
       <div className="bg-white rounded-2xl border border-slate-200/60 shadow-xl shadow-slate-200/50 p-6">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
           {/* PERIOD 标签 */}
-          <span className="text-xs font-medium tracking-widest text-neutral-400 uppercase">Period</span>
+          <span className="text-xs font-medium tracking-widest text-neutral-400 uppercase">{t('timesheet.history.period')}</span>
           
           {/* 周期类型切换 */}
           <div className="flex items-center gap-0.5 p-1 bg-neutral-100/80 rounded-full">
@@ -648,7 +633,7 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
                     : "text-neutral-500 hover:text-neutral-700 hover:bg-white/60 active:bg-white/80"
                 )}
               >
-                {type.label}
+                {t(type.labelKey)}
               </button>
             ))}
           </div>
@@ -664,6 +649,7 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
                 selectedYear={selectedYear}
                 onSelect={setSelectedYear}
                 availableYears={availableYears}
+                t={t}
               />
 
               {/* 月份选择 */}
@@ -677,6 +663,7 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
                       setSelectedYear(year);
                       setSelectedMonth(month);
                     }}
+                    t={t}
                   />
                 </>
               )}
@@ -688,6 +675,7 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
                   <MinimalQuarterSelector
                     selectedQuarter={selectedQuarter}
                     onSelect={setSelectedQuarter}
+                    t={t}
                   />
                 </>
               )}
@@ -699,6 +687,7 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
                   <MinimalSemiannualSelector
                     selectedSemiannual={selectedHalfYear}
                     onSelect={setSelectedHalfYear}
+                    t={t}
                   />
                 </>
               )}
@@ -712,7 +701,7 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
                 onChange={(e) => setCustomStartDate(e.target.value)}
                 className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 hover:border-slate-300 transition-all cursor-pointer"
               />
-              <span className="text-neutral-300 text-sm">至</span>
+              <span className="text-neutral-300 text-sm">{t('timesheet.history.to')}</span>
               <input
                 type="date"
                 value={customEndDate}
@@ -726,15 +715,15 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
 
           <div className="flex items-center gap-4 text-sm">
             <span className="text-slate-500">
-              共 <span className="font-semibold text-slate-700">{stats.totalEntries}</span> 条记录
+              {t('timesheet.history.totalRecords', { count: stats.totalEntries })}
             </span>
             <span className="text-slate-300">|</span>
             <span className="text-slate-500">
-              工作 <span className="font-semibold text-slate-700">{stats.workDays}</span> 天
+              {t('timesheet.history.workDays', { days: stats.workDays })}
             </span>
             <span className="text-slate-300">|</span>
             <span className="text-slate-500">
-              总计 <span className="font-semibold text-green-600">{stats.totalHours.toFixed(1)}</span> 小时
+              {t('timesheet.history.totalHoursLabel', { hours: stats.totalHours.toFixed(1) })}
             </span>
           </div>
         </div>
@@ -744,7 +733,7 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
       <div className="grid gap-4 md:grid-cols-4">
         <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg shadow-blue-200/50 p-5 text-white">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-blue-100">总工时</span>
+            <span className="text-sm font-medium text-blue-100">{t('timesheet.history.totalHours')}</span>
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-200">
               <circle cx="12" cy="12" r="10"/>
               <polyline points="12 6 12 12 16 14"/>
@@ -752,13 +741,16 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
           </div>
           <div className="text-3xl font-bold">{stats.totalHours.toFixed(1)} h</div>
           <p className="text-xs text-blue-200 mt-1">
-            {selectedMonth === 'all' ? `${selectedYear}年全年` : `${selectedYear}年${selectedMonth}月`}
+            {selectedMonth === 'all' 
+              ? t('timesheet.history.yearAll', { year: selectedYear })
+              : t('timesheet.history.yearMonth', { year: selectedYear, month: t(`timesheet.history.months.${selectedMonth}`) })
+            }
           </p>
         </div>
         
         <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl shadow-lg shadow-green-200/50 p-5 text-white">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-green-100">记录条数</span>
+            <span className="text-sm font-medium text-green-100">{t('timesheet.history.recordCount')}</span>
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-200">
               <line x1="8" y1="6" x2="21" y2="6"/>
               <line x1="8" y1="12" x2="21" y2="12"/>
@@ -769,12 +761,12 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
             </svg>
           </div>
           <div className="text-3xl font-bold">{stats.totalEntries}</div>
-          <p className="text-xs text-green-200 mt-1">已提交记录</p>
+          <p className="text-xs text-green-200 mt-1">{t('timesheet.history.submittedRecords')}</p>
         </div>
         
         <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl shadow-lg shadow-indigo-200/50 p-5 text-white">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-indigo-100">已工作天数</span>
+            <span className="text-sm font-medium text-indigo-100">{t('timesheet.history.workedDays')}</span>
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-200">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
               <line x1="16" y1="2" x2="16" y2="6"/>
@@ -784,19 +776,19 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
           </div>
           <div className="text-3xl font-bold">{stats.workDays}</div>
           <p className="text-xs text-indigo-200 mt-1">
-            截止今日工作天数{stats.leaveDays > 0 ? `-请假${stats.leaveDays}天` : ''}
+            {t('timesheet.history.workDaysUntilToday')}{stats.leaveDays > 0 ? t('timesheet.history.leaveDaysDeducted', { days: stats.leaveDays }) : ''}
           </p>
         </div>
         
         <div className="bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl shadow-lg shadow-amber-200/50 p-5 text-white">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-amber-100">日均工时</span>
+            <span className="text-sm font-medium text-amber-100">{t('timesheet.history.avgHours')}</span>
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-200">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
             </svg>
           </div>
           <div className="text-3xl font-bold">{stats.avgHoursPerDay.toFixed(1)} h</div>
-          <p className="text-xs text-amber-200 mt-1">平均每日工时</p>
+          <p className="text-xs text-amber-200 mt-1">{t('timesheet.history.avgHoursPerDay')}</p>
         </div>
       </div>
 
@@ -809,9 +801,9 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
                 <polyline points="22 4 12 14.01 9 11.01"/>
               </svg>
-              历史记录
+              {t('timesheet.history.title')}
               <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">
-                {filteredEntries.length} 条
+                {filteredEntries.length} {t('common.records')}
               </span>
             </h3>
           </div>
@@ -824,11 +816,11 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
                 <polyline points="22 4 12 14.01 9 11.01"/>
               </svg>
-              <p className="text-sm font-medium">暂无历史记录</p>
+              <p className="text-sm font-medium">{t('timesheet.history.noHistory')}</p>
               <p className="text-xs mt-1">
                 {selectedMonth === 'all' 
-                  ? `${selectedYear}年暂无已提交的工时记录` 
-                  : `${selectedYear}年${selectedMonth}月暂无已提交的工时记录`
+                  ? t('timesheet.history.noHistoryYear', { year: selectedYear })
+                  : t('timesheet.history.noHistoryMonth', { year: selectedYear, month: t(`timesheet.history.months.${selectedMonth}`) })
                 }
               </p>
             </div>
@@ -852,7 +844,7 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 mb-1 flex-wrap">
                         <span className="text-sm font-medium text-neutral-900 truncate max-w-[200px]">
-                          {task || category || '未分类'}
+                          {task || category || t('timesheet.draft.uncategorized')}
                         </span>
                         {category && (
                           <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-600 truncate max-w-[150px]">
@@ -860,7 +852,7 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
                           </span>
                         )}
                         <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-600">
-                          已提交
+                          {t('timesheet.history.submitted')}
                         </span>
                       </div>
                       <div className="flex items-center gap-4 text-xs text-neutral-500 flex-wrap">
@@ -885,7 +877,7 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
                         size="sm"
                         onClick={() => handleCopy(entry)}
                         className="h-8 w-8 p-0 text-neutral-400 hover:text-blue-500 hover:bg-blue-50"
-                        title="复制为新草稿"
+                        title={t('timesheet.history.copyAsDraft')}
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
@@ -898,7 +890,7 @@ export function TimesheetHistory({ onCopyEntry }: TimesheetHistoryProps) {
                         onClick={() => handleDelete(entry.id)}
                         disabled={deletingId === entry.id}
                         className="h-8 w-8 p-0 text-neutral-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-50"
-                        title="删除记录"
+                        title={t('timesheet.history.deleteRecord')}
                       >
                         {deletingId === entry.id ? (
                           <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">

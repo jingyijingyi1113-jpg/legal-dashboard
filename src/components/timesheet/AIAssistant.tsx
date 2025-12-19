@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import type { TemplateField, FieldOption } from '@/types/timesheet';
 import { aiFeedbackApi } from '@/api/index';
@@ -60,19 +61,32 @@ declare global {
 }
 
 export function AIAssistant({ fields, teamName, onFillForm }: AIAssistantProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [useAI, setUseAI] = useState(true); // 是否使用混元AI
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
-  const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([
-    { role: 'assistant', content: '你好！我是工时录入助手。你可以用自然语言描述你的工作，我会帮你自动填写表单。\n\n例如："今天做了2小时合同审核" 或 "花了3小时处理日常法务工作"' }
-  ]);
+  const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
   const [speechSupported, setSpeechSupported] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const initializedRef = useRef(false);
+
+  // 初始化欢迎消息
+  useEffect(() => {
+    if (!initializedRef.current) {
+      setMessages([{ 
+        role: 'assistant', 
+        content: t('timesheet.ai.welcomeMessage', { 
+          defaultValue: '你好！我是工时录入助手。你可以用自然语言描述你的工作，我会帮你自动填写表单。\n\n例如："今天做了2小时合同审核" 或 "花了3小时处理日常法务工作"' 
+        })
+      }]);
+      initializedRef.current = true;
+    }
+  }, [t]);
 
   // 记录AI反馈
   const recordAiFeedback = useCallback(async (sessionId: string, userInput: string, aiResult: Record<string, unknown>) => {
@@ -228,7 +242,7 @@ export function AIAssistant({ fields, teamName, onFillForm }: AIAssistantProps) 
     const notFound: string[] = [];
 
     if (parsed.hours) {
-      filled.push(`小时数: ${parsed.hours}小时`);
+      filled.push(`${t('timesheet.ai.hoursLabel')}: ${parsed.hours}${t('timesheet.form.hoursUnit')}`);
     }
 
     for (const field of fields) {
@@ -258,15 +272,15 @@ export function AIAssistant({ fields, teamName, onFillForm }: AIAssistantProps) 
 
     let response = '';
     if (filled.length > 0) {
-      response += `✅ 已识别并填写：\n${filled.map(f => `  • ${f}`).join('\n')}`;
+      response += `${t('timesheet.ai.recognized')}\n${filled.map(f => `  • ${f}`).join('\n')}`;
     }
     
     if (notFound.length > 0) {
-      response += `\n\n⚠️ 以下必填项需要手动选择：\n${notFound.map(f => `  • ${f}`).join('\n')}`;
+      response += `\n\n${t('timesheet.ai.needManualSelect')}\n${notFound.map(f => `  • ${f}`).join('\n')}`;
     }
 
     if (filled.length === 0) {
-      response = '抱歉，我没能从您的描述中识别出有效信息。\n\n请尝试更具体的描述，例如：\n• "今天做了2小时合同审核"\n• "花了3小时处理日常法务工作"';
+      response = t('timesheet.ai.notRecognized');
     }
 
     return response;
@@ -370,7 +384,7 @@ export function AIAssistant({ fields, teamName, onFillForm }: AIAssistantProps) 
       console.error('处理失败:', error);
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: '抱歉，处理过程中出现错误，请稍后重试。' 
+        content: t('timesheet.ai.processingError')
       }]);
     } finally {
       setIsProcessing(false);
@@ -447,9 +461,9 @@ export function AIAssistant({ fields, teamName, onFillForm }: AIAssistantProps) 
                     </svg>
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-white">AI 工时助手</h3>
+                    <h3 className="text-lg font-bold text-white">{t('timesheet.ai.title')}</h3>
                     <p className="text-xs text-white/70">
-                      {useAI && aiConfigured ? '腾讯混元AI' : '本地智能解析'}
+                      {useAI && aiConfigured ? t('timesheet.ai.hunyuanAI') : t('timesheet.ai.localParsing')}
                     </p>
                   </div>
                 </div>
@@ -462,9 +476,9 @@ export function AIAssistant({ fields, teamName, onFillForm }: AIAssistantProps) 
                           ? 'bg-white/20 text-white' 
                           : 'bg-white/10 text-white/60 hover:bg-white/15'
                       }`}
-                      title={useAI ? '点击切换到本地解析' : '点击切换到混元AI'}
+                      title={useAI ? t('timesheet.ai.switchToLocal') : t('timesheet.ai.switchToAI')}
                     >
-                      {useAI ? '🤖 AI' : '📝 本地'}
+                      {useAI ? t('timesheet.ai.aiMode') : t('timesheet.ai.localMode')}
                     </button>
                   )}
                   <button
@@ -535,7 +549,7 @@ export function AIAssistant({ fields, teamName, onFillForm }: AIAssistantProps) 
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-                    placeholder={isListening ? '正在聆听...' : '描述你的工作内容...'}
+                    placeholder={isListening ? t('timesheet.ai.listening') : t('timesheet.ai.inputPlaceholder')}
                     className="w-full h-11 px-4 pr-12 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-50 focus:bg-white transition-all"
                     disabled={isListening}
                   />
@@ -553,7 +567,7 @@ export function AIAssistant({ fields, teamName, onFillForm }: AIAssistantProps) 
               </div>
               {isListening && (
                 <p className="mt-2 text-xs text-center text-red-500 animate-pulse">
-                  🎤 正在录音，请说话...
+                  {t('timesheet.ai.recording')}
                 </p>
               )}
             </div>

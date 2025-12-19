@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,11 +33,13 @@ type Period = 'monthly' | 'quarterly' | 'semiannually' | 'annually' | 'custom';
 const MinimalYearSelector = ({
   selectedYear,
   onSelect,
-  availableYears
+  availableYears,
+  t
 }: {
   selectedYear: string | null;
   onSelect: (year: string) => void;
   availableYears: string[];
+  t: (key: string) => string;
 }) => {
   const [open, setOpen] = useState(false);
   
@@ -56,7 +59,7 @@ const MinimalYearSelector = ({
           )}
         >
           <span className="text-lg font-semibold tracking-tight text-neutral-800 tabular-nums">
-            {selectedYear || '选择年份'}
+            {selectedYear || t('dashboard.selector.selectYear')}
           </span>
           <span className="absolute -bottom-0.5 left-0 h-[1.5px] w-0 bg-neutral-800 transition-all duration-300 group-hover:w-full" />
           <svg 
@@ -115,18 +118,25 @@ const MinimalMonthSelector = ({
   selectedYear,
   selectedMonth,
   onSelect,
-  availableYears
+  availableYears,
+  t
 }: {
   selectedYear: string | null;
   selectedMonth: string | null;
   onSelect: (year: string, month: string) => void;
   availableYears: string[];
+  t: (key: string) => string;
 }) => {
   const [open, setOpen] = useState(false);
   const [viewYear, setViewYear] = useState(selectedYear ? parseInt(selectedYear) : new Date().getFullYear());
 
   const months = Array.from({ length: 12 }, (_, i) => i);
-  const monthLabels = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+  const monthLabels = [
+    t('dashboard.selector.months.1'), t('dashboard.selector.months.2'), t('dashboard.selector.months.3'),
+    t('dashboard.selector.months.4'), t('dashboard.selector.months.5'), t('dashboard.selector.months.6'),
+    t('dashboard.selector.months.7'), t('dashboard.selector.months.8'), t('dashboard.selector.months.9'),
+    t('dashboard.selector.months.10'), t('dashboard.selector.months.11'), t('dashboard.selector.months.12')
+  ];
 
   const handleMonthSelect = (month: number) => {
     onSelect(viewYear.toString(), month.toString());
@@ -150,7 +160,7 @@ const MinimalMonthSelector = ({
           )}
         >
           <span className="text-lg font-semibold tracking-tight text-neutral-800 tabular-nums">
-            {selectedMonth !== null ? monthLabels[parseInt(selectedMonth)] : '选择月份'}
+            {selectedMonth !== null ? monthLabels[parseInt(selectedMonth)] : t('dashboard.selector.selectMonth')}
           </span>
           <span className="absolute -bottom-0.5 left-0 h-[1.5px] w-0 bg-neutral-800 transition-all duration-300 group-hover:w-full" />
           <svg 
@@ -224,22 +234,24 @@ const MinimalMonthSelector = ({
 // 极简风格季度选择器
 const MinimalQuarterSelector = ({
   selectedQuarter,
-  onSelect
+  onSelect,
+  t
 }: {
   selectedQuarter: string | null;
   onSelect: (quarter: string) => void;
+  t: (key: string) => string;
 }) => {
   const [open, setOpen] = useState(false);
   const quarters = [
-    { value: '0', label: '第一季度' },
-    { value: '1', label: '第二季度' },
-    { value: '2', label: '第三季度' },
-    { value: '3', label: '第四季度' },
+    { value: '0', label: t('dashboard.selector.q1') },
+    { value: '1', label: t('dashboard.selector.q2') },
+    { value: '2', label: t('dashboard.selector.q3') },
+    { value: '3', label: t('dashboard.selector.q4') },
   ];
 
   const selectedLabel = selectedQuarter !== null 
     ? quarters.find(q => q.value === selectedQuarter)?.label 
-    : '选择季度';
+    : t('dashboard.selector.selectQuarter');
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -305,20 +317,22 @@ const MinimalQuarterSelector = ({
 // 极简风格半年度选择器
 const MinimalSemiannualSelector = ({
   selectedSemiannual,
-  onSelect
+  onSelect,
+  t
 }: {
   selectedSemiannual: string | null;
   onSelect: (semiannual: string) => void;
+  t: (key: string) => string;
 }) => {
   const [open, setOpen] = useState(false);
   const semiannuals = [
-    { value: '0', label: '上半年' },
-    { value: '1', label: '下半年' },
+    { value: '0', label: t('dashboard.selector.h1') },
+    { value: '1', label: t('dashboard.selector.h2') },
   ];
 
   const selectedLabel = selectedSemiannual !== null 
     ? semiannuals.find(s => s.value === selectedSemiannual)?.label 
-    : '选择半年度';
+    : t('dashboard.selector.selectHalfYear');
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -396,6 +410,8 @@ const DASHBOARD_SOURCE_KEY = 'dashboard_data_source';
 const DASHBOARD_EXCEL_DATA_KEY = 'dashboard_excel_data'; // 存储导入的 Excel 数据
 
 export function DashboardPage() {
+  const { t } = useTranslation();
+  
   // 从 localStorage 恢复数据源类型
   const getInitialDataSource = (): 'excel' | 'timesheet' | 'merged' => {
     try {
@@ -602,7 +618,7 @@ export function DashboardPage() {
     }
     
     if (timesheetData.length === 0) {
-      alert('暂无符合条件的工时记录');
+      alert(t('dashboard.noMatchingRecords'));
       return;
     }
     
@@ -738,7 +754,7 @@ export function DashboardPage() {
   // Excel导出功能
   const handleExportExcel = () => {
     if (rawData.length === 0) {
-      alert('没有数据可导出');
+      alert(t('dashboard.noDataExport'));
       return;
     }
     
@@ -804,10 +820,10 @@ export function DashboardPage() {
   // 获取页面名称
   const getPageName = () => {
     switch (activeTab) {
-      case 'overview': return '部门总览';
-      case 'team': return '分团队预览';
-      case 'personal': return '个人工时预览';
-      default: return '工时数据看板';
+      case 'overview': return t('dashboard.tabs.overview');
+      case 'team': return t('dashboard.tabs.team');
+      case 'personal': return t('dashboard.tabs.anomaly');
+      default: return t('dashboard.title');
     }
   };
 
@@ -1230,11 +1246,11 @@ export function DashboardPage() {
   }, [period, selectedYear, selectedPeriodValue, customStartDate, customEndDate, monthlyData]);
 
   const periodLabels: Record<Period, string> = {
-    monthly: '月度',
-    quarterly: '季度',
-    semiannually: '半年度',
-    annually: '年度',
-    custom: '自定义'
+    monthly: t('dashboard.period.monthly'),
+    quarterly: t('dashboard.period.quarterly'),
+    semiannually: t('dashboard.period.semiannually'),
+    annually: t('dashboard.period.annually'),
+    custom: t('dashboard.period.custom')
   };
 
   const TimeDimensionTab = () => {
@@ -1246,8 +1262,8 @@ export function DashboardPage() {
               <svg className="w-16 h-16 mx-auto mb-4 text-neutral-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
-              <p className="text-lg font-medium">请先导入工时数据</p>
-              <p className="text-sm text-neutral-400 mt-1">导入数据后可查看工时统计分析</p>
+              <p className="text-lg font-medium">{t('dashboard.empty.title')}</p>
+              <p className="text-sm text-neutral-400 mt-1">{t('dashboard.empty.subtitle')}</p>
             </div>
           </div>
         </TabsContent>
@@ -1297,6 +1313,7 @@ export function DashboardPage() {
                                 selectedYear={selectedYear}
                                 onSelect={setSelectedYear}
                                 availableYears={availableYears}
+                                t={t}
                             />
                         )}
 
@@ -1312,6 +1329,7 @@ export function DashboardPage() {
                                         setSelectedPeriodValue(month);
                                     }}
                                     availableYears={availableYears}
+                                    t={t}
                                 />
                             </>
                         )}
@@ -1323,6 +1341,7 @@ export function DashboardPage() {
                                 <MinimalQuarterSelector
                                     selectedQuarter={selectedPeriodValue}
                                     onSelect={setSelectedPeriodValue}
+                                    t={t}
                                 />
                             </>
                         )}
@@ -1334,6 +1353,7 @@ export function DashboardPage() {
                                 <MinimalSemiannualSelector
                                     selectedSemiannual={selectedPeriodValue}
                                     onSelect={setSelectedPeriodValue}
+                                    t={t}
                                 />
                             </>
                         )}
@@ -1342,7 +1362,7 @@ export function DashboardPage() {
                     /* 自定义日期范围 */
                     <div className="flex items-center gap-3">
                         <MonthPicker value={customStartDate} onChange={(d) => setCustomStartDate(d)} variant="minimal" />
-                        <span className="text-neutral-300 text-sm">至</span>
+                        <span className="text-neutral-300 text-sm">{t('dashboard.period.to')}</span>
                         <MonthPicker value={customEndDate} onChange={(d) => setCustomEndDate(d)} variant="minimal" />
                     </div>
                 )}
@@ -1351,21 +1371,21 @@ export function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-1 animate-fade-in-up">
             <Card className="card-premium">
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold text-neutral-600">部门整体情况</CardTitle>
+                <CardTitle className="text-sm font-semibold text-neutral-600">{t('dashboard.overview.departmentOverview')}</CardTitle>
               </CardHeader>
               <CardContent className="grid grid-cols-2 divide-x divide-neutral-200/50">
                   <div className="flex flex-col items-center p-3">
                       <div className="text-2xl font-bold text-neutral-900">{displayedData.totalHours.toFixed(2)}</div>
-                      <p className="text-xs text-neutral-500 mt-1 font-medium">总用时</p>
+                      <p className="text-xs text-neutral-500 mt-1 font-medium">{t('dashboard.overview.totalHours')}</p>
                       <p className={`text-xs font-medium mt-1 ${displayedData.totalHoursTrend >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          环比: {displayedData.totalHoursTrend >= 0 ? '+' : ''}{displayedData.totalHoursTrend.toFixed(2)}%
+                          {t('dashboard.overview.momChange')}: {displayedData.totalHoursTrend >= 0 ? '+' : ''}{displayedData.totalHoursTrend.toFixed(2)}%
                       </p>
                   </div>
                   <div className="flex flex-col items-center p-3">
                       <div className="text-2xl font-bold text-neutral-900">{displayedData.avgHours.toFixed(2)}</div>
-                      <p className="text-xs text-neutral-500 mt-1 font-medium">人均用时</p>
+                      <p className="text-xs text-neutral-500 mt-1 font-medium">{t('dashboard.overview.avgHoursPerPerson')}</p>
                       <p className={`text-xs font-medium mt-1 ${displayedData.avgHoursTrend >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          环比: {displayedData.avgHoursTrend >= 0 ? '+' : ''}{displayedData.avgHoursTrend.toFixed(2)}%
+                          {t('dashboard.overview.momChange')}: {displayedData.avgHoursTrend >= 0 ? '+' : ''}{displayedData.avgHoursTrend.toFixed(2)}%
                       </p>
                   </div>
               </CardContent>
@@ -1375,7 +1395,7 @@ export function DashboardPage() {
           <div className="grid gap-4 md:grid-cols-2 animate-fade-in-up">
             <Card className="card-premium">
               <CardHeader className="pb-4">
-                <CardTitle className="text-base font-semibold text-neutral-900">总用时月度趋势</CardTitle>
+                <CardTitle className="text-base font-semibold text-neutral-900">{t('dashboard.overview.totalHoursTrend')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
@@ -1394,7 +1414,7 @@ export function DashboardPage() {
             </Card>
             <Card className="card-premium">
               <CardHeader className="pb-4">
-                <CardTitle className="text-base font-semibold text-neutral-900">月度人均用时趋势</CardTitle>
+                <CardTitle className="text-base font-semibold text-neutral-900">{t('dashboard.overview.avgHoursTrend')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
@@ -1440,13 +1460,13 @@ export function DashboardPage() {
                   value="time-dimension"
                   className="relative h-9 rounded-md border-0 bg-transparent px-4 py-2 font-normal text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all data-[state=active]:bg-blue-50 data-[state=active]:text-blue-600 data-[state=active]:shadow-none text-sm"
                 >
-                  工时维度
+                  {t('dashboard.subTabs.timeDimension')}
                 </TabsTrigger>
                 <TabsTrigger 
                   value="project-dimension"
                   className="relative h-9 rounded-md border-0 bg-transparent px-4 py-2 font-normal text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all data-[state=active]:bg-blue-50 data-[state=active]:text-blue-600 data-[state=active]:shadow-none text-sm"
                 >
-                  项目维度
+                  {t('dashboard.subTabs.projectDimension')}
                 </TabsTrigger>
             </TabsList>
           </div>
@@ -1471,16 +1491,16 @@ export function DashboardPage() {
       <div className="relative z-10 space-y-6 p-6">
         <div className='flex justify-between items-center mb-2 animate-fade-in-down'>
           <div>
-            <h1 className="text-4xl font-bold text-neutral-900 tracking-tight" style={{ fontWeight: 700 }}>工时数据看板</h1>
+            <h1 className="text-4xl font-bold text-neutral-900 tracking-tight" style={{ fontWeight: 700 }}>{t('dashboard.title')}</h1>
             <p className="text-neutral-500 mt-2 text-sm font-medium">
-              工时统计与趋势分析
+              {t('dashboard.subtitle')}
               {dataSource !== 'excel' && (
                 <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">
-                  {dataSource === 'timesheet' ? '工时记录数据' : '合并数据'}
+                  {dataSource === 'timesheet' ? t('dashboard.dataSourceTimesheet') : t('dashboard.dataSourceMerged')}
                 </span>
               )}
               {rawData.length > 0 && (
-                <span className="ml-2 text-neutral-400">({rawData.length} 条记录)</span>
+                <span className="ml-2 text-neutral-400">({t('dashboard.recordsCount', { count: rawData.length })})</span>
               )}
             </p>
           </div>
@@ -1493,7 +1513,7 @@ export function DashboardPage() {
                   className="no-print group relative overflow-hidden px-4 py-2 h-9 rounded-lg border border-slate-200/60 bg-white/60 backdrop-blur-sm hover:bg-slate-50/80 hover:border-slate-300/80 transition-all duration-200"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 group-hover:text-slate-700 transition-colors mr-1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-                  <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-800 transition-colors">导入数据</span>
+                  <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-800 transition-colors">{t('dashboard.import.title')}</span>
                   <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="ml-1 text-slate-400 group-hover:text-slate-500 transition-colors"><polyline points="6 9 12 15 18 9"/></svg>
                 </Button>
               </DropdownMenuTrigger>
@@ -1505,20 +1525,20 @@ export function DashboardPage() {
                     document.getElementById('file-upload')?.click();
                   }}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2 text-emerald-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2 text-emerald-500">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                     <polyline points="14 2 14 8 20 8"/>
                     <path d="M12 18v-6"/>
                     <path d="M9 15l3-3 3 3"/>
                   </svg>
-                  导入 Excel
+                  {t('dashboard.import.importExcel')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={openLoadDialog} className="cursor-pointer rounded-md px-3 py-2 text-[13px] text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2 text-blue-500">
                     <circle cx="12" cy="12" r="10"/>
                     <polyline points="12 6 12 12 16 14"/>
                   </svg>
-                  加载工时记录
+                  {t('dashboard.import.loadTimesheet')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1530,18 +1550,18 @@ export function DashboardPage() {
                   className="no-print group relative overflow-hidden px-4 py-2 h-9 rounded-lg border border-slate-200/60 bg-white/60 backdrop-blur-sm hover:bg-slate-50/80 hover:border-slate-300/80 transition-all duration-200"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 group-hover:text-slate-700 transition-colors mr-1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-                  <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-800 transition-colors">导出</span>
+                  <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-800 transition-colors">{t('dashboard.export.title')}</span>
                   <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="ml-1 text-slate-400 group-hover:text-slate-500 transition-colors"><polyline points="6 9 12 15 18 9"/></svg>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-36 p-1 rounded-lg border border-slate-200/80 bg-white/95 backdrop-blur-md shadow-lg">
                 <DropdownMenuItem onClick={() => handlePrint()} className="cursor-pointer rounded-md px-3 py-2 text-[13px] text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2 text-rose-500"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                  导出 PDF
+                  {t('dashboard.export.exportPdf')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleExportExcel} className="cursor-pointer rounded-md px-3 py-2 text-[13px] text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2 text-emerald-500"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M10 12l2 2 4-4"/></svg>
-                  导出 Excel
+                  {t('dashboard.export.exportExcel')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1550,7 +1570,7 @@ export function DashboardPage() {
               <Button 
                 variant="ghost" 
                 onClick={() => {
-                  if (confirm('确定要清除当前看板数据吗？此操作不会影响工时记录中的原始数据。')) {
+                  if (confirm(t('dashboard.clearDataConfirm'))) {
                     clearDashboardData();
                   }
                 }}
@@ -1563,7 +1583,7 @@ export function DashboardPage() {
                   <line x1="10" y1="11" x2="10" y2="17"/>
                   <line x1="14" y1="11" x2="14" y2="17"/>
                 </svg>
-                <span className="text-[13px] font-medium text-red-600 group-hover:text-red-700 transition-colors">清除数据</span>
+                <span className="text-[13px] font-medium text-red-600 group-hover:text-red-700 transition-colors">{t('dashboard.clearData')}</span>
               </Button>
             )}
           </div>
@@ -1576,21 +1596,21 @@ export function DashboardPage() {
                 value="overview"
                 className="nav-tab-enhanced relative text-neutral-600 hover:text-neutral-900 data-[state=active]:text-blue-600 data-[state=active]:font-semibold transition-colors duration-300 text-[17px]"
               >
-                部门总览
+                {t('dashboard.tabs.overview')}
                 <span className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full scale-x-0 data-[state=active]:scale-x-100 transition-transform duration-300 origin-left"></span>
               </TabsTrigger>
               <TabsTrigger 
                 value="team"
                 className="nav-tab-enhanced relative text-neutral-600 hover:text-neutral-900 data-[state=active]:text-blue-600 data-[state=active]:font-semibold transition-colors duration-300 text-[17px]"
               >
-                分团队预览
+                {t('dashboard.tabs.team')}
                 <span className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full scale-x-0 data-[state=active]:scale-x-100 transition-transform duration-300 origin-left"></span>
               </TabsTrigger>
               <TabsTrigger 
                 value="anomaly"
                 className="nav-tab-enhanced relative text-neutral-600 hover:text-neutral-900 data-[state=active]:text-blue-600 data-[state=active]:font-semibold transition-colors duration-300 text-[17px]"
               >
-                监测看板
+                {t('dashboard.tabs.anomaly')}
                 <span className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full scale-x-0 data-[state=active]:scale-x-100 transition-transform duration-300 origin-left"></span>
               </TabsTrigger>
             </TabsList>
@@ -1629,7 +1649,7 @@ export function DashboardPage() {
         <button
           onClick={scrollToTop}
           className="fixed bottom-8 right-8 z-50 p-3 bg-white border border-slate-200 rounded-full shadow-lg hover:shadow-xl hover:bg-slate-50 transition-all duration-300 group"
-          aria-label="回到顶部"
+          aria-label={t('common.backToTop')}
         >
           <svg 
             className="w-5 h-5 text-slate-600 group-hover:text-slate-800 transition-colors" 

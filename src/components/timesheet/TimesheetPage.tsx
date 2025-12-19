@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { TimesheetEntryForm } from './TimesheetEntry';
 import { TimesheetHistory } from './TimesheetHistory';
@@ -8,6 +9,7 @@ import type { TimesheetEntry } from '@/types/timesheet';
 type TabType = 'entry' | 'history';
 
 export function TimesheetPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('entry');
   // 直接存储要复制的数据，而不是通过 ref
@@ -66,9 +68,9 @@ export function TimesheetPage() {
         {/* 页面标题 */}
         <div className="flex justify-between items-center mb-2 animate-fade-in-down">
           <div>
-            <h1 className="text-4xl font-bold text-neutral-900 tracking-tight" style={{ fontWeight: 700 }}>工时记录</h1>
+            <h1 className="text-4xl font-bold text-neutral-900 tracking-tight" style={{ fontWeight: 700 }}>{t('timesheet.title')}</h1>
             <p className="text-neutral-500 mt-2 text-sm font-medium">
-              {user?.team ? `当前团队：${user.team}` : '记录您的日常工时'}
+              {user?.team ? t('timesheet.page.currentTeam', { team: user.team }) : t('timesheet.page.recordYourHours')}
             </p>
           </div>
         </div>
@@ -90,7 +92,7 @@ export function TimesheetPage() {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
               </svg>
-              工时录入
+              {t('timesheet.page.entry')}
             </button>
             <button
               onClick={() => setActiveTab('history')}
@@ -106,7 +108,7 @@ export function TimesheetPage() {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              历史数据
+              {t('timesheet.page.historyData')}
             </button>
           </div>
         </div>
@@ -126,7 +128,7 @@ export function TimesheetPage() {
         <button
           onClick={scrollToTop}
           className="fixed bottom-8 right-8 z-50 p-3 bg-white border border-slate-200 rounded-full shadow-lg hover:shadow-xl hover:bg-slate-50 transition-all duration-300 group"
-          aria-label="回到顶部"
+          aria-label={t('common.backToTop')}
         >
           <svg 
             className="w-5 h-5 text-slate-600 group-hover:text-slate-800 transition-colors" 

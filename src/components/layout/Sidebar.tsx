@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import { RoleLabels, RoleColors } from "@/types/user";
+import { RoleColors } from "@/types/user";
 import { ChangePasswordModal } from "@/components/auth/ChangePasswordModal";
+import { LanguageSwitcher } from "@/components/common/LanguageSwitcher";
 
 interface SidebarProps {
   activeMenu: string;
@@ -17,7 +19,7 @@ interface SidebarProps {
 const menuItems = [
   {
     id: 'timesheet',
-    label: '工时记录',
+    labelKey: 'sidebar.timesheet',
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="10"/>
@@ -28,7 +30,7 @@ const menuItems = [
   },
   {
     id: 'dashboard',
-    label: '工时数据看板',
+    labelKey: 'sidebar.dashboard',
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M3 3v18h18"/>
@@ -41,7 +43,7 @@ const menuItems = [
   },
   {
     id: 'dataManagement',
-    label: '数据管理',
+    labelKey: 'sidebar.dataManagement',
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <ellipse cx="12" cy="5" rx="9" ry="3"/>
@@ -54,7 +56,7 @@ const menuItems = [
   },
   {
     id: 'permissions',
-    label: '权限管理',
+    labelKey: 'sidebar.permissions',
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
@@ -65,7 +67,7 @@ const menuItems = [
   },
   {
     id: 'aiStatistics',
-    label: 'AI精准度',
+    labelKey: 'sidebar.aiStatistics',
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/>
@@ -78,6 +80,7 @@ const menuItems = [
 ];
 
 export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChange, isMobile, isMobileOpen, onMobileClose }: SidebarProps) {
+  const { t } = useTranslation();
   const { user, logout } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -157,8 +160,8 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
               "overflow-hidden transition-all duration-300",
               isCollapsed && !isMobile ? "w-0 opacity-0" : "w-auto opacity-100"
             )}>
-              <span className="text-[20px] font-semibold text-slate-800 tracking-tight whitespace-nowrap">
-                任务记录与分析
+              <span className="text-[17px] font-semibold text-slate-800 tracking-tight leading-tight block max-w-[140px]">
+                {t('sidebar.brand')}
               </span>
             </div>
           </div>
@@ -208,12 +211,13 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
             isCollapsed && !isMobile ? "h-0 opacity-0" : "h-auto opacity-100 px-3"
           )}>
             <span className="text-[10px] font-medium tracking-widest text-slate-400 uppercase">
-              功能
+              {t('sidebar.menu')}
             </span>
           </div>
 
           {visibleMenuItems.map((item, index) => {
             const isActive = activeMenu === item.id;
+            const label = t(item.labelKey);
             return (
               <button
                 key={item.id}
@@ -257,7 +261,7 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
                   "text-[13px] font-medium whitespace-nowrap overflow-hidden transition-all duration-300",
                   isCollapsed && !isMobile ? "w-0 opacity-0" : "w-auto opacity-100"
                 )}>
-                  {item.label}
+                  {label}
                 </span>
 
                 {/* Tooltip for collapsed state - 仅桌面端显示 */}
@@ -269,7 +273,7 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
                     "transition-all duration-200 pointer-events-none",
                     "shadow-lg"
                   )}>
-                    {item.label}
+                    {label}
                     {/* Tooltip arrow */}
                     <div className="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 w-2 h-2 bg-slate-800 rotate-45" />
                   </div>
@@ -313,8 +317,8 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
                 "flex-1 min-w-0 overflow-hidden transition-all duration-300 text-left",
                 isCollapsed && !isMobile ? "w-0 opacity-0" : "w-auto opacity-100"
               )}>
-                <p className="text-[13px] font-medium text-slate-700 truncate">{user?.name || '用户'}</p>
-                <p className="text-[11px] text-slate-400 truncate">{user?.team || '未分配团队'}</p>
+                <p className="text-[13px] font-medium text-slate-700 truncate">{user?.name || t('user.profile')}</p>
+                <p className="text-[11px] text-slate-400 truncate">{user?.team || ''}</p>
               </div>
 
               {/* Expand icon */}
@@ -340,12 +344,15 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
                     "inline-block mt-1.5 px-2 py-0.5 rounded-full text-xs font-medium",
                     user?.role && RoleColors[user.role]
                   )}>
-                    {user?.role && RoleLabels[user.role]}
+                    {user?.role && t(`roles.${user.role}`)}
                   </span>
                 </div>
 
                 {/* Menu items */}
                 <div className="py-1">
+                  {/* Language Switcher */}
+                  <LanguageSwitcher variant="text" />
+                  
                   <button
                     onClick={() => {
                       setShowChangePassword(true);
@@ -357,7 +364,7 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
                       <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                       <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                     </svg>
-                    修改密码
+                    {t('auth.changePassword')}
                   </button>
                   <button
                     onClick={() => {
@@ -371,7 +378,7 @@ export function Sidebar({ activeMenu, onMenuChange, isCollapsed, onCollapsedChan
                       <polyline points="16 17 21 12 16 7"/>
                       <line x1="21" y1="12" x2="9" y2="12"/>
                     </svg>
-                    退出登录
+                    {t('auth.logout')}
                   </button>
                 </div>
               </div>
